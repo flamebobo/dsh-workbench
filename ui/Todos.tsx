@@ -5,6 +5,7 @@ import type { PageProps } from './App.tsx'
 const { useState, useMemo, useEffect } = React
 type Row = TodoResult['items'][number]
 const SOURCE_LABEL = { zentao: '禅道', gitlab: 'GitLab', jenkins: 'Jenkins', manual: '手工' }
+const STARTABLE = ['backlog', 'todo', 'blocked']
 const DEFAULT_AGENT = { gitlab: 'reviewer', jenkins: 'build-fixer', zentao: 'fullstack', manual: 'fullstack' }
 
 export function Todos(p: PageProps & { todos?: TodoResult; reloadTodos: () => Promise<void> }) {
@@ -24,16 +25,23 @@ export function Todos(p: PageProps & { todos?: TodoResult; reloadTodos: () => Pr
   if (!todos) return <div className="wb-empty" style={{ flex: 1 }}>正在拉取待办…</div>
   const fallbacks = Object.entries(todos.sources).filter(([, s]) => s.mode === 'fallback')
   const issue: Issue | undefined = sel?.issueId ? state.issues.find((i) => i.id === sel.issueId) : undefined
-  const project = sel && state.projects.find((x) =>
+  // a manual card knows its project directly; connector items are matched by source ids / name
+  const project = issue?.projectId ? state.projects.find((x) => x.id === issue.projectId) : sel && state.projects.find((x) =>
     (x.gitlabProjectId != null && x.gitlabProjectId === sel.gitlabProjectId) ||
     (x.zentaoProductId != null && x.zentaoProductId === sel.zentaoProductId) ||
     (x.jenkinsJob && x.jenkinsJob === sel.jenkinsJob) || x.name === sel.project)
+
+  const issueAgent = issue?.agentId
+  // a card that exists but has no live session (manual task, or a blocked one) can be started from here
+  const startable = !issue || (!issue.sourceRef && STARTABLE.includes(issue.status))
 
   async function start() {
     if (!sel) return
     setBusy(true)
     try {
-      const { issue } = await rpc<{ issue: Issue }>('todos.start', { item: sel, agentId: agentId ?? DEFAULT_AGENT[sel.source] })
+      const { issue } = sel.issueId
+        ? await rpc<{ issue: Issue }>('issue.start', { id: sel.issueId, agentId: agentId ?? issueAgent })
+        : await rpc<{ issue: Issue }>('todos.start', { item: sel, agentId: agentId ?? DEFAULT_AGENT[sel.source] })
       p.notify(`已开工：${issue.key}，会话已创建`)
       await p.refresh(); await p.reloadTodos()
       p.go('board')
@@ -52,7 +60,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; reloadTodos: () => Pr
         ))}
         <div className="wb-toolbar">
           <button className="wb-chip" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>全部 {todos.items.length}</button>
-          {(['zentao', 'gitlab', 'jenkins'] as const).map((s) => (
+          {(['zentao', 'gitlab', 'jenkins', 'manual'] as const).filter((s) => s !== 'manual' || count('manual') > 0).map((s) => (
             <button key={s} className="wb-chip" aria-pressed={filter === s} onClick={() => setFilter(s)}>
               {SOURCE_LABEL[s]} {count(s)}
             </button>
@@ -94,7 +102,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; reloadTodos: () => Pr
               <dt>优先级</dt><dd><span className={`wb-pri ${sel.priority}`}>{sel.priority}</span></dd>
               <dt>状态</dt><dd>{sel.statusText}</dd>
               <dt>截止</dt><dd>{sel.due ?? '—'}</dd>
-              <dt>工作目录</dt><dd className="wb-ellipsis" title={project?.cwd}>{project ? project.cwd : <span style={{ color: 'var(--wb-red)' }}>未配置，请到「项目」页添加</span>}</dd>
+              <dt>工作目录</dt><dd className="wb-ellipsis" title={project?.cwd}>{project ? project.cwd : <span style={{ color: 'var(--wb-red)' }}>{sel.source === 'manual' ? '未选择项目，请在看板卡片里选择' : '未配置，请到「项目」页添加'}</span>}</dd>
             </dl>
             <h4>背景</h4>
             <div>{sel.description || '（无）'}</div>
@@ -103,7 +111,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; reloadTodos: () => Pr
             {sel.related.length > 0 && <><h4>关联信息</h4>{sel.related.map((r, i) => <div className="wb-rel" key={i}>{r.label}{r.detail && <span className="wb-muted"> · {r.detail}</span>}</div>)}</>}
           </div>
           <div className="wb-detail-foot">
-            {issue ? (
+            {!startable ? (
               <>
                 <span className="wb-pill">已开卡 {issue.key} · {STATUS_LABEL[issue.status]}</span>
                 <span className="wb-grow" />
@@ -111,10 +119,10 @@ export function Todos(p: PageProps & { todos?: TodoResult; reloadTodos: () => Pr
               </>
             ) : (
               <>
-                <select className="wb-select" style={{ width: 130 }} value={agentId ?? DEFAULT_AGENT[sel.source]} onChange={(e) => setAgentId(e.target.value)} aria-label="智能体">
+                <select className="wb-select" style={{ width: 130 }} value={agentId ?? issueAgent ?? DEFAULT_AGENT[sel.source]} onChange={(e) => setAgentId(e.target.value)} aria-label="智能体">
                   {state.agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
-                <button className="wb-btn primary wb-grow" disabled={busy || !project} onClick={() => { void start() }}>{busy ? '正在创建会话…' : '开工（创建会话）'}</button>
+                <button className="wb-btn primary wb-grow" disabled={busy || !project} title={project ? undefined : '请先选择项目'} onClick={() => { void start() }}>{busy ? '正在创建会话…' : '开工（创建会话）'}</button>
               </>
             )}
           </div>

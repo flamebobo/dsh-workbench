@@ -138,3 +138,46 @@ test('every demo to-do resolves to a seeded demo project', async () => {
   const missing = items.filter((i) => !wb.resolveProject(i)).map((i) => i.ref)
   assert.deepEqual(missing, [])
 })
+
+test('board-created task: appears in my to-dos, can be started once a project is chosen', async () => {
+  const { wb, driver, dir } = setup()
+  const project = wb.listProjects().find((p) => p.name.endsWith('payment-core'))!
+  const issue = wb.createIssue({ title: '手工任务：补充对账脚本', description: '背景', acceptance: [' 脚本可重复执行 ', ''], priority: 'P1', status: 'todo' })
+  assert.deepEqual(issue.acceptance, ['脚本可重复执行'])
+
+  const todo = (await wb.listTodos()).items.find((i) => i.source === 'manual' && i.ref === issue.key)!
+  assert.equal(todo.title, '手工任务：补充对账脚本')
+  assert.equal(todo.priority, 'P1')
+  assert.equal(todo.issueId, issue.id)
+  assert.equal(todo.project, '未选择项目')
+
+  await assert.rejects(() => wb.startIssue(issue.id), /还没有选择项目/)
+  assert.equal(wb.listIssues()[0]!.status, 'todo') // a refused start leaves the card alone
+
+  wb.updateIssue(issue.id, { projectId: project.id, acceptance: ['a', 'b'] })
+  const { issue: started } = await wb.startIssue(issue.id, 'tester')
+  assert.equal(started.status, 'in_progress')
+  assert.equal(started.agentId, 'tester')
+  const req = driver.started[0]!
+  assert.equal(req.cwd, join(dir, 'repos', 'payment-core'))
+  assert.match(req.prompt, /手工任务：补充对账脚本/)
+  assert.match(req.prompt, /1\. a\n2\. b/)
+  assert.equal(req.profile.presetId, 'tester')
+
+  await assert.rejects(() => wb.startIssue(issue.id), /正在进行中/)
+  driver.emit({ type: 'turn.completed', runId: wb.listRuns()[0]!.id, status: 'completed' })
+  assert.equal(wb.listIssues()[0]!.status, 'in_review')
+  assert.equal((await wb.listTodos()).items.find((i) => i.ref === issue.key)!.project, project.name)
+})
+
+test('a blocked card can be started again; done cards cannot', async () => {
+  const { wb, driver } = setup()
+  const { issue } = await wb.startWork({ item: bug })
+  driver.emit({ type: 'turn.completed', runId: wb.listRuns()[0]!.id, status: 'failed', error: 'x' })
+  assert.equal(wb.listIssues()[0]!.status, 'blocked')
+  await wb.startIssue(issue.id)
+  assert.equal(wb.listRuns().length, 2)
+  assert.equal(wb.listIssues()[0]!.status, 'in_progress')
+  wb.setStatus(issue.id, 'done', 'human')
+  await assert.rejects(() => wb.startIssue(issue.id), /已完成/)
+})

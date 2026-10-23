@@ -445,6 +445,7 @@ var WorkbenchError = class extends Error {
   }
 };
 var now = () => (/* @__PURE__ */ new Date()).toISOString();
+var cleanLines = (l) => (l ?? []).map((x) => x.trim()).filter(Boolean);
 var Workbench = class {
   store;
   driver;
@@ -515,13 +516,26 @@ var Workbench = class {
       pick("jenkins", () => fetchJenkins(ctx), demoJenkins)
     ]);
     const rank = { P0: 0, P1: 1, P2: 2, P3: 3 };
-    const items = lists.flat().sort((a, b) => rank[a.priority] - rank[b.priority]).map((w) => {
+    const projectName = (id) => this.store.data.projects.find((p) => p.id === id)?.name ?? "\u672A\u9009\u62E9\u9879\u76EE";
+    const manual = this.store.data.issues.filter((i) => !i.sourceRef).map((i) => ({
+      ref: i.key,
+      source: "manual",
+      title: i.title,
+      priority: i.priority ?? "P2",
+      project: projectName(i.projectId),
+      statusText: "\u624B\u5DE5\u4EFB\u52A1",
+      description: i.description,
+      acceptance: i.acceptance,
+      related: []
+    }));
+    const items = [...lists.flat(), ...manual].sort((a, b) => rank[a.priority] - rank[b.priority]).map((w) => {
       const issue = this.issueForSource(w.source, w.ref);
       return { ...w, issueId: issue?.id, issueStatus: issue?.status };
     });
     return { items, sources };
   }
   issueForSource(source, ref) {
+    if (source === "manual") return this.store.data.issues.find((i) => !i.sourceRef && i.key === ref);
     return this.store.data.issues.find((i) => i.sourceRef?.source === source && i.sourceRef.ref === ref);
   }
   // ---------- start work ----------
@@ -547,7 +561,7 @@ var Workbench = class {
     const agent = this.agent(input.agentId ?? defaultAgentFor(item));
     const project = this.resolveProject(item);
     if (!project) throw new WorkbenchError("invalid", `\u300C${item.project}\u300D\u6CA1\u6709\u5BF9\u5E94\u7684\u9879\u76EE\u5DE5\u4F5C\u76EE\u5F55\uFF0C\u8BF7\u5148\u5728\u300C\u9879\u76EE\u300D\u9875\u6DFB\u52A0`);
-    const { issue, run } = this.store.update((d) => {
+    const issue = this.store.update((d) => {
       d.seq += 1;
       d.issueSeq = (d.issueSeq ?? 0) + 1;
       const t = now();
@@ -557,30 +571,57 @@ var Workbench = class {
         title: item.title,
         description: item.description,
         acceptance: item.acceptance,
-        status: "in_progress",
+        status: "todo",
         agentId: agent.id,
         projectId: project.id,
+        priority: item.priority,
         sourceRef: { source: item.source, ref: item.ref },
         createdAt: t,
         updatedAt: t
       };
-      const run2 = { id: `run_${d.seq}`, issueId: issue2.id, agentId: agent.id, status: "running", startedAt: t };
       d.issues.push(issue2);
-      d.runs.push(run2);
-      return { issue: issue2, run: run2 };
+      return issue2;
     });
+    return this.launch(issue.id, item);
+  }
+  /** 开工 on a card that already exists (manual tasks from the board, or a blocked card being retried). */
+  async startIssue(id, agentId) {
+    const issue = this.store.data.issues.find((i) => i.id === id);
+    if (!issue) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
+    if (issue.status === "in_progress") throw new WorkbenchError("invalid", `${issue.key} \u6B63\u5728\u8FDB\u884C\u4E2D`);
+    if (issue.status === "done") throw new WorkbenchError("invalid", `${issue.key} \u5DF2\u5B8C\u6210\uFF0C\u4E0D\u80FD\u518D\u5F00\u5DE5`);
+    if (agentId && agentId !== issue.agentId) this.updateIssue(id, { agentId });
+    return this.launch(id);
+  }
+  async launch(issueId, item) {
+    const before = this.store.data.issues.find((i) => i.id === issueId);
+    const agent = this.agent(before.agentId);
+    const project = this.store.data.projects.find((p) => p.id === before.projectId);
+    if (!project) throw new WorkbenchError("invalid", `${before.key} \u8FD8\u6CA1\u6709\u9009\u62E9\u9879\u76EE\uFF08\u5DE5\u4F5C\u76EE\u5F55\uFF09\uFF0C\u8BF7\u5148\u5728\u5361\u7247\u91CC\u9009\u62E9\u9879\u76EE`);
+    const run = this.store.update((d) => {
+      d.seq += 1;
+      const t = now();
+      const run2 = { id: `run_${d.seq}`, issueId, agentId: agent.id, status: "running", startedAt: t };
+      d.runs.push(run2);
+      const i = d.issues.find((x) => x.id === issueId);
+      i.status = "in_progress";
+      i.note = void 0;
+      i.updatedAt = t;
+      return run2;
+    });
+    const issue = this.store.data.issues.find((i) => i.id === issueId);
     try {
       const { sessionId } = await this.driver.start({
         runId: run.id,
         cwd: project.cwd,
-        title: `${issue.key} ${item.title}`,
+        title: `${issue.key} ${issue.title}`,
         prompt: this.buildPrompt(issue, item),
         profile: { presetId: agent.id, model: agent.model, instructions: agent.instructions }
       });
       return this.store.update((d) => {
-        d.issues.find((i) => i.id === issue.id).sessionId = sessionId;
+        d.issues.find((i) => i.id === issueId).sessionId = sessionId;
         d.runs.find((r) => r.id === run.id).sessionId = sessionId;
-        return { issue: d.issues.find((i) => i.id === issue.id), run: d.runs.find((r) => r.id === run.id) };
+        return { issue: d.issues.find((i) => i.id === issueId), run: d.runs.find((r) => r.id === run.id) };
       });
     } catch (e) {
       this.finishRun(run.id, "failed", void 0, String(e.message ?? e));
@@ -635,10 +676,11 @@ var Workbench = class {
         key: `WB-${d.issueSeq}`,
         title: input.title.trim(),
         description: input.description ?? "",
-        acceptance: [],
+        acceptance: cleanLines(input.acceptance),
         status: input.status ?? "backlog",
         agentId: input.agentId ?? "fullstack",
-        projectId: input.projectId,
+        projectId: input.projectId || void 0,
+        priority: input.priority ?? "P2",
         createdAt: t,
         updatedAt: t
       };
@@ -650,7 +692,10 @@ var Workbench = class {
     return this.store.update((d) => {
       const i = d.issues.find((x) => x.id === id);
       if (!i) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
-      Object.assign(i, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== void 0)), { updatedAt: now() });
+      const { projectId, acceptance, ...rest } = patch;
+      Object.assign(i, Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== void 0)), { updatedAt: now() });
+      if (acceptance) i.acceptance = cleanLines(acceptance);
+      if (projectId !== void 0) i.projectId = projectId || void 0;
       return i;
     });
   }
@@ -960,6 +1005,8 @@ function apply(ctx) {
         return wb.createIssue(p);
       case "issue.update":
         return wb.updateIssue(p.id, p.patch);
+      case "issue.start":
+        return await wb.startIssue(p.id, p.agentId);
       case "issue.status":
         return wb.setStatus(p.id, p.status, "human");
       // only the UI (a human) calls this

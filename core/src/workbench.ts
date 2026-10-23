@@ -9,7 +9,7 @@ import { fetchJenkins } from './connectors/jenkins.ts'
 import type { ConnectorContext, Creds, FetchLike } from './connectors/http.ts'
 import { fetchZentao } from './connectors/zentao.ts'
 import { Store } from './store.ts'
-import type { AgentProfile, Issue, Project, Run, Source, Status, WorkItem } from './types.ts'
+import type { AgentProfile, Issue, Priority, Project, Run, Source, Status, WorkItem } from './types.ts'
 import { STATUSES } from './types.ts'
 import { builtinAgents } from './agents.ts'
 
@@ -30,6 +30,7 @@ export class WorkbenchError extends Error {
 }
 
 const now = () => new Date().toISOString()
+const cleanLines = (l?: string[]) => (l ?? []).map((x) => x.trim()).filter(Boolean)
 const ACTIVE: Status[] = ['todo', 'in_progress', 'in_review', 'blocked', 'backlog']
 
 export interface WorkbenchOptions {
@@ -101,7 +102,12 @@ export class Workbench {
       pick('jenkins', () => fetchJenkins(ctx), demoJenkins),
     ])
     const rank = { P0: 0, P1: 1, P2: 2, P3: 3 }
-    const items = lists.flat().sort((a, b) => rank[a.priority] - rank[b.priority]).map((w) => {
+    const projectName = (id?: string) => this.store.data.projects.find((p) => p.id === id)?.name ?? '未选择项目'
+    const manual: WorkItem[] = this.store.data.issues.filter((i) => !i.sourceRef).map((i) => ({
+      ref: i.key, source: 'manual' as const, title: i.title, priority: i.priority ?? 'P2', project: projectName(i.projectId),
+      statusText: '手工任务', description: i.description, acceptance: i.acceptance, related: [],
+    }))
+    const items = [...lists.flat(), ...manual].sort((a, b) => rank[a.priority] - rank[b.priority]).map((w) => {
       const issue = this.issueForSource(w.source, w.ref)
       return { ...w, issueId: issue?.id, issueStatus: issue?.status }
     })
@@ -109,6 +115,7 @@ export class Workbench {
   }
 
   private issueForSource(source: Source, ref: string) {
+    if (source === 'manual') return this.store.data.issues.find((i) => !i.sourceRef && i.key === ref)
     return this.store.data.issues.find((i) => i.sourceRef?.source === source && i.sourceRef.ref === ref)
   }
 
@@ -142,29 +149,56 @@ export class Workbench {
     const agent = this.agent(input.agentId ?? defaultAgentFor(item))
     const project = this.resolveProject(item)
     if (!project) throw new WorkbenchError('invalid', `「${item.project}」没有对应的项目工作目录，请先在「项目」页添加`)
-    const { issue, run } = this.store.update((d) => {
+    const issue = this.store.update((d) => {
       d.seq += 1
       d.issueSeq = (d.issueSeq ?? 0) + 1
       const t = now()
       const issue: Issue = {
         id: `iss_${d.seq}`, key: `WB-${d.issueSeq}`, title: item.title, description: item.description,
-        acceptance: item.acceptance, status: 'in_progress', agentId: agent.id, projectId: project.id,
+        acceptance: item.acceptance, status: 'todo', agentId: agent.id, projectId: project.id, priority: item.priority,
         sourceRef: { source: item.source, ref: item.ref }, createdAt: t, updatedAt: t,
       }
-      const run: Run = { id: `run_${d.seq}`, issueId: issue.id, agentId: agent.id, status: 'running', startedAt: t }
-      d.issues.push(issue); d.runs.push(run)
-      return { issue, run }
+      d.issues.push(issue)
+      return issue
     })
+    return this.launch(issue.id, item)
+  }
+
+  /** 开工 on a card that already exists (manual tasks from the board, or a blocked card being retried). */
+  async startIssue(id: string, agentId?: string): Promise<{ issue: Issue; run: Run }> {
+    const issue = this.store.data.issues.find((i) => i.id === id)
+    if (!issue) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
+    if (issue.status === 'in_progress') throw new WorkbenchError('invalid', `${issue.key} 正在进行中`)
+    if (issue.status === 'done') throw new WorkbenchError('invalid', `${issue.key} 已完成，不能再开工`)
+    if (agentId && agentId !== issue.agentId) this.updateIssue(id, { agentId })
+    return this.launch(id)
+  }
+
+  private async launch(issueId: string, item?: WorkItem): Promise<{ issue: Issue; run: Run }> {
+    const before = this.store.data.issues.find((i) => i.id === issueId)!
+    const agent = this.agent(before.agentId)
+    const project = this.store.data.projects.find((p) => p.id === before.projectId)
+    if (!project) throw new WorkbenchError('invalid', `${before.key} 还没有选择项目（工作目录），请先在卡片里选择项目`)
+    const run = this.store.update((d) => {
+      d.seq += 1
+      const t = now()
+      const run: Run = { id: `run_${d.seq}`, issueId, agentId: agent.id, status: 'running', startedAt: t }
+      d.runs.push(run)
+      const i = d.issues.find((x) => x.id === issueId)!
+      i.status = 'in_progress'; i.note = undefined; i.updatedAt = t
+      return run
+    })
+    const issue = this.store.data.issues.find((i) => i.id === issueId)!
     try {
       const { sessionId } = await this.driver.start({
-        runId: run.id, cwd: project.cwd, title: `${issue.key} ${item.title}`,
+        runId: run.id, cwd: project.cwd, title: `${issue.key} ${issue.title}`,
         prompt: this.buildPrompt(issue, item),
         profile: { presetId: agent.id, model: agent.model, instructions: agent.instructions },
       })
       return this.store.update((d) => {
-        d.issues.find((i) => i.id === issue.id)!.sessionId = sessionId
+        d.issues.find((i) => i.id === issueId)!.sessionId = sessionId
         d.runs.find((r) => r.id === run.id)!.sessionId = sessionId
-        return { issue: d.issues.find((i) => i.id === issue.id)!, run: d.runs.find((r) => r.id === run.id)! }
+        return { issue: d.issues.find((i) => i.id === issueId)!, run: d.runs.find((r) => r.id === run.id)! }
       })
     } catch (e) {
       this.finishRun(run.id, 'failed', undefined, String((e as Error).message ?? e))
@@ -204,7 +238,7 @@ export class Workbench {
   listIssues() { return this.store.data.issues }
   listRuns(issueId?: string) { return this.store.data.runs.filter((r) => !issueId || r.issueId === issueId) }
 
-  createIssue(input: { title: string; description?: string; agentId?: string; projectId?: string; status?: Status }): Issue {
+  createIssue(input: { title: string; description?: string; acceptance?: string[]; priority?: Priority; agentId?: string; projectId?: string; status?: Status }): Issue {
     if (!input.title.trim()) throw new WorkbenchError('invalid', '标题不能为空')
     if (input.status === 'done') throw new WorkbenchError('forbidden', '「已完成」只能由人在看板上设置')
     return this.store.update((d) => {
@@ -212,19 +246,23 @@ export class Workbench {
       d.issueSeq = (d.issueSeq ?? 0) + 1
       const t = now()
       const issue: Issue = {
-        id: `iss_${d.seq}`, key: `WB-${d.issueSeq}`, title: input.title.trim(), description: input.description ?? '', acceptance: [],
-        status: input.status ?? 'backlog', agentId: input.agentId ?? 'fullstack', projectId: input.projectId, createdAt: t, updatedAt: t,
+        id: `iss_${d.seq}`, key: `WB-${d.issueSeq}`, title: input.title.trim(), description: input.description ?? '', acceptance: cleanLines(input.acceptance),
+        status: input.status ?? 'backlog', agentId: input.agentId ?? 'fullstack', projectId: input.projectId || undefined,
+        priority: input.priority ?? 'P2', createdAt: t, updatedAt: t,
       }
       d.issues.push(issue)
       return issue
     })
   }
 
-  updateIssue(id: string, patch: Partial<Pick<Issue, 'title' | 'description' | 'agentId' | 'projectId'>>) {
+  updateIssue(id: string, patch: Partial<Pick<Issue, 'title' | 'description' | 'acceptance' | 'priority' | 'agentId' | 'projectId'>>) {
     return this.store.update((d) => {
       const i = d.issues.find((x) => x.id === id)
       if (!i) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
-      Object.assign(i, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)), { updatedAt: now() })
+      const { projectId, acceptance, ...rest } = patch
+      Object.assign(i, Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)), { updatedAt: now() })
+      if (acceptance) i.acceptance = cleanLines(acceptance)
+      if (projectId !== undefined) i.projectId = projectId || undefined // '' clears the project
       return i
     })
   }

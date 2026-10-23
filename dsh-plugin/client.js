@@ -159,6 +159,7 @@ var WB = (() => {
   var React = __toESM(__require("react"), 1);
   var { useState, useMemo, useEffect } = React;
   var SOURCE_LABEL = { zentao: "\u7985\u9053", gitlab: "GitLab", jenkins: "Jenkins", manual: "\u624B\u5DE5" };
+  var STARTABLE = ["backlog", "todo", "blocked"];
   var DEFAULT_AGENT = { gitlab: "reviewer", jenkins: "build-fixer", zentao: "fullstack", manual: "fullstack" };
   function Todos(p) {
     const { todos, state } = p;
@@ -178,12 +179,14 @@ var WB = (() => {
     if (!todos) return /* @__PURE__ */ React.createElement("div", { className: "wb-empty", style: { flex: 1 } }, "\u6B63\u5728\u62C9\u53D6\u5F85\u529E\u2026");
     const fallbacks = Object.entries(todos.sources).filter(([, s]) => s.mode === "fallback");
     const issue = sel?.issueId ? state.issues.find((i) => i.id === sel.issueId) : void 0;
-    const project = sel && state.projects.find((x) => x.gitlabProjectId != null && x.gitlabProjectId === sel.gitlabProjectId || x.zentaoProductId != null && x.zentaoProductId === sel.zentaoProductId || x.jenkinsJob && x.jenkinsJob === sel.jenkinsJob || x.name === sel.project);
+    const project = issue?.projectId ? state.projects.find((x) => x.id === issue.projectId) : sel && state.projects.find((x) => x.gitlabProjectId != null && x.gitlabProjectId === sel.gitlabProjectId || x.zentaoProductId != null && x.zentaoProductId === sel.zentaoProductId || x.jenkinsJob && x.jenkinsJob === sel.jenkinsJob || x.name === sel.project);
+    const issueAgent = issue?.agentId;
+    const startable = !issue || !issue.sourceRef && STARTABLE.includes(issue.status);
     async function start() {
       if (!sel) return;
       setBusy(true);
       try {
-        const { issue: issue2 } = await rpc("todos.start", { item: sel, agentId: agentId ?? DEFAULT_AGENT[sel.source] });
+        const { issue: issue2 } = sel.issueId ? await rpc("issue.start", { id: sel.issueId, agentId: agentId ?? issueAgent }) : await rpc("todos.start", { item: sel, agentId: agentId ?? DEFAULT_AGENT[sel.source] });
         p.notify(`\u5DF2\u5F00\u5DE5\uFF1A${issue2.key}\uFF0C\u4F1A\u8BDD\u5DF2\u521B\u5EFA`);
         await p.refresh();
         await p.reloadTodos();
@@ -196,12 +199,12 @@ var WB = (() => {
         setBusy(false);
       }
     }
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "wb-main" }, fallbacks.map(([k, s]) => /* @__PURE__ */ React.createElement("div", { className: "wb-banner err", key: k }, SOURCE_LABEL[k], " \u5B9E\u65F6\u6570\u636E\u4E0D\u53EF\u7528\uFF0C\u5DF2\u964D\u7EA7\u4E3A\u6F14\u793A\u6570\u636E\uFF1A", s.error)), /* @__PURE__ */ React.createElement("div", { className: "wb-toolbar" }, /* @__PURE__ */ React.createElement("button", { className: "wb-chip", "aria-pressed": filter === "all", onClick: () => setFilter("all") }, "\u5168\u90E8 ", todos.items.length), ["zentao", "gitlab", "jenkins"].map((s) => /* @__PURE__ */ React.createElement("button", { key: s, className: "wb-chip", "aria-pressed": filter === s, onClick: () => setFilter(s) }, SOURCE_LABEL[s], " ", count(s))), /* @__PURE__ */ React.createElement("span", { className: "wb-grow" }), ["zentao", "gitlab", "jenkins"].map((s) => /* @__PURE__ */ React.createElement("span", { key: s, className: `wb-pill ${todos.sources[s].mode === "live" ? "live" : "demo"}` }, SOURCE_LABEL[s], " ", todos.sources[s].mode === "live" ? "\u5B9E\u65F6" : "\u6F14\u793A")), /* @__PURE__ */ React.createElement("button", { className: "wb-btn", onClick: () => {
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "wb-main" }, fallbacks.map(([k, s]) => /* @__PURE__ */ React.createElement("div", { className: "wb-banner err", key: k }, SOURCE_LABEL[k], " \u5B9E\u65F6\u6570\u636E\u4E0D\u53EF\u7528\uFF0C\u5DF2\u964D\u7EA7\u4E3A\u6F14\u793A\u6570\u636E\uFF1A", s.error)), /* @__PURE__ */ React.createElement("div", { className: "wb-toolbar" }, /* @__PURE__ */ React.createElement("button", { className: "wb-chip", "aria-pressed": filter === "all", onClick: () => setFilter("all") }, "\u5168\u90E8 ", todos.items.length), ["zentao", "gitlab", "jenkins", "manual"].filter((s) => s !== "manual" || count("manual") > 0).map((s) => /* @__PURE__ */ React.createElement("button", { key: s, className: "wb-chip", "aria-pressed": filter === s, onClick: () => setFilter(s) }, SOURCE_LABEL[s], " ", count(s))), /* @__PURE__ */ React.createElement("span", { className: "wb-grow" }), ["zentao", "gitlab", "jenkins"].map((s) => /* @__PURE__ */ React.createElement("span", { key: s, className: `wb-pill ${todos.sources[s].mode === "live" ? "live" : "demo"}` }, SOURCE_LABEL[s], " ", todos.sources[s].mode === "live" ? "\u5B9E\u65F6" : "\u6F14\u793A")), /* @__PURE__ */ React.createElement("button", { className: "wb-btn", onClick: () => {
       void p.reloadTodos();
     } }, "\u5237\u65B0")), /* @__PURE__ */ React.createElement("table", { className: "wb-table" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { style: { width: 66 } }, "\u4F18\u5148\u7EA7"), /* @__PURE__ */ React.createElement("th", null, "\u5F85\u529E\u4E8B\u9879"), /* @__PURE__ */ React.createElement("th", { style: { width: 150 } }, "\u6765\u6E90"), /* @__PURE__ */ React.createElement("th", { style: { width: 190 } }, "\u9879\u76EE / \u6A21\u5757"), /* @__PURE__ */ React.createElement("th", { style: { width: 90 } }, "\u72B6\u6001"), /* @__PURE__ */ React.createElement("th", { style: { width: 90 } }, "\u622A\u6B62"))), /* @__PURE__ */ React.createElement("tbody", null, rows.map((r) => {
       const key = `${r.source}:${r.ref}`;
       return /* @__PURE__ */ React.createElement("tr", { key, className: `row ${key === selected ? "sel" : ""}`, onClick: () => setSelected(key) }, /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("span", { className: `wb-pri ${r.priority}` }, r.priority)), /* @__PURE__ */ React.createElement("td", null, r.title, r.issueId && /* @__PURE__ */ React.createElement("span", { className: "wb-pill", style: { marginLeft: 8 } }, state.issues.find((i) => i.id === r.issueId)?.key)), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("span", { className: "wb-src" }, /* @__PURE__ */ React.createElement("i", { className: r.source }), r.ref)), /* @__PURE__ */ React.createElement("td", { className: "wb-muted wb-ellipsis", style: { maxWidth: 190 } }, r.project), /* @__PURE__ */ React.createElement("td", null, r.issueStatus ? /* @__PURE__ */ React.createElement("span", { className: "wb-pill" }, STATUS_LABEL[r.issueStatus]) : /* @__PURE__ */ React.createElement("span", { className: "wb-muted" }, r.statusText)), /* @__PURE__ */ React.createElement("td", { className: "wb-muted" }, r.due ? r.due.slice(5) : "\u2014"));
-    }))), !rows.length && /* @__PURE__ */ React.createElement("div", { className: "wb-empty" }, "\u6CA1\u6709\u5F85\u529E\u3002")), sel && /* @__PURE__ */ React.createElement("aside", { className: "wb-detail" }, /* @__PURE__ */ React.createElement("div", { className: "wb-detail-body" }, /* @__PURE__ */ React.createElement("div", { className: "wb-sub" }, /* @__PURE__ */ React.createElement("span", { className: "wb-src" }, /* @__PURE__ */ React.createElement("i", { className: sel.source }), SOURCE_LABEL[sel.source], " \xB7 ", sel.ref), " \xB7 ", sel.project), /* @__PURE__ */ React.createElement("h3", { style: { marginTop: 6 } }, sel.title), /* @__PURE__ */ React.createElement("dl", { className: "wb-kv" }, /* @__PURE__ */ React.createElement("dt", null, "\u4F18\u5148\u7EA7"), /* @__PURE__ */ React.createElement("dd", null, /* @__PURE__ */ React.createElement("span", { className: `wb-pri ${sel.priority}` }, sel.priority)), /* @__PURE__ */ React.createElement("dt", null, "\u72B6\u6001"), /* @__PURE__ */ React.createElement("dd", null, sel.statusText), /* @__PURE__ */ React.createElement("dt", null, "\u622A\u6B62"), /* @__PURE__ */ React.createElement("dd", null, sel.due ?? "\u2014"), /* @__PURE__ */ React.createElement("dt", null, "\u5DE5\u4F5C\u76EE\u5F55"), /* @__PURE__ */ React.createElement("dd", { className: "wb-ellipsis", title: project?.cwd }, project ? project.cwd : /* @__PURE__ */ React.createElement("span", { style: { color: "var(--wb-red)" } }, "\u672A\u914D\u7F6E\uFF0C\u8BF7\u5230\u300C\u9879\u76EE\u300D\u9875\u6DFB\u52A0"))), /* @__PURE__ */ React.createElement("h4", null, "\u80CC\u666F"), /* @__PURE__ */ React.createElement("div", null, sel.description || "\uFF08\u65E0\uFF09"), /* @__PURE__ */ React.createElement("h4", null, "\u9A8C\u6536\u6807\u51C6"), sel.acceptance.length ? /* @__PURE__ */ React.createElement("ul", { className: "wb-ac" }, sel.acceptance.map((a, i) => /* @__PURE__ */ React.createElement("li", { key: i }, a))) : /* @__PURE__ */ React.createElement("div", { className: "wb-muted" }, "\u672A\u7ED9\u51FA\uFF0C\u5F00\u5DE5\u540E\u667A\u80FD\u4F53\u4F1A\u5148\u4E0E\u4F60\u786E\u8BA4\u3002"), sel.related.length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("h4", null, "\u5173\u8054\u4FE1\u606F"), sel.related.map((r, i) => /* @__PURE__ */ React.createElement("div", { className: "wb-rel", key: i }, r.label, r.detail && /* @__PURE__ */ React.createElement("span", { className: "wb-muted" }, " \xB7 ", r.detail))))), /* @__PURE__ */ React.createElement("div", { className: "wb-detail-foot" }, issue ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "wb-pill" }, "\u5DF2\u5F00\u5361 ", issue.key, " \xB7 ", STATUS_LABEL[issue.status]), /* @__PURE__ */ React.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React.createElement("button", { className: "wb-btn", onClick: () => p.go("board", issue.id) }, "\u67E5\u770B\u5361\u7247")) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("select", { className: "wb-select", style: { width: 130 }, value: agentId ?? DEFAULT_AGENT[sel.source], onChange: (e) => setAgentId(e.target.value), "aria-label": "\u667A\u80FD\u4F53" }, state.agents.map((a) => /* @__PURE__ */ React.createElement("option", { key: a.id, value: a.id }, a.name))), /* @__PURE__ */ React.createElement("button", { className: "wb-btn primary wb-grow", disabled: busy || !project, onClick: () => {
+    }))), !rows.length && /* @__PURE__ */ React.createElement("div", { className: "wb-empty" }, "\u6CA1\u6709\u5F85\u529E\u3002")), sel && /* @__PURE__ */ React.createElement("aside", { className: "wb-detail" }, /* @__PURE__ */ React.createElement("div", { className: "wb-detail-body" }, /* @__PURE__ */ React.createElement("div", { className: "wb-sub" }, /* @__PURE__ */ React.createElement("span", { className: "wb-src" }, /* @__PURE__ */ React.createElement("i", { className: sel.source }), SOURCE_LABEL[sel.source], " \xB7 ", sel.ref), " \xB7 ", sel.project), /* @__PURE__ */ React.createElement("h3", { style: { marginTop: 6 } }, sel.title), /* @__PURE__ */ React.createElement("dl", { className: "wb-kv" }, /* @__PURE__ */ React.createElement("dt", null, "\u4F18\u5148\u7EA7"), /* @__PURE__ */ React.createElement("dd", null, /* @__PURE__ */ React.createElement("span", { className: `wb-pri ${sel.priority}` }, sel.priority)), /* @__PURE__ */ React.createElement("dt", null, "\u72B6\u6001"), /* @__PURE__ */ React.createElement("dd", null, sel.statusText), /* @__PURE__ */ React.createElement("dt", null, "\u622A\u6B62"), /* @__PURE__ */ React.createElement("dd", null, sel.due ?? "\u2014"), /* @__PURE__ */ React.createElement("dt", null, "\u5DE5\u4F5C\u76EE\u5F55"), /* @__PURE__ */ React.createElement("dd", { className: "wb-ellipsis", title: project?.cwd }, project ? project.cwd : /* @__PURE__ */ React.createElement("span", { style: { color: "var(--wb-red)" } }, sel.source === "manual" ? "\u672A\u9009\u62E9\u9879\u76EE\uFF0C\u8BF7\u5728\u770B\u677F\u5361\u7247\u91CC\u9009\u62E9" : "\u672A\u914D\u7F6E\uFF0C\u8BF7\u5230\u300C\u9879\u76EE\u300D\u9875\u6DFB\u52A0"))), /* @__PURE__ */ React.createElement("h4", null, "\u80CC\u666F"), /* @__PURE__ */ React.createElement("div", null, sel.description || "\uFF08\u65E0\uFF09"), /* @__PURE__ */ React.createElement("h4", null, "\u9A8C\u6536\u6807\u51C6"), sel.acceptance.length ? /* @__PURE__ */ React.createElement("ul", { className: "wb-ac" }, sel.acceptance.map((a, i) => /* @__PURE__ */ React.createElement("li", { key: i }, a))) : /* @__PURE__ */ React.createElement("div", { className: "wb-muted" }, "\u672A\u7ED9\u51FA\uFF0C\u5F00\u5DE5\u540E\u667A\u80FD\u4F53\u4F1A\u5148\u4E0E\u4F60\u786E\u8BA4\u3002"), sel.related.length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("h4", null, "\u5173\u8054\u4FE1\u606F"), sel.related.map((r, i) => /* @__PURE__ */ React.createElement("div", { className: "wb-rel", key: i }, r.label, r.detail && /* @__PURE__ */ React.createElement("span", { className: "wb-muted" }, " \xB7 ", r.detail))))), /* @__PURE__ */ React.createElement("div", { className: "wb-detail-foot" }, !startable ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "wb-pill" }, "\u5DF2\u5F00\u5361 ", issue.key, " \xB7 ", STATUS_LABEL[issue.status]), /* @__PURE__ */ React.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React.createElement("button", { className: "wb-btn", onClick: () => p.go("board", issue.id) }, "\u67E5\u770B\u5361\u7247")) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("select", { className: "wb-select", style: { width: 130 }, value: agentId ?? issueAgent ?? DEFAULT_AGENT[sel.source], onChange: (e) => setAgentId(e.target.value), "aria-label": "\u667A\u80FD\u4F53" }, state.agents.map((a) => /* @__PURE__ */ React.createElement("option", { key: a.id, value: a.id }, a.name))), /* @__PURE__ */ React.createElement("button", { className: "wb-btn primary wb-grow", disabled: busy || !project, title: project ? void 0 : "\u8BF7\u5148\u9009\u62E9\u9879\u76EE", onClick: () => {
       void start();
     } }, busy ? "\u6B63\u5728\u521B\u5EFA\u4F1A\u8BDD\u2026" : "\u5F00\u5DE5\uFF08\u521B\u5EFA\u4F1A\u8BDD\uFF09")))));
   }
@@ -215,8 +218,7 @@ var WB = (() => {
     const [dragging, setDragging] = useState2();
     const [over, setOver] = useState2();
     const [openId, setOpenId] = useState2(p.focusIssue);
-    const [adding, setAdding] = useState2();
-    const [title, setTitle] = useState2("");
+    const [creating, setCreating] = useState2();
     useEffect2(() => {
       if (p.focusIssue) setOpenId(p.focusIssue);
     }, [p.focusIssue]);
@@ -227,20 +229,6 @@ var WB = (() => {
       if (!cur || cur.status === status) return;
       try {
         await rpc("issue.status", { id, status });
-        await p.refresh();
-      } catch (e) {
-        p.notify(e.message);
-      }
-    }
-    async function add(status) {
-      if (!title.trim()) {
-        setAdding(void 0);
-        return;
-      }
-      try {
-        await rpc("issue.create", { title, status });
-        setTitle("");
-        setAdding(void 0);
         await p.refresh();
       } catch (e) {
         p.notify(e.message);
@@ -267,24 +255,8 @@ var WB = (() => {
             if (id) void move(id, col);
           }
         },
-        /* @__PURE__ */ React2.createElement("div", { className: "wb-col-h" }, /* @__PURE__ */ React2.createElement("span", { className: `wb-dot ${col}` }), STATUS_LABEL[col], /* @__PURE__ */ React2.createElement("span", { className: "n" }, items.length), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", style: { padding: "0 8px" }, "aria-label": `\u5728${STATUS_LABEL[col]}\u65B0\u5EFA`, onClick: () => setAdding(col) }, "+")),
-        /* @__PURE__ */ React2.createElement("div", { className: "wb-col-b" }, adding === col && /* @__PURE__ */ React2.createElement(
-          "input",
-          {
-            className: "wb-input",
-            autoFocus: true,
-            placeholder: "\u6807\u9898\uFF0C\u56DE\u8F66\u521B\u5EFA",
-            value: title,
-            onChange: (e) => setTitle(e.target.value),
-            onKeyDown: (e) => {
-              if (e.key === "Enter") void add(col);
-              if (e.key === "Escape") setAdding(void 0);
-            },
-            onBlur: () => {
-              void add(col);
-            }
-          }
-        ), items.map((i) => /* @__PURE__ */ React2.createElement(
+        /* @__PURE__ */ React2.createElement("div", { className: "wb-col-h" }, /* @__PURE__ */ React2.createElement("span", { className: `wb-dot ${col}` }), STATUS_LABEL[col], /* @__PURE__ */ React2.createElement("span", { className: "n" }, items.length), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", style: { padding: "0 8px" }, "aria-label": `\u5728${STATUS_LABEL[col]}\u65B0\u5EFA`, onClick: () => setCreating(col) }, "+")),
+        /* @__PURE__ */ React2.createElement("div", { className: "wb-col-b" }, items.map((i) => /* @__PURE__ */ React2.createElement(
           "article",
           {
             key: i.id,
@@ -306,41 +278,73 @@ var WB = (() => {
           /* @__PURE__ */ React2.createElement("div", { className: "m" }, /* @__PURE__ */ React2.createElement("span", { className: "wb-pill" }, agentName2(i.agentId)), /* @__PURE__ */ React2.createElement("span", { style: { marginLeft: "auto" } }, ago(i.updatedAt)))
         )))
       );
-    })), open && /* @__PURE__ */ React2.createElement(IssueModal, { issue: open, p, onClose: () => setOpenId(void 0) }));
+    })), open && /* @__PURE__ */ React2.createElement(IssueModal, { issue: open, p, onClose: () => setOpenId(void 0) }), creating && /* @__PURE__ */ React2.createElement(IssueModal, { initialStatus: creating, p, onClose: () => setCreating(void 0) }));
   }
-  function IssueModal({ issue, p, onClose }) {
+  var PRIORITIES = ["P0", "P1", "P2", "P3"];
+  var STARTABLE2 = ["backlog", "todo", "blocked"];
+  function IssueModal({ issue, initialStatus, p, onClose }) {
     const { state } = p;
-    const [title, setTitle] = useState2(issue.title);
-    const [description, setDescription] = useState2(issue.description);
-    const [agentId, setAgentId] = useState2(issue.agentId);
-    const [status, setStatus] = useState2(issue.status);
+    const [title, setTitle] = useState2(issue?.title ?? "");
+    const [description, setDescription] = useState2(issue?.description ?? "");
+    const [acceptance, setAcceptance] = useState2((issue?.acceptance ?? []).join("\n"));
+    const [priority, setPriority] = useState2(issue?.priority ?? "P2");
+    const [projectId, setProjectId] = useState2(issue?.projectId ?? "");
+    const [agentId, setAgentId] = useState2(issue?.agentId ?? "fullstack");
+    const [status, setStatus] = useState2(issue?.status ?? initialStatus ?? "backlog");
+    const [busy, setBusy] = useState2(false);
     useEffect2(() => {
-      setStatus(issue.status);
-    }, [issue.status]);
-    const runs = state.runs.filter((r) => r.issueId === issue.id).reverse();
-    async function save() {
+      if (issue) setStatus(issue.status);
+    }, [issue?.status]);
+    const runs = issue ? state.runs.filter((r) => r.issueId === issue.id).reverse() : [];
+    const canStart = !issue || STARTABLE2.includes(issue.status);
+    const lines = acceptance.split("\n");
+    const fields = () => ({ title, description, acceptance: lines, priority, projectId, agentId });
+    async function save(start) {
+      if (!title.trim()) {
+        p.notify("\u6807\u9898\u4E0D\u80FD\u4E3A\u7A7A");
+        return;
+      }
+      if (start && !projectId) {
+        p.notify("\u5F00\u5DE5\u524D\u8BF7\u5148\u9009\u62E9\u9879\u76EE\uFF08\u4F1A\u8BDD\u7684\u5DE5\u4F5C\u76EE\u5F55\uFF09");
+        return;
+      }
+      setBusy(true);
       try {
-        await rpc("issue.update", { id: issue.id, patch: { title, description, agentId } });
-        if (status !== issue.status) await rpc("issue.status", { id: issue.id, status });
+        let id = issue?.id;
+        if (issue) {
+          await rpc("issue.update", { id: issue.id, patch: fields() });
+          if (!start && status !== issue.status) await rpc("issue.status", { id: issue.id, status });
+        } else {
+          id = (await rpc("issue.create", { ...fields(), status })).id;
+        }
+        if (start) {
+          const r = await rpc("issue.start", { id, agentId });
+          p.notify(`\u5DF2\u5F00\u5DE5\uFF1A${r.issue.key}\uFF0C\u4F1A\u8BDD\u5DF2\u521B\u5EFA`);
+        }
         await p.refresh();
         onClose();
       } catch (e) {
         p.notify(e.message);
+        await p.refresh();
+      } finally {
+        setBusy(false);
       }
     }
     async function remove() {
-      if (!confirm(`\u5220\u9664\u5361\u7247 ${issue.key}\uFF1F`)) return;
+      if (!issue || !confirm(`\u5220\u9664\u5361\u7247 ${issue.key}\uFF1F`)) return;
       await rpc("issue.delete", { id: issue.id });
       await p.refresh();
       onClose();
     }
     return /* @__PURE__ */ React2.createElement("div", { className: "wb-modal-mask", onMouseDown: (e) => {
       if (e.target === e.currentTarget) onClose();
-    } }, /* @__PURE__ */ React2.createElement("div", { className: "wb-modal", role: "dialog", "aria-label": issue.key }, /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("span", { className: "wb-sub" }, issue.key, issue.sourceRef && ` \xB7 ${issue.sourceRef.source} ${issue.sourceRef.ref}`), /* @__PURE__ */ React2.createElement("span", { className: "wb-grow" }), issue.sessionId && /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", onClick: () => p.openSession(issue.sessionId) }, "\u6253\u5F00\u5173\u8054\u4F1A\u8BDD \u2197"), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", "aria-label": "\u5173\u95ED", onClick: onClose }, "\u2715")), /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u6807\u9898"), /* @__PURE__ */ React2.createElement("input", { className: "wb-input", value: title, onChange: (e) => setTitle(e.target.value) })), /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u63CF\u8FF0"), /* @__PURE__ */ React2.createElement("textarea", { className: "wb-textarea", value: description, onChange: (e) => setDescription(e.target.value) })), issue.acceptance.length > 0 && /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u9A8C\u6536\u6807\u51C6"), /* @__PURE__ */ React2.createElement("ul", { className: "wb-ac" }, issue.acceptance.map((a, i) => /* @__PURE__ */ React2.createElement("li", { key: i }, a)))), /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React2.createElement("label", null, "\u6307\u6D3E\u667A\u80FD\u4F53"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: agentId, onChange: (e) => setAgentId(e.target.value) }, state.agents.map((a) => /* @__PURE__ */ React2.createElement("option", { key: a.id, value: a.id }, a.name)))), /* @__PURE__ */ React2.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React2.createElement("label", null, "\u72B6\u6001\uFF08\u5DF2\u5B8C\u6210\u53EA\u80FD\u7531\u4F60\u8BBE\u7F6E\uFF09"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: status, onChange: (e) => setStatus(e.target.value) }, COLUMNS.map((s) => /* @__PURE__ */ React2.createElement("option", { key: s, value: s }, STATUS_LABEL[s]))))), issue.note && /* @__PURE__ */ React2.createElement("div", { className: "wb-banner err", style: { margin: "4px 0" } }, issue.note), /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u6267\u884C\u8BB0\u5F55"), runs.length ? runs.map((r) => /* @__PURE__ */ React2.createElement("div", { className: "wb-rel", key: r.id }, /* @__PURE__ */ React2.createElement("b", null, r.status === "running" ? "\u8FD0\u884C\u4E2D" : r.status === "completed" ? "\u5DF2\u7ED3\u675F" : r.status === "failed" ? "\u51FA\u9519" : "\u5DF2\u4E2D\u65AD"), /* @__PURE__ */ React2.createElement("span", { className: "wb-muted" }, " \xB7 ", agentName(state, r.agentId), " \xB7 ", ago(r.startedAt)), r.error && /* @__PURE__ */ React2.createElement("div", { style: { color: "var(--wb-red)" } }, r.error), r.finalText && /* @__PURE__ */ React2.createElement("div", { className: "wb-muted", style: { whiteSpace: "pre-wrap", maxHeight: 120, overflow: "auto", marginTop: 4 } }, r.finalText))) : /* @__PURE__ */ React2.createElement("div", { className: "wb-muted" }, "\u6682\u65E0\u6267\u884C\u8BB0\u5F55")), /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("button", { className: "wb-btn danger", onClick: () => {
+    } }, /* @__PURE__ */ React2.createElement("div", { className: "wb-modal", role: "dialog", "aria-label": issue?.key ?? "\u65B0\u5EFA\u4EFB\u52A1" }, /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("span", { className: "wb-sub" }, issue ? `${issue.key}${issue.sourceRef ? ` \xB7 ${issue.sourceRef.source} ${issue.sourceRef.ref}` : " \xB7 \u624B\u5DE5\u4EFB\u52A1"}` : "\u65B0\u5EFA\u4EFB\u52A1"), /* @__PURE__ */ React2.createElement("span", { className: "wb-grow" }), issue?.sessionId && /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", onClick: () => p.openSession(issue.sessionId) }, "\u6253\u5F00\u5173\u8054\u4F1A\u8BDD \u2197"), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", "aria-label": "\u5173\u95ED", onClick: onClose }, "\u2715")), /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u6807\u9898"), /* @__PURE__ */ React2.createElement("input", { className: "wb-input", autoFocus: !issue, value: title, onChange: (e) => setTitle(e.target.value), placeholder: "\u4F8B\u5982\uFF1A\u8865\u5145\u5BF9\u8D26\u811A\u672C\u7684\u5E42\u7B49\u6821\u9A8C" })), /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u63CF\u8FF0 / \u80CC\u666F"), /* @__PURE__ */ React2.createElement("textarea", { className: "wb-textarea", value: description, onChange: (e) => setDescription(e.target.value), placeholder: "\u4EFB\u52A1\u80CC\u666F\u3001\u73B0\u72B6\u3001\u76F8\u5173\u94FE\u63A5" })), /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u9A8C\u6536\u6807\u51C6\uFF08\u6BCF\u884C\u4E00\u6761\uFF0C\u5F00\u5DE5\u65F6\u4F1A\u5199\u8FDB\u9996\u6761\u6D88\u606F\uFF09"), /* @__PURE__ */ React2.createElement("textarea", { className: "wb-textarea", style: { minHeight: 70 }, value: acceptance, onChange: (e) => setAcceptance(e.target.value), placeholder: "\u91CD\u590D\u8BF7\u6C42\u4E0D\u91CD\u590D\u5165\u8D26\n\u8865\u5145\u5355\u6D4B\u5E76\u901A\u8FC7" })), /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React2.createElement("label", null, "\u9879\u76EE\uFF08\u5DE5\u4F5C\u76EE\u5F55\uFF09"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: projectId, onChange: (e) => setProjectId(e.target.value) }, /* @__PURE__ */ React2.createElement("option", { value: "" }, "\u672A\u9009\u62E9"), state.projects.map((x) => /* @__PURE__ */ React2.createElement("option", { key: x.id, value: x.id }, x.name)))), /* @__PURE__ */ React2.createElement("div", { className: "wb-field", style: { width: 90 } }, /* @__PURE__ */ React2.createElement("label", null, "\u4F18\u5148\u7EA7"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: priority, onChange: (e) => setPriority(e.target.value) }, PRIORITIES.map((x) => /* @__PURE__ */ React2.createElement("option", { key: x }, x))))), /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React2.createElement("label", null, "\u6307\u6D3E\u667A\u80FD\u4F53"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: agentId, onChange: (e) => setAgentId(e.target.value) }, state.agents.map((a) => /* @__PURE__ */ React2.createElement("option", { key: a.id, value: a.id }, a.name)))), /* @__PURE__ */ React2.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React2.createElement("label", null, "\u72B6\u6001\uFF08\u5DF2\u5B8C\u6210\u53EA\u80FD\u7531\u4F60\u8BBE\u7F6E\uFF09"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: status, onChange: (e) => setStatus(e.target.value) }, COLUMNS.map((s) => /* @__PURE__ */ React2.createElement("option", { key: s, value: s }, STATUS_LABEL[s]))))), issue?.note && /* @__PURE__ */ React2.createElement("div", { className: "wb-banner err", style: { margin: "4px 0" } }, issue.note), issue && /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u6267\u884C\u8BB0\u5F55"), runs.length ? runs.map((r) => /* @__PURE__ */ React2.createElement("div", { className: "wb-rel", key: r.id }, /* @__PURE__ */ React2.createElement("b", null, r.status === "running" ? "\u8FD0\u884C\u4E2D" : r.status === "completed" ? "\u5DF2\u7ED3\u675F" : r.status === "failed" ? "\u51FA\u9519" : "\u5DF2\u4E2D\u65AD"), /* @__PURE__ */ React2.createElement("span", { className: "wb-muted" }, " \xB7 ", agentName(state, r.agentId), " \xB7 ", ago(r.startedAt)), r.error && /* @__PURE__ */ React2.createElement("div", { style: { color: "var(--wb-red)" } }, r.error), r.finalText && /* @__PURE__ */ React2.createElement("div", { className: "wb-muted", style: { whiteSpace: "pre-wrap", maxHeight: 120, overflow: "auto", marginTop: 4 } }, r.finalText))) : /* @__PURE__ */ React2.createElement("div", { className: "wb-muted" }, "\u6682\u65E0\u6267\u884C\u8BB0\u5F55")), /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, issue && /* @__PURE__ */ React2.createElement("button", { className: "wb-btn danger", onClick: () => {
       void remove();
-    } }, "\u5220\u9664"), /* @__PURE__ */ React2.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", onClick: onClose }, "\u53D6\u6D88"), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn primary", onClick: () => {
-      void save();
-    } }, "\u4FDD\u5B58"))));
+    } }, "\u5220\u9664"), /* @__PURE__ */ React2.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", onClick: onClose }, "\u53D6\u6D88"), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", disabled: busy, onClick: () => {
+      void save(false);
+    } }, issue ? "\u4FDD\u5B58" : "\u521B\u5EFA"), canStart && /* @__PURE__ */ React2.createElement("button", { className: "wb-btn primary", disabled: busy, onClick: () => {
+      void save(true);
+    } }, issue ? "\u4FDD\u5B58\u5E76\u5F00\u5DE5" : "\u521B\u5EFA\u5E76\u5F00\u5DE5"))));
   }
   var agentName = (s, id) => s.agents.find((a) => a.id === id)?.name ?? id;
 
@@ -464,7 +468,7 @@ var WB = (() => {
         clearTimeout(timer.current);
       };
     }, [refresh, loadTodos]);
-    const sig = state?.issues.map((i) => i.id + i.status).join(",");
+    const sig = state?.issues.map((i) => i.id + i.status + i.updatedAt).join(",");
     useEffect4(() => {
       if (todos) void loadTodos();
     }, [sig]);

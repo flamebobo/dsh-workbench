@@ -35,6 +35,7 @@ export function apply(ctx: Ctx) {
       case 'todos.start': return await wb.startWork({ item: p.item as WorkItem, agentId: p.agentId })
       case 'issue.create': return wb.createIssue(p)
       case 'issue.update': return wb.updateIssue(p.id, p.patch)
+      case 'issue.start': return await wb.startIssue(p.id, p.agentId)
       case 'issue.status': return wb.setStatus(p.id, p.status as Status, 'human') // only the UI (a human) calls this
       case 'issue.delete': return wb.deleteIssue(p.id)
       case 'agent.save': {

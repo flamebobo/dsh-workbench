@@ -48,7 +48,7 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
   }, [refresh, loadTodos])
 
   // Todos carry card ids/status; re-read them (cheap in demo mode, one round trip live) when issues change.
-  const sig = state?.issues.map((i) => i.id + i.status).join(',')
+  const sig = state?.issues.map((i) => i.id + i.status + i.updatedAt).join(',')
   useEffect(() => { if (todos) void loadTodos() }, [sig])
 
   const demo = todos && Object.entries(todos.sources).filter(([, s]) => s.mode !== 'live')

@@ -10,8 +10,7 @@ export function Board(p: PageProps) {
   const [dragging, setDragging] = useState<string>()
   const [over, setOver] = useState<Status>()
   const [openId, setOpenId] = useState<string | undefined>(p.focusIssue)
-  const [adding, setAdding] = useState<Status>()
-  const [title, setTitle] = useState('')
+  const [creating, setCreating] = useState<Status>()
   useEffect(() => { if (p.focusIssue) setOpenId(p.focusIssue) }, [p.focusIssue])
 
   const running = new Set(state.runs.filter((r) => r.status === 'running').map((r) => r.issueId))
@@ -22,11 +21,6 @@ export function Board(p: PageProps) {
     if (!cur || cur.status === status) return
     try { await rpc('issue.status', { id, status }); await p.refresh() } catch (e) { p.notify((e as Error).message) }
   }
-  async function add(status: Status) {
-    if (!title.trim()) { setAdding(undefined); return }
-    try { await rpc('issue.create', { title, status }); setTitle(''); setAdding(undefined); await p.refresh() } catch (e) { p.notify((e as Error).message) }
-  }
-
   const open = state.issues.find((i) => i.id === openId)
   return (
     <div className="wb-main" style={{ position: 'relative' }}>
@@ -38,12 +32,8 @@ export function Board(p: PageProps) {
               onDragOver={(e) => { e.preventDefault(); setOver(col) }} onDragLeave={() => setOver((o) => (o === col ? undefined : o))}
               onDrop={(e) => { e.preventDefault(); setOver(undefined); const id = e.dataTransfer.getData('text/plain') || dragging; if (id) void move(id, col) }}>
               <div className="wb-col-h"><span className={`wb-dot ${col}`} />{STATUS_LABEL[col]}<span className="n">{items.length}</span>
-                <button className="wb-btn" style={{ padding: '0 8px' }} aria-label={`在${STATUS_LABEL[col]}新建`} onClick={() => setAdding(col)}>+</button></div>
+                <button className="wb-btn" style={{ padding: '0 8px' }} aria-label={`在${STATUS_LABEL[col]}新建`} onClick={() => setCreating(col)}>+</button></div>
               <div className="wb-col-b">
-                {adding === col && (
-                  <input className="wb-input" autoFocus placeholder="标题，回车创建" value={title} onChange={(e) => setTitle(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') void add(col); if (e.key === 'Escape') setAdding(undefined) }} onBlur={() => { void add(col) }} />
-                )}
                 {items.map((i) => (
                   <article key={i.id} className={`wb-card ${dragging === i.id ? 'drag' : ''}`} draggable
                     onDragStart={(e) => { e.dataTransfer.setData('text/plain', i.id); setDragging(i.id) }} onDragEnd={() => { setDragging(undefined); setOver(undefined) }}
@@ -63,48 +53,80 @@ export function Board(p: PageProps) {
         })}
       </div>
       {open && <IssueModal issue={open} p={p} onClose={() => setOpenId(undefined)} />}
+      {creating && <IssueModal initialStatus={creating} p={p} onClose={() => setCreating(undefined)} />}
     </div>
   )
 }
 
-function IssueModal({ issue, p, onClose }: { issue: Issue; p: PageProps; onClose: () => void }) {
-  const { state } = p
-  const [title, setTitle] = useState(issue.title)
-  const [description, setDescription] = useState(issue.description)
-  const [agentId, setAgentId] = useState(issue.agentId)
-  const [status, setStatus] = useState<Status>(issue.status)
-  useEffect(() => { setStatus(issue.status) }, [issue.status]) // a session ending changes it under us
-  const runs = state.runs.filter((r) => r.issueId === issue.id).reverse()
+const PRIORITIES = ['P0', 'P1', 'P2', 'P3'] as const
+const STARTABLE: Status[] = ['backlog', 'todo', 'blocked']
 
-  async function save() {
+/** Create (no `issue`) or edit one card. 开工 saves the form, then starts a DSH session in the chosen project's directory. */
+function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue; initialStatus?: Status; p: PageProps; onClose: () => void }) {
+  const { state } = p
+  const [title, setTitle] = useState(issue?.title ?? '')
+  const [description, setDescription] = useState(issue?.description ?? '')
+  const [acceptance, setAcceptance] = useState((issue?.acceptance ?? []).join('\n'))
+  const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>(issue?.priority ?? 'P2')
+  const [projectId, setProjectId] = useState(issue?.projectId ?? '')
+  const [agentId, setAgentId] = useState(issue?.agentId ?? 'fullstack')
+  const [status, setStatus] = useState<Status>(issue?.status ?? initialStatus ?? 'backlog')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { if (issue) setStatus(issue.status) }, [issue?.status]) // a session ending changes it under us
+  const runs = issue ? state.runs.filter((r) => r.issueId === issue.id).reverse() : []
+  const canStart = !issue || STARTABLE.includes(issue.status)
+  const lines = acceptance.split('\n')
+
+  const fields = () => ({ title, description, acceptance: lines, priority, projectId, agentId })
+  async function save(start: boolean) {
+    if (!title.trim()) { p.notify('标题不能为空'); return }
+    if (start && !projectId) { p.notify('开工前请先选择项目（会话的工作目录）'); return }
+    setBusy(true)
     try {
-      await rpc('issue.update', { id: issue.id, patch: { title, description, agentId } })
-      if (status !== issue.status) await rpc('issue.status', { id: issue.id, status })
+      let id = issue?.id
+      if (issue) {
+        await rpc('issue.update', { id: issue.id, patch: fields() })
+        if (!start && status !== issue.status) await rpc('issue.status', { id: issue.id, status })
+      } else {
+        id = (await rpc<Issue>('issue.create', { ...fields(), status })).id
+      }
+      if (start) {
+        const r = await rpc<{ issue: Issue }>('issue.start', { id, agentId })
+        p.notify(`已开工：${r.issue.key}，会话已创建`)
+      }
       await p.refresh(); onClose()
-    } catch (e) { p.notify((e as Error).message) }
+    } catch (e) { p.notify((e as Error).message); await p.refresh() } finally { setBusy(false) }
   }
   async function remove() {
-    if (!confirm(`删除卡片 ${issue.key}？`)) return
+    if (!issue || !confirm(`删除卡片 ${issue.key}？`)) return
     await rpc('issue.delete', { id: issue.id }); await p.refresh(); onClose()
   }
 
   return (
     <div className="wb-modal-mask" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="wb-modal" role="dialog" aria-label={issue.key}>
-        <div className="wb-row"><span className="wb-sub">{issue.key}{issue.sourceRef && ` · ${issue.sourceRef.source} ${issue.sourceRef.ref}`}</span><span className="wb-grow" />
-          {issue.sessionId && <button className="wb-btn" onClick={() => p.openSession(issue.sessionId!)}>打开关联会话 ↗</button>}
+      <div className="wb-modal" role="dialog" aria-label={issue?.key ?? '新建任务'}>
+        <div className="wb-row"><span className="wb-sub">{issue ? `${issue.key}${issue.sourceRef ? ` · ${issue.sourceRef.source} ${issue.sourceRef.ref}` : ' · 手工任务'}` : '新建任务'}</span><span className="wb-grow" />
+          {issue?.sessionId && <button className="wb-btn" onClick={() => p.openSession(issue.sessionId!)}>打开关联会话 ↗</button>}
           <button className="wb-btn" aria-label="关闭" onClick={onClose}>✕</button></div>
-        <div className="wb-field"><label>标题</label><input className="wb-input" value={title} onChange={(e) => setTitle(e.target.value)} /></div>
-        <div className="wb-field"><label>描述</label><textarea className="wb-textarea" value={description} onChange={(e) => setDescription(e.target.value)} /></div>
-        {issue.acceptance.length > 0 && <div className="wb-field"><label>验收标准</label><ul className="wb-ac">{issue.acceptance.map((a, i) => <li key={i}>{a}</li>)}</ul></div>}
+        <div className="wb-field"><label>标题</label><input className="wb-input" autoFocus={!issue} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例如：补充对账脚本的幂等校验" /></div>
+        <div className="wb-field"><label>描述 / 背景</label><textarea className="wb-textarea" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="任务背景、现状、相关链接" /></div>
+        <div className="wb-field"><label>验收标准（每行一条，开工时会写进首条消息）</label>
+          <textarea className="wb-textarea" style={{ minHeight: 70 }} value={acceptance} onChange={(e) => setAcceptance(e.target.value)} placeholder={'重复请求不重复入账\n补充单测并通过'} /></div>
+        <div className="wb-row">
+          <div className="wb-field wb-grow"><label>项目（工作目录）</label>
+            <select className="wb-select" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <option value="">未选择</option>{state.projects.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></div>
+          <div className="wb-field" style={{ width: 90 }}><label>优先级</label>
+            <select className="wb-select" value={priority} onChange={(e) => setPriority(e.target.value as typeof priority)}>{PRIORITIES.map((x) => <option key={x}>{x}</option>)}</select></div>
+        </div>
         <div className="wb-row">
           <div className="wb-field wb-grow"><label>指派智能体</label>
             <select className="wb-select" value={agentId} onChange={(e) => setAgentId(e.target.value)}>{state.agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
           <div className="wb-field wb-grow"><label>状态（已完成只能由你设置）</label>
             <select className="wb-select" value={status} onChange={(e) => setStatus(e.target.value as Status)}>{COLUMNS.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}</select></div>
         </div>
-        {issue.note && <div className="wb-banner err" style={{ margin: '4px 0' }}>{issue.note}</div>}
-        <div className="wb-field"><label>执行记录</label>
+        {issue?.note && <div className="wb-banner err" style={{ margin: '4px 0' }}>{issue.note}</div>}
+        {issue && <div className="wb-field"><label>执行记录</label>
           {runs.length ? runs.map((r) => (
             <div className="wb-rel" key={r.id}>
               <b>{r.status === 'running' ? '运行中' : r.status === 'completed' ? '已结束' : r.status === 'failed' ? '出错' : '已中断'}</b>
@@ -112,9 +134,11 @@ function IssueModal({ issue, p, onClose }: { issue: Issue; p: PageProps; onClose
               {r.error && <div style={{ color: 'var(--wb-red)' }}>{r.error}</div>}
               {r.finalText && <div className="wb-muted" style={{ whiteSpace: 'pre-wrap', maxHeight: 120, overflow: 'auto', marginTop: 4 }}>{r.finalText}</div>}
             </div>
-          )) : <div className="wb-muted">暂无执行记录</div>}</div>
-        <div className="wb-row"><button className="wb-btn danger" onClick={() => { void remove() }}>删除</button><span className="wb-grow" />
-          <button className="wb-btn" onClick={onClose}>取消</button><button className="wb-btn primary" onClick={() => { void save() }}>保存</button></div>
+          )) : <div className="wb-muted">暂无执行记录</div>}</div>}
+        <div className="wb-row">{issue && <button className="wb-btn danger" onClick={() => { void remove() }}>删除</button>}<span className="wb-grow" />
+          <button className="wb-btn" onClick={onClose}>取消</button>
+          <button className="wb-btn" disabled={busy} onClick={() => { void save(false) }}>{issue ? '保存' : '创建'}</button>
+          {canStart && <button className="wb-btn primary" disabled={busy} onClick={() => { void save(true) }}>{issue ? '保存并开工' : '创建并开工'}</button>}</div>
       </div>
     </div>
   )

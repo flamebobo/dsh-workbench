@@ -53,6 +53,7 @@ export interface Issue {
   description: string
   acceptance: string[]
   status: Status
+  priority?: Priority
   agentId: string
   projectId?: string
   /** Set when the card was created from a work item; at most one card per (source, ref). */
