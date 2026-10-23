@@ -13,7 +13,7 @@ import { Store } from './store.ts'
 import { fuzzy, listFiles, mentionedFiles } from './files.ts'
 import type { AgentProfile, Attachment, CommandName, Issue, Priority, Project, Run, Source, Status, WorkItem } from './types.ts'
 import { STATUSES } from './types.ts'
-import { builtinAgents } from './agents.ts'
+import { agentPersona, builtinAgents } from './agents.ts'
 
 export interface TodoResult {
   items: (WorkItem & { issueId?: string; issueStatus?: Status })[]
@@ -134,8 +134,9 @@ export class Workbench {
     )
   }
 
-  buildPrompt(i: Pick<Issue, 'title' | 'description' | 'acceptance' | 'sourceRef' | 'attachments'>, w?: WorkItem, files: string[] = []): string {
+  buildPrompt(i: Pick<Issue, 'title' | 'description' | 'acceptance' | 'sourceRef' | 'attachments'>, w?: WorkItem, files: string[] = [], agent?: Pick<AgentProfile, 'name' | 'description'>): string {
     const lines = [`# 任务：${i.title}`]
+    if (agent) lines.push(`指派给你的角色：${agent.name}（${agent.description}）`)
     if (i.sourceRef) lines.push(`来源：${i.sourceRef.source} ${i.sourceRef.ref}${w?.url ? `（${w.url}）` : ''}`)
     if (w) lines.push(`项目：${w.project}　优先级：${w.priority}${w.due ? `　截止：${w.due}` : ''}`)
     lines.push('', '## 背景', i.description || '（无）')
@@ -198,10 +199,10 @@ export class Workbench {
     try {
       const { sessionId } = await this.driver.start({
         runId: run.id, cwd: project.cwd, title: `${issue.key} ${issue.title}`,
-        prompt: this.buildPrompt(issue, item, mentionedFiles(project.cwd, issue.description)),
+        prompt: this.buildPrompt(issue, item, mentionedFiles(project.cwd, issue.description), agent),
         command: issue.command,
         attachments: (issue.attachments ?? []).map((a) => ({ name: a.name, mediaType: a.mediaType, path: this.uploadPath(a) })),
-        profile: { presetId: agent.id, model: agent.model, instructions: agent.instructions },
+        profile: { presetId: agent.id, model: agent.model, instructions: agentPersona(agent) },
       })
       return this.store.update((d) => {
         d.issues.find((i) => i.id === issueId)!.sessionId = sessionId

@@ -29,7 +29,10 @@ test('开工 creates one in_progress card, starts a session in the project cwd w
   assert.match(req.prompt, /支付回调幂等修复/)
   assert.match(req.prompt, /灰度环境出现同一笔支付回调重复入账/)
   assert.match(req.prompt, /1\. 重复回调不重复入账/)
+  assert.match(req.prompt, /指派给你的角色：全栈工程师（.+）/)
   assert.equal(req.profile.presetId, 'fullstack')
+  assert.match(req.profile.instructions, /^你的角色是「全栈工程师」/)
+  assert.match(req.profile.instructions, /第一句话先说明你是「全栈工程师」/)
 })
 
 test('same source ref cannot be started twice', async () => {

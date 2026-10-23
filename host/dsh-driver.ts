@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import type { AgentDriver, AgentProfile, DriverEvent } from '../core/src/index.ts'
+import { agentPersona, type AgentDriver, type AgentProfile, type DriverEvent } from '../core/src/index.ts'
 
 // The DSH Host context is an untyped Cordis context at this boundary; the plugin imports no @deepseek-ai package.
 type Ctx = any // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -21,7 +21,7 @@ function presetDefinition(a: AgentProfile) {
     description: a.description,
     order: 50,
     plugins: [
-      { id: 'persona', name: '@deepseek-ai/dsh-persona', config: { prefix: `You are a coding agent powered by the {{model}} model.\n\n${a.instructions}` } },
+      { id: 'persona', name: '@deepseek-ai/dsh-persona', config: { prefix: `You are a coding agent powered by the {{model}} model.\n\n${agentPersona(a)}` } },
       { id: 'agent-instructions', name: '@deepseek-ai/dsh-agent-instructions', config: { maxBytes: 65536 } },
       { id: 'time-context', name: '@deepseek-ai/dsh-time-context' },
       { id: 'tool-bash', name: '@deepseek-ai/dsh-tool-bash', disabled: process.platform === 'win32' },

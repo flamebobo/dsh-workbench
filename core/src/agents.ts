@@ -27,3 +27,8 @@ export const builtinAgents: AgentProfile[] = [
     instructions: '你是周报助手。根据仓库本周的提交记录与我给出的事项，生成结构化周报：本周完成、进行中、风险与下周计划。语言简洁，量化结果，不编造没有证据的内容。',
   },
 ]
+
+/** What the model is told about its role: identity first, then the working rules, then how to open a reply so the role is visible. */
+export function agentPersona(a: Pick<AgentProfile, 'name' | 'description' | 'instructions'>): string {
+  return `你的角色是「${a.name}」：${a.description}\n\n${a.instructions}\n\n开始处理一个任务时，回复的第一句话先说明你是「${a.name}」以及这次打算怎么做，再展开。`
+}

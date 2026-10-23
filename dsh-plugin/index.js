@@ -493,6 +493,13 @@ var builtinAgents = [
     instructions: "\u4F60\u662F\u5468\u62A5\u52A9\u624B\u3002\u6839\u636E\u4ED3\u5E93\u672C\u5468\u7684\u63D0\u4EA4\u8BB0\u5F55\u4E0E\u6211\u7ED9\u51FA\u7684\u4E8B\u9879\uFF0C\u751F\u6210\u7ED3\u6784\u5316\u5468\u62A5\uFF1A\u672C\u5468\u5B8C\u6210\u3001\u8FDB\u884C\u4E2D\u3001\u98CE\u9669\u4E0E\u4E0B\u5468\u8BA1\u5212\u3002\u8BED\u8A00\u7B80\u6D01\uFF0C\u91CF\u5316\u7ED3\u679C\uFF0C\u4E0D\u7F16\u9020\u6CA1\u6709\u8BC1\u636E\u7684\u5185\u5BB9\u3002"
   }
 ];
+function agentPersona(a) {
+  return `\u4F60\u7684\u89D2\u8272\u662F\u300C${a.name}\u300D\uFF1A${a.description}
+
+${a.instructions}
+
+\u5F00\u59CB\u5904\u7406\u4E00\u4E2A\u4EFB\u52A1\u65F6\uFF0C\u56DE\u590D\u7684\u7B2C\u4E00\u53E5\u8BDD\u5148\u8BF4\u660E\u4F60\u662F\u300C${a.name}\u300D\u4EE5\u53CA\u8FD9\u6B21\u6253\u7B97\u600E\u4E48\u505A\uFF0C\u518D\u5C55\u5F00\u3002`;
+}
 
 // core/src/workbench.ts
 var WorkbenchError = class extends Error {
@@ -605,8 +612,9 @@ var Workbench = class {
     const ps = this.store.data.projects;
     return ps.find((p) => p.gitlabProjectId != null && p.gitlabProjectId === w.gitlabProjectId) ?? ps.find((p) => p.zentaoProductId != null && p.zentaoProductId === w.zentaoProductId) ?? ps.find((p) => p.jenkinsJob && p.jenkinsJob === w.jenkinsJob) ?? ps.find((p) => p.name === w.project);
   }
-  buildPrompt(i, w, files = []) {
+  buildPrompt(i, w, files = [], agent) {
     const lines = [`# \u4EFB\u52A1\uFF1A${i.title}`];
+    if (agent) lines.push(`\u6307\u6D3E\u7ED9\u4F60\u7684\u89D2\u8272\uFF1A${agent.name}\uFF08${agent.description}\uFF09`);
     if (i.sourceRef) lines.push(`\u6765\u6E90\uFF1A${i.sourceRef.source} ${i.sourceRef.ref}${w?.url ? `\uFF08${w.url}\uFF09` : ""}`);
     if (w) lines.push(`\u9879\u76EE\uFF1A${w.project}\u3000\u4F18\u5148\u7EA7\uFF1A${w.priority}${w.due ? `\u3000\u622A\u6B62\uFF1A${w.due}` : ""}`);
     lines.push("", "## \u80CC\u666F", i.description || "\uFF08\u65E0\uFF09");
@@ -679,10 +687,10 @@ var Workbench = class {
         runId: run.id,
         cwd: project.cwd,
         title: `${issue.key} ${issue.title}`,
-        prompt: this.buildPrompt(issue, item, mentionedFiles(project.cwd, issue.description)),
+        prompt: this.buildPrompt(issue, item, mentionedFiles(project.cwd, issue.description), agent),
         command: issue.command,
         attachments: (issue.attachments ?? []).map((a) => ({ name: a.name, mediaType: a.mediaType, path: this.uploadPath(a) })),
-        profile: { presetId: agent.id, model: agent.model, instructions: agent.instructions }
+        profile: { presetId: agent.id, model: agent.model, instructions: agentPersona(agent) }
       });
       return this.store.update((d) => {
         d.issues.find((i) => i.id === issueId).sessionId = sessionId;
@@ -939,7 +947,7 @@ function presetDefinition(a) {
     plugins: [
       { id: "persona", name: "@deepseek-ai/dsh-persona", config: { prefix: `You are a coding agent powered by the {{model}} model.
 
-${a.instructions}` } },
+${agentPersona(a)}` } },
       { id: "agent-instructions", name: "@deepseek-ai/dsh-agent-instructions", config: { maxBytes: 65536 } },
       { id: "time-context", name: "@deepseek-ai/dsh-time-context" },
       { id: "tool-bash", name: "@deepseek-ai/dsh-tool-bash", disabled: process.platform === "win32" },
