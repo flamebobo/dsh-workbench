@@ -331,17 +331,108 @@ function parseFailedBuilds(json) {
     };
   });
 }
-async function fetchJenkins(c) {
+async function jenkinsAuth(c) {
   const [url, user, token] = await Promise.all(["WORKBENCH_JENKINS_URL", "WORKBENCH_JENKINS_USER", "WORKBENCH_JENKINS_TOKEN"].map((n) => c.creds(n)));
   if (!url || !user || !token) return void 0;
-  const headers = { authorization: `Basic ${Buffer.from(`${user}:${token}`).toString("base64")}` };
-  return parseFailedBuilds(await getJson(c.fetch, `${trimSlash(url)}/api/json?tree=${encodeURIComponent(TREE)}`, { headers }));
+  return { base: trimSlash(url), headers: { authorization: `Basic ${Buffer.from(`${user}:${token}`).toString("base64")}` } };
+}
+async function fetchJenkins(c) {
+  const a = await jenkinsAuth(c);
+  if (!a) return void 0;
+  return parseFailedBuilds(await getJson(c.fetch, `${a.base}/api/json?tree=${encodeURIComponent(TREE)}`, { headers: a.headers }));
+}
+async function listJenkinsJobs(c) {
+  const a = await jenkinsAuth(c);
+  if (!a) return void 0;
+  const json = await getJson(c.fetch, `${a.base}/api/json?tree=jobs[name]`, { headers: a.headers });
+  return (json.jobs ?? []).map((j) => j.name).sort();
+}
+var jobPath = (name) => name.split("/").filter(Boolean).map((p) => `job/${encodeURIComponent(p)}`).join("/");
+async function triggerJenkinsBuild(c, job, params = {}) {
+  const a = await jenkinsAuth(c);
+  if (!a) throw new Error("Jenkins \u672A\u914D\u7F6E");
+  const headers = { ...a.headers };
+  try {
+    const crumb = await getJson(c.fetch, `${a.base}/crumb-issuer/api/json`, { headers: a.headers });
+    headers[crumb.crumbRequestField] = crumb.crumb;
+  } catch {
+  }
+  const hasParams = Object.keys(params).length > 0;
+  const url = `${a.base}/${jobPath(job)}/${hasParams ? `buildWithParameters?${new URLSearchParams(params)}` : "build"}`;
+  const res = await c.fetch(url, { method: "POST", headers, signal: AbortSignal.timeout(1e4) });
+  if (res.status !== 201 && res.status !== 200 && res.status !== 302) {
+    throw new Error(res.status === 404 ? `Jenkins \u627E\u4E0D\u5230 Job\u300C${job}\u300D\uFF08\u6216\u5B83\u9700\u8981\u53C2\u6570\uFF0C\u8BF7\u586B\u5199\u53C2\u6570\uFF09` : `\u89E6\u53D1\u6784\u5EFA\u5931\u8D25\uFF1AHTTP ${res.status}`);
+  }
+  const loc = res.headers.get("location");
+  return { queueUrl: loc ? loc.replace(/\/?$/, "/") : void 0 };
+}
+async function jenkinsBuildState(c, b) {
+  const a = await jenkinsAuth(c);
+  if (!a) throw new Error("Jenkins \u672A\u914D\u7F6E");
+  let { buildUrl } = b;
+  let number;
+  if (!buildUrl) {
+    if (!b.queueUrl) return { state: "queued" };
+    const q = await getJson(c.fetch, `${b.queueUrl}api/json`, { headers: a.headers });
+    if (q.cancelled) return { state: "aborted" };
+    if (!q.executable) return { state: "queued" };
+    buildUrl = q.executable.url;
+    number = q.executable.number;
+  }
+  const j = await getJson(c.fetch, `${buildUrl}api/json?tree=building,result,number`, { headers: a.headers });
+  number = j.number ?? number;
+  if (j.building || !j.result) return { state: "running", number, buildUrl };
+  const map = { SUCCESS: "success", FAILURE: "failure", UNSTABLE: "unstable", ABORTED: "aborted" };
+  return { state: map[j.result] ?? "failure", number, buildUrl };
+}
+
+// core/src/connectors/connections.ts
+var CONNECTIONS = [
+  { id: "zentao", label: "\u7985\u9053", fields: [
+    { key: "WORKBENCH_ZENTAO_URL", label: "\u5730\u5740", placeholder: "https://zentao.example.com", url: true },
+    { key: "WORKBENCH_ZENTAO_ACCOUNT", label: "\u8D26\u53F7" },
+    { key: "WORKBENCH_ZENTAO_PASSWORD", label: "\u5BC6\u7801", secret: true },
+    { key: "WORKBENCH_ZENTAO_EXECUTION_IDS", label: "\u6267\u884C / \u8FED\u4EE3 ID", optional: true, placeholder: "12,15\uFF08\u9017\u53F7\u5206\u9694\uFF09\u3002\u7559\u7A7A\u5219\u81EA\u52A8\u8BFB\u53D6\u6211\u80FD\u770B\u5230\u7684\u8FDB\u884C\u4E2D\u7684\u6267\u884C\uFF1BBug \u540C\u7406\uFF0C\u7559\u7A7A\u65F6\u8BFB\u53D6\u5168\u90E8\u4EA7\u54C1" }
+  ] },
+  { id: "gitlab", label: "GitLab", fields: [
+    { key: "WORKBENCH_GITLAB_URL", label: "\u5730\u5740", placeholder: "https://gitlab.example.com", url: true },
+    { key: "WORKBENCH_GITLAB_TOKEN", label: "Access Token", secret: true, placeholder: "glpat-\u2026\uFF08\u9700\u8981 read_api \u6743\u9650\uFF09" }
+  ] },
+  { id: "jenkins", label: "Jenkins", fields: [
+    { key: "WORKBENCH_JENKINS_URL", label: "\u5730\u5740", placeholder: "https://jenkins.example.com", url: true },
+    { key: "WORKBENCH_JENKINS_USER", label: "\u7528\u6237\u540D" },
+    { key: "WORKBENCH_JENKINS_TOKEN", label: "API Token", secret: true, placeholder: "\u7528\u6237\u8BBE\u7F6E\u91CC\u751F\u6210\u7684 API Token\uFF08\u9700\u8981\u6709\u6784\u5EFA\u6743\u9650\uFF09" }
+  ] }
+];
+async function testConnection(id, c) {
+  if (id === "zentao") {
+    const [url, account2, password] = await Promise.all(["WORKBENCH_ZENTAO_URL", "WORKBENCH_ZENTAO_ACCOUNT", "WORKBENCH_ZENTAO_PASSWORD"].map((n) => c.creds(n)));
+    if (!url || !account2 || !password) throw new Error("\u8BF7\u5148\u586B\u5199\u5730\u5740\u3001\u8D26\u53F7\u548C\u5BC6\u7801\u5E76\u4FDD\u5B58");
+    const r = await getJson(c.fetch, `${trimSlash(url)}/api.php/v1/tokens`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ account: account2, password })
+    });
+    if (!r.token) throw new Error("\u7985\u9053\u6CA1\u6709\u8FD4\u56DE token\uFF0C\u8BF7\u68C0\u67E5\u8D26\u53F7\u5BC6\u7801\uFF08\u4EE5\u53CA\u7985\u9053\u662F\u5426\u5F00\u542F\u4E86 v1 REST API\uFF09");
+    return `\u8FDE\u63A5\u6210\u529F\uFF1A\u5DF2\u7528\u8D26\u53F7 ${account2} \u53D6\u5F97\u7985\u9053 token`;
+  }
+  if (id === "gitlab") {
+    const [url, token] = await Promise.all(["WORKBENCH_GITLAB_URL", "WORKBENCH_GITLAB_TOKEN"].map((n) => c.creds(n)));
+    if (!url || !token) throw new Error("\u8BF7\u5148\u586B\u5199\u5730\u5740\u548C Token \u5E76\u4FDD\u5B58");
+    const me = await getJson(c.fetch, `${trimSlash(url)}/api/v4/user`, { headers: { "PRIVATE-TOKEN": token } });
+    return `\u8FDE\u63A5\u6210\u529F\uFF1A${me.name ?? me.username}\uFF08@${me.username}\uFF09`;
+  }
+  const a = await jenkinsAuth(c);
+  if (!a) throw new Error("\u8BF7\u5148\u586B\u5199\u5730\u5740\u3001\u7528\u6237\u540D\u548C Token \u5E76\u4FDD\u5B58");
+  const j = await getJson(c.fetch, `${a.base}/api/json?tree=jobs[name]`, { headers: a.headers });
+  return `\u8FDE\u63A5\u6210\u529F\uFF1A\u53EF\u89C1 ${j.jobs?.length ?? 0} \u4E2A Job`;
 }
 
 // core/src/connectors/zentao.ts
 var PRI = ["P0", "P1", "P2", "P3"];
 var priority = (n) => PRI[Math.min(3, Math.max(0, Number(n) - 1 || 0))];
 var account = (a) => typeof a === "string" ? a : a?.account ?? "";
+var MAX_DISCOVERED = 20;
 var BUG_STATUS = { active: "\u5DF2\u6FC0\u6D3B", resolved: "\u5DF2\u89E3\u51B3", closed: "\u5DF2\u5173\u95ED" };
 var TASK_STATUS = { wait: "\u672A\u5F00\u59CB", doing: "\u8FDB\u884C\u4E2D", done: "\u5DF2\u5B8C\u6210", pause: "\u5DF2\u6682\u505C" };
 var day = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d) && !d.startsWith("0000") ? d.slice(0, 10) : void 0;
@@ -388,9 +479,21 @@ async function fetchZentao(c) {
     body: JSON.stringify({ account: acct, password })
   });
   const headers = { Token: token };
-  const executions = (await c.creds("WORKBENCH_ZENTAO_EXECUTION_IDS"))?.split(",").map(Number).filter(Boolean) ?? [];
+  const discover = async (path, key) => {
+    try {
+      const j = await getJson(c.fetch, `${base}/api.php/v1/${path}?limit=100`, { headers });
+      return (j[key] ?? []).filter((x) => !["done", "closed", "suspend"].includes(String(x.status))).map((x) => Number(x.id)).filter(Boolean).slice(0, MAX_DISCOVERED);
+    } catch {
+      return [];
+    }
+  };
+  const configured = (await c.creds("WORKBENCH_ZENTAO_EXECUTION_IDS"))?.split(",").map((x) => Number(x.trim())).filter(Boolean) ?? [];
+  const [productIds, executions] = await Promise.all([
+    c.zentaoProductIds.length ? c.zentaoProductIds : discover("products", "products"),
+    configured.length ? configured : discover("executions", "executions")
+  ]);
   const lists = await Promise.all([
-    ...c.zentaoProductIds.map(async (id) => parseBugs(await getJson(c.fetch, `${base}/api.php/v1/products/${id}/bugs?limit=200`, { headers }), acct, id, base)),
+    ...productIds.map(async (id) => parseBugs(await getJson(c.fetch, `${base}/api.php/v1/products/${id}/bugs?limit=200`, { headers }), acct, id, base)),
     ...executions.map(async (id) => parseTasks(await getJson(c.fetch, `${base}/api.php/v1/executions/${id}/tasks?limit=200`, { headers }), acct, id, base))
   ]);
   return lists.flat();
@@ -519,12 +622,17 @@ var Workbench = class {
   store;
   driver;
   creds;
+  setCred;
+  clock;
+  lastPoll = 0;
   fetch;
   off;
   constructor(o) {
     this.store = o.store;
     this.driver = o.driver;
     this.creds = o.creds;
+    this.setCred = o.setCred;
+    this.clock = o.now ?? Date.now;
     this.fetch = o.fetch ?? ((u, i) => fetch(u, i));
     this.seedAgents();
     this.reconcileOrphans();
@@ -741,6 +849,134 @@ var Workbench = class {
         issue.updatedAt = now();
       }
     });
+  }
+  // ---------- connections (settings page) ----------
+  connectorCtx() {
+    return { creds: this.creds, fetch: this.fetch, zentaoProductIds: this.store.data.projects.flatMap((p) => p.zentaoProductId ? [p.zentaoProductId] : []) };
+  }
+  /** Field definitions plus what is set. Secret values are never returned, only whether they are set. */
+  async connections() {
+    return Promise.all(CONNECTIONS.map(async (c) => {
+      const fields = await Promise.all(c.fields.map(async (f) => {
+        const v = await this.creds(f.key);
+        return { ...f, set: !!v, value: f.secret ? void 0 : v };
+      }));
+      return { id: c.id, label: c.label, configured: fields.filter((f) => !f.optional).every((f) => f.set), fields };
+    }));
+  }
+  /** Secret fields left empty keep their stored value; other empty fields are removed. */
+  async saveConnection(id, values) {
+    const def = CONNECTIONS.find((c) => c.id === id);
+    if (!def) throw new WorkbenchError("not_found", `\u672A\u77E5\u7CFB\u7EDF ${id}`);
+    if (!this.setCred) throw new WorkbenchError("invalid", "\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301\u4FDD\u5B58\u51ED\u636E");
+    for (const f of def.fields) {
+      const raw = values[f.key];
+      if (raw === void 0) continue;
+      const v = raw.trim();
+      if (f.url && v && !/^https?:\/\//i.test(v)) throw new WorkbenchError("invalid", `${def.label}${f.label}\u5FC5\u987B\u4EE5 http:// \u6216 https:// \u5F00\u5934`);
+      if (v) await this.setCred(f.key, f.url ? v.replace(/\/+$/, "") : v);
+      else if (!f.secret) await this.setCred(f.key, void 0);
+    }
+    return this.connections();
+  }
+  async clearConnection(id) {
+    const def = CONNECTIONS.find((c) => c.id === id);
+    if (!def) throw new WorkbenchError("not_found", `\u672A\u77E5\u7CFB\u7EDF ${id}`);
+    if (!this.setCred) throw new WorkbenchError("invalid", "\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301\u4FDD\u5B58\u51ED\u636E");
+    for (const f of def.fields) await this.setCred(f.key, void 0);
+    return this.connections();
+  }
+  async testConnection(id) {
+    try {
+      return { ok: true, message: await testConnection(id, this.connectorCtx()) };
+    } catch (e) {
+      return { ok: false, message: String(e.message ?? e) };
+    }
+  }
+  // ---------- Jenkins builds ----------
+  /** Job names to build; the demo list is used until Jenkins is configured. */
+  async jenkinsJobs() {
+    const fromProjects = this.store.data.projects.flatMap((p) => p.jenkinsJob ? [p.jenkinsJob] : []);
+    const demo = [.../* @__PURE__ */ new Set([...fromProjects.flatMap((j) => [`${j}-test`, `${j}-staging`]), ...fromProjects])].sort();
+    try {
+      const live = await listJenkinsJobs(this.connectorCtx());
+      if (live) return { jobs: live, mode: "live" };
+    } catch (e) {
+      return { jobs: demo, mode: "fallback", error: String(e.message ?? e) };
+    }
+    return { jobs: demo, mode: "demo" };
+  }
+  listBuilds() {
+    return this.store.data.builds ?? [];
+  }
+  /** Build one job once to verify a batch of cards; each card remembers the build. */
+  async triggerBuild(input) {
+    const job = input.job.trim();
+    if (!job) throw new WorkbenchError("invalid", "\u8BF7\u9009\u62E9\u8981\u6784\u5EFA\u7684 Job");
+    const issueIds = input.issueIds.filter((id) => this.store.data.issues.some((i) => i.id === id));
+    if (!issueIds.length) throw new WorkbenchError("invalid", "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u5F20\u5361\u7247");
+    const params = Object.fromEntries(Object.entries(input.params ?? {}).map(([k, v]) => [k.trim(), v]).filter(([k]) => k));
+    let queueUrl;
+    let demo = false;
+    let error;
+    try {
+      const r = await triggerJenkinsBuild(this.connectorCtx(), job, params).catch((e) => {
+        if (e.message === "Jenkins \u672A\u914D\u7F6E") {
+          demo = true;
+          return {};
+        }
+        throw e;
+      });
+      queueUrl = r.queueUrl;
+    } catch (e) {
+      error = String(e.message ?? e);
+    }
+    const t = new Date(this.clock()).toISOString();
+    return this.store.update((d) => {
+      d.seq += 1;
+      const b = {
+        id: `bld_${d.seq}`,
+        job,
+        params: Object.keys(params).length ? params : void 0,
+        issueIds,
+        state: error ? "error" : "queued",
+        demo: demo || void 0,
+        queueUrl,
+        error,
+        createdAt: t,
+        updatedAt: t
+      };
+      (d.builds ??= []).push(b);
+      return b;
+    });
+  }
+  /** Follow unfinished builds. Throttled, since the page polls; demo builds advance by age. */
+  async refreshBuilds() {
+    const pending = this.listBuilds().filter((b) => !["success", "failure", "unstable", "aborted", "error"].includes(b.state));
+    if (!pending.length || this.clock() - this.lastPoll < 3e3) return this.listBuilds();
+    this.lastPoll = this.clock();
+    const next = /* @__PURE__ */ new Map();
+    for (const b of pending) {
+      try {
+        if (b.demo) {
+          const age = this.clock() - Date.parse(b.createdAt);
+          const state = age < 4e3 ? "queued" : age < 16e3 ? "running" : "success";
+          next.set(b.id, { state, number: state === "queued" ? void 0 : 1e3 + Number(b.id.slice(4)) });
+        } else {
+          const s = await jenkinsBuildState(this.connectorCtx(), b);
+          next.set(b.id, { state: s.state, number: s.number, buildUrl: s.buildUrl });
+        }
+      } catch (e) {
+        next.set(b.id, { state: "error", error: String(e.message ?? e) });
+      }
+    }
+    this.store.update((d) => {
+      for (const b of d.builds ?? []) {
+        const n = next.get(b.id);
+        if (n && (n.state !== b.state || n.number !== b.number)) Object.assign(b, n, { updatedAt: new Date(this.clock()).toISOString() });
+      }
+    });
+    return this.listBuilds();
   }
   // ---------- project files (@ mentions) ----------
   fileIndex = /* @__PURE__ */ new Map();
@@ -1164,7 +1400,12 @@ function apply(ctx) {
     store: new Store(defaultDataPath()),
     driver,
     // Credentials are resolved per call and only ever used inside the connectors (never logged or sent to the page).
-    creds: async (name) => (await ctx.credentials.resolve(name))?.value
+    creds: async (name) => (await ctx.credentials.resolve(name))?.value,
+    // The settings page stores into DSH's credential store (private file under ~/.dsh); values never go back to the page.
+    setCred: async (name, value) => {
+      if (value === void 0) await ctx.credentials.unset(name);
+      else await ctx.credentials.set(name, value);
+    }
   });
   wb.seedDemoProjects(join4(dataDir(), "demo-repos"));
   void Promise.all(wb.listAgents().map((a) => driver.registerPreset(a)));
@@ -1172,16 +1413,17 @@ function apply(ctx) {
     wb.dispose();
     return driver.disposePresets();
   });
-  const state = () => ({
+  const state = async () => ({
     issues: wb.listIssues(),
     runs: wb.listRuns(),
     agents: wb.listAgents(),
-    projects: wb.listProjects()
+    projects: wb.listProjects(),
+    builds: await wb.refreshBuilds()
   });
   async function dispatch(endpoint, p) {
     switch (endpoint) {
       case "state":
-        return state();
+        return await state();
       case "todos.list":
         return await wb.listTodos();
       case "todos.start":
@@ -1206,6 +1448,18 @@ function apply(ctx) {
         return wb.saveProject(p);
       case "project.delete":
         return wb.deleteProject(p.id);
+      case "connections.list":
+        return await wb.connections();
+      case "connections.save":
+        return await wb.saveConnection(p.id, p.values ?? {});
+      case "connections.clear":
+        return await wb.clearConnection(p.id);
+      case "connections.test":
+        return await wb.testConnection(p.id);
+      case "jenkins.jobs":
+        return await wb.jenkinsJobs();
+      case "builds.trigger":
+        return await wb.triggerBuild({ job: p.job, params: p.params, issueIds: p.issueIds ?? [] });
       case "files.search":
         return wb.searchFiles(p.projectId, p.q ?? "");
       case "models.list":

@@ -1,6 +1,7 @@
 import * as React from 'react'
-import { ago, rpc, STATUS_LABEL, type Attachment, type Issue, type Status } from './api.ts'
+import { ago, BUILD_LABEL, buildColor, rpc, STATUS_LABEL, type Attachment, type Issue, type Status } from './api.ts'
 import { Composer } from './Composer.tsx'
+import { BuildModal } from './Builds.tsx'
 import type { PageProps } from './App.tsx'
 
 const { useState, useEffect } = React
@@ -12,6 +13,7 @@ export function Board(p: PageProps) {
   const [over, setOver] = useState<Status>()
   const [openId, setOpenId] = useState<string | undefined>(p.focusIssue)
   const [creating, setCreating] = useState<Status>()
+  const [building, setBuilding] = useState(false)
   useEffect(() => { if (p.focusIssue) setOpenId(p.focusIssue) }, [p.focusIssue])
 
   const running = new Set(state.runs.filter((r) => r.status === 'running').map((r) => r.issueId))
@@ -24,8 +26,12 @@ export function Board(p: PageProps) {
   }
   const open = state.issues.find((i) => i.id === openId)
   return (
-    <div className="wb-main" style={{ position: 'relative' }}>
-      <div className="wb-board">
+    <div className="wb-main" style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
+      <div className="wb-toolbar" style={{ paddingBottom: 0 }}>
+        <span className="wb-sub">拖拽卡片改变状态；修完一批后，勾选待审核的卡片，选对应环境的 Jenkins Job 构建验证</span><span className="wb-grow" />
+        <button className="wb-btn" onClick={() => setBuilding(true)}>构建验证</button>
+      </div>
+      <div className="wb-board" style={{ flex: 1, minHeight: 0, height: 'auto' }}>
         {COLUMNS.map((col) => {
           const items = state.issues.filter((i) => i.status === col).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
           return (
@@ -45,6 +51,7 @@ export function Board(p: PageProps) {
                     </div>
                     <div className="t">{i.title}</div>
                     {i.note && <div className="wb-ellipsis" style={{ color: i.status === 'blocked' ? 'var(--wb-red)' : 'var(--wb-amber)', fontSize: 11, marginBottom: 4 }} title={i.note}>{i.note}</div>}
+                    {lastBuild(state.builds, i.id) && <div className="wb-bld" style={{ color: buildColor(lastBuild(state.builds, i.id)!.state) }}>构建 {lastBuild(state.builds, i.id)!.job}{lastBuild(state.builds, i.id)!.number ? ` #${lastBuild(state.builds, i.id)!.number}` : ''} · {BUILD_LABEL[lastBuild(state.builds, i.id)!.state]}</div>}
                     <div className="m"><span className="wb-pill">{agentName(i.agentId)}</span><span style={{ marginLeft: 'auto' }}>{ago(i.updatedAt)}</span></div>
                   </article>
                 ))}
@@ -55,9 +62,12 @@ export function Board(p: PageProps) {
       </div>
       {open && <IssueModal issue={open} p={p} onClose={() => setOpenId(undefined)} />}
       {creating && <IssueModal initialStatus={creating} p={p} onClose={() => setCreating(undefined)} />}
+      {building && <BuildModal p={p} onClose={() => setBuilding(false)} />}
     </div>
   )
 }
+
+const lastBuild = (builds: PageProps['state']['builds'], issueId: string) => (builds ?? []).filter((b) => b.issueIds.includes(issueId)).at(-1)
 
 const PRIORITIES = ['P0', 'P1', 'P2', 'P3'] as const
 const STARTABLE: Status[] = ['backlog', 'todo', 'blocked']
@@ -133,6 +143,10 @@ function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue; initi
             <select className="wb-select" value={status} onChange={(e) => setStatus(e.target.value as Status)}>{COLUMNS.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}</select></div>
         </div>
         {issue?.note && <div className={`wb-banner ${issue.status === 'blocked' ? 'err' : ''}`} style={{ margin: '4px 0' }}>{issue.note}</div>}
+        {issue && (state.builds ?? []).some((b) => b.issueIds.includes(issue.id)) && <div className="wb-field"><label>构建验证</label>
+          {(state.builds ?? []).filter((b) => b.issueIds.includes(issue.id)).reverse().map((b) => (
+            <div className="wb-rel" key={b.id}><b style={{ color: buildColor(b.state) }}>{BUILD_LABEL[b.state]}</b> · {b.job}{b.number ? ` #${b.number}` : ''}<span className="wb-muted"> · {ago(b.createdAt)}{b.demo ? ' · 演示' : ''}</span>
+              {b.buildUrl && <> <a href={b.buildUrl} target="_blank" rel="noreferrer noopener">打开 ↗</a></>}{b.error && <div style={{ color: 'var(--wb-red)' }}>{b.error}</div>}</div>))}</div>}
         {issue && <div className="wb-field"><label>执行记录</label>
           {runs.length ? runs.map((r) => (
             <div className="wb-rel" key={r.id}>

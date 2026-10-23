@@ -1,4 +1,4 @@
-import type { WorkItem } from '../types.ts'
+import type { BuildState, WorkItem } from '../types.ts'
 import { getJson, trimSlash, type ConnectorContext } from './http.ts'
 
 type Job = {
@@ -30,9 +30,66 @@ export function parseFailedBuilds(json: { jobs?: Job[] }): WorkItem[] {
     })
 }
 
-export async function fetchJenkins(c: ConnectorContext): Promise<WorkItem[] | undefined> {
+/** Base URL + Basic auth header, or undefined when Jenkins is not configured. */
+export async function jenkinsAuth(c: ConnectorContext): Promise<{ base: string; headers: Record<string, string> } | undefined> {
   const [url, user, token] = await Promise.all(['WORKBENCH_JENKINS_URL', 'WORKBENCH_JENKINS_USER', 'WORKBENCH_JENKINS_TOKEN'].map((n) => c.creds(n)))
   if (!url || !user || !token) return undefined
-  const headers = { authorization: `Basic ${Buffer.from(`${user}:${token}`).toString('base64')}` }
-  return parseFailedBuilds(await getJson(c.fetch, `${trimSlash(url)}/api/json?tree=${encodeURIComponent(TREE)}`, { headers }))
+  return { base: trimSlash(url), headers: { authorization: `Basic ${Buffer.from(`${user}:${token}`).toString('base64')}` } }
+}
+
+export async function fetchJenkins(c: ConnectorContext): Promise<WorkItem[] | undefined> {
+  const a = await jenkinsAuth(c)
+  if (!a) return undefined
+  return parseFailedBuilds(await getJson(c.fetch, `${a.base}/api/json?tree=${encodeURIComponent(TREE)}`, { headers: a.headers }))
+}
+
+export async function listJenkinsJobs(c: ConnectorContext): Promise<string[] | undefined> {
+  const a = await jenkinsAuth(c)
+  if (!a) return undefined
+  const json = await getJson<{ jobs?: { name: string }[] }>(c.fetch, `${a.base}/api/json?tree=jobs[name]`, { headers: a.headers })
+  return (json.jobs ?? []).map((j) => j.name).sort()
+}
+
+/** Jenkins folders are written `folder/job`; the URL form is `job/folder/job/job`. */
+export const jobPath = (name: string) => name.split('/').filter(Boolean).map((p) => `job/${encodeURIComponent(p)}`).join('/')
+
+/** Queue one build (with parameters when given). Returns the queue item URL Jenkins answers with. */
+export async function triggerJenkinsBuild(c: ConnectorContext, job: string, params: Record<string, string> = {}): Promise<{ queueUrl?: string }> {
+  const a = await jenkinsAuth(c)
+  if (!a) throw new Error('Jenkins 未配置')
+  const headers = { ...a.headers }
+  try { // CSRF crumb; API-token requests don't need it on current Jenkins, older ones do
+    const crumb = await getJson<{ crumbRequestField: string; crumb: string }>(c.fetch, `${a.base}/crumb-issuer/api/json`, { headers: a.headers })
+    headers[crumb.crumbRequestField] = crumb.crumb
+  } catch { /* no crumb issuer */ }
+  const hasParams = Object.keys(params).length > 0
+  const url = `${a.base}/${jobPath(job)}/${hasParams ? `buildWithParameters?${new URLSearchParams(params)}` : 'build'}`
+  const res = await c.fetch(url, { method: 'POST', headers, signal: AbortSignal.timeout(10000) })
+  if (res.status !== 201 && res.status !== 200 && res.status !== 302) {
+    throw new Error(res.status === 404 ? `Jenkins 找不到 Job「${job}」（或它需要参数，请填写参数）` : `触发构建失败：HTTP ${res.status}`)
+  }
+  const loc = res.headers.get('location')
+  return { queueUrl: loc ? loc.replace(/\/?$/, '/') : undefined }
+}
+
+/** queued -> running -> final, following the queue item to its build when needed. */
+export async function jenkinsBuildState(
+  c: ConnectorContext, b: { queueUrl?: string; buildUrl?: string },
+): Promise<{ state: BuildState; number?: number; buildUrl?: string }> {
+  const a = await jenkinsAuth(c)
+  if (!a) throw new Error('Jenkins 未配置')
+  let { buildUrl } = b
+  let number: number | undefined
+  if (!buildUrl) {
+    if (!b.queueUrl) return { state: 'queued' }
+    const q = await getJson<{ cancelled?: boolean; executable?: { number: number; url: string } }>(c.fetch, `${b.queueUrl}api/json`, { headers: a.headers })
+    if (q.cancelled) return { state: 'aborted' }
+    if (!q.executable) return { state: 'queued' }
+    buildUrl = q.executable.url; number = q.executable.number
+  }
+  const j = await getJson<{ building?: boolean; result?: string | null; number?: number }>(c.fetch, `${buildUrl}api/json?tree=building,result,number`, { headers: a.headers })
+  number = j.number ?? number
+  if (j.building || !j.result) return { state: 'running', number, buildUrl }
+  const map: Record<string, BuildState> = { SUCCESS: 'success', FAILURE: 'failure', UNSTABLE: 'unstable', ABORTED: 'aborted' }
+  return { state: map[j.result] ?? 'failure', number, buildUrl }
 }

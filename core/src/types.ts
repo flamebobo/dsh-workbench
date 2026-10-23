@@ -92,6 +92,25 @@ export interface Run {
   finalText?: string
 }
 
+export type BuildState = 'queued' | 'running' | 'success' | 'failure' | 'unstable' | 'aborted' | 'error'
+
+/** One Jenkins build triggered from the workbench to verify a batch of cards. */
+export interface Build {
+  id: string
+  job: string
+  params?: Record<string, string>
+  issueIds: string[]
+  state: BuildState
+  /** True when Jenkins is not configured: the build is simulated so the flow can be demonstrated. */
+  demo?: boolean
+  queueUrl?: string
+  buildUrl?: string
+  number?: number
+  error?: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface Data {
   version: 1
   seq: number
@@ -101,4 +120,5 @@ export interface Data {
   issues: Issue[]
   agents: AgentProfile[]
   runs: Run[]
+  builds?: Build[]
 }

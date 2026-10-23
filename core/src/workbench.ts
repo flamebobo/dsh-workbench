@@ -6,12 +6,13 @@ import type { AgentDriver, DriverEvent } from './driver.ts'
 import { paymentCoreFiles } from '../fixtures/demo-repo.ts'
 import { demoGitlab, demoJenkins, demoZentao } from '../fixtures/demo.ts'
 import { fetchGitlab } from './connectors/gitlab.ts'
-import { fetchJenkins } from './connectors/jenkins.ts'
+import { fetchJenkins, jenkinsBuildState, listJenkinsJobs, triggerJenkinsBuild } from './connectors/jenkins.ts'
+import { CONNECTIONS, testConnection, type SystemId } from './connectors/connections.ts'
 import type { ConnectorContext, Creds, FetchLike } from './connectors/http.ts'
 import { fetchZentao } from './connectors/zentao.ts'
 import { Store } from './store.ts'
 import { fuzzy, listFiles, mentionedFiles } from './files.ts'
-import type { AgentProfile, Attachment, CommandName, Issue, Priority, Project, Run, Source, Status, WorkItem } from './types.ts'
+import type { AgentProfile, Attachment, Build, BuildState, CommandName, Issue, Priority, Project, Run, Source, Status, WorkItem } from './types.ts'
 import { STATUSES } from './types.ts'
 import { agentPersona, builtinAgents } from './agents.ts'
 
@@ -41,13 +42,20 @@ export interface WorkbenchOptions {
   store: Store
   driver: AgentDriver
   creds: Creds
+  /** Writes (or, with undefined, removes) one stored credential; the settings page uses it. DSH: ctx.credentials.set/unset. */
+  setCred?: (name: string, value: string | undefined) => Promise<void>
   fetch?: FetchLike
+  /** Milliseconds clock; tests move it to age simulated builds. */
+  now?: () => number
 }
 
 export class Workbench {
   readonly store: Store
   private driver: AgentDriver
   private creds: Creds
+  private setCred?: WorkbenchOptions['setCred']
+  private clock: () => number
+  private lastPoll = 0
   private fetch: FetchLike
   private off: () => void
 
@@ -55,6 +63,8 @@ export class Workbench {
     this.store = o.store
     this.driver = o.driver
     this.creds = o.creds
+    this.setCred = o.setCred
+    this.clock = o.now ?? Date.now
     this.fetch = o.fetch ?? ((u, i) => fetch(u, i))
     this.seedAgents()
     this.reconcileOrphans()
@@ -249,6 +259,120 @@ export class Workbench {
         issue.updatedAt = now()
       }
     })
+  }
+
+  // ---------- connections (settings page) ----------
+  private connectorCtx(): ConnectorContext {
+    return { creds: this.creds, fetch: this.fetch, zentaoProductIds: this.store.data.projects.flatMap((p) => (p.zentaoProductId ? [p.zentaoProductId] : [])) }
+  }
+
+  /** Field definitions plus what is set. Secret values are never returned, only whether they are set. */
+  async connections() {
+    return Promise.all(CONNECTIONS.map(async (c) => {
+      const fields = await Promise.all(c.fields.map(async (f) => {
+        const v = await this.creds(f.key)
+        return { ...f, set: !!v, value: f.secret ? undefined : v }
+      }))
+      return { id: c.id, label: c.label, configured: fields.filter((f) => !f.optional).every((f) => f.set), fields }
+    }))
+  }
+
+  /** Secret fields left empty keep their stored value; other empty fields are removed. */
+  async saveConnection(id: SystemId, values: Record<string, string | undefined>) {
+    const def = CONNECTIONS.find((c) => c.id === id)
+    if (!def) throw new WorkbenchError('not_found', `未知系统 ${id}`)
+    if (!this.setCred) throw new WorkbenchError('invalid', '当前环境不支持保存凭据')
+    for (const f of def.fields) {
+      const raw = values[f.key]
+      if (raw === undefined) continue
+      const v = raw.trim()
+      if (f.url && v && !/^https?:\/\//i.test(v)) throw new WorkbenchError('invalid', `${def.label}${f.label}必须以 http:// 或 https:// 开头`)
+      if (v) await this.setCred(f.key, f.url ? v.replace(/\/+$/, '') : v)
+      else if (!f.secret) await this.setCred(f.key, undefined)
+    }
+    return this.connections()
+  }
+
+  async clearConnection(id: SystemId) {
+    const def = CONNECTIONS.find((c) => c.id === id)
+    if (!def) throw new WorkbenchError('not_found', `未知系统 ${id}`)
+    if (!this.setCred) throw new WorkbenchError('invalid', '当前环境不支持保存凭据')
+    for (const f of def.fields) await this.setCred(f.key, undefined)
+    return this.connections()
+  }
+
+  async testConnection(id: SystemId): Promise<{ ok: boolean; message: string }> {
+    try { return { ok: true, message: await testConnection(id, this.connectorCtx()) } } catch (e) { return { ok: false, message: String((e as Error).message ?? e) } }
+  }
+
+  // ---------- Jenkins builds ----------
+  /** Job names to build; the demo list is used until Jenkins is configured. */
+  async jenkinsJobs(): Promise<{ jobs: string[]; mode: 'live' | 'demo' | 'fallback'; error?: string }> {
+    const fromProjects = this.store.data.projects.flatMap((p) => (p.jenkinsJob ? [p.jenkinsJob] : []))
+    const demo = [...new Set([...fromProjects.flatMap((j) => [`${j}-test`, `${j}-staging`]), ...fromProjects])].sort()
+    try {
+      const live = await listJenkinsJobs(this.connectorCtx())
+      if (live) return { jobs: live, mode: 'live' }
+    } catch (e) { return { jobs: demo, mode: 'fallback', error: String((e as Error).message ?? e) } }
+    return { jobs: demo, mode: 'demo' }
+  }
+
+  listBuilds() { return this.store.data.builds ?? [] }
+
+  /** Build one job once to verify a batch of cards; each card remembers the build. */
+  async triggerBuild(input: { job: string; params?: Record<string, string>; issueIds: string[] }): Promise<Build> {
+    const job = input.job.trim()
+    if (!job) throw new WorkbenchError('invalid', '请选择要构建的 Job')
+    const issueIds = input.issueIds.filter((id) => this.store.data.issues.some((i) => i.id === id))
+    if (!issueIds.length) throw new WorkbenchError('invalid', '请至少选择一张卡片')
+    const params = Object.fromEntries(Object.entries(input.params ?? {}).map(([k, v]) => [k.trim(), v]).filter(([k]) => k))
+    let queueUrl: string | undefined
+    let demo = false
+    let error: string | undefined
+    try {
+      const r = await triggerJenkinsBuild(this.connectorCtx(), job, params).catch((e: Error) => {
+        if (e.message === 'Jenkins 未配置') { demo = true; return {} as { queueUrl?: string } }
+        throw e
+      })
+      queueUrl = r.queueUrl
+    } catch (e) { error = String((e as Error).message ?? e) }
+    const t = new Date(this.clock()).toISOString()
+    return this.store.update((d) => {
+      d.seq += 1
+      const b: Build = {
+        id: `bld_${d.seq}`, job, params: Object.keys(params).length ? params : undefined, issueIds,
+        state: error ? 'error' : 'queued', demo: demo || undefined, queueUrl, error, createdAt: t, updatedAt: t,
+      }
+      ;(d.builds ??= []).push(b)
+      return b
+    })
+  }
+
+  /** Follow unfinished builds. Throttled, since the page polls; demo builds advance by age. */
+  async refreshBuilds(): Promise<Build[]> {
+    const pending = this.listBuilds().filter((b) => !['success', 'failure', 'unstable', 'aborted', 'error'].includes(b.state))
+    if (!pending.length || this.clock() - this.lastPoll < 3000) return this.listBuilds()
+    this.lastPoll = this.clock()
+    const next = new Map<string, Partial<Build>>()
+    for (const b of pending) {
+      try {
+        if (b.demo) {
+          const age = this.clock() - Date.parse(b.createdAt)
+          const state: BuildState = age < 4000 ? 'queued' : age < 16000 ? 'running' : 'success'
+          next.set(b.id, { state, number: state === 'queued' ? undefined : 1000 + Number(b.id.slice(4)) })
+        } else {
+          const s = await jenkinsBuildState(this.connectorCtx(), b)
+          next.set(b.id, { state: s.state, number: s.number, buildUrl: s.buildUrl })
+        }
+      } catch (e) { next.set(b.id, { state: 'error', error: String((e as Error).message ?? e) }) }
+    }
+    this.store.update((d) => {
+      for (const b of d.builds ?? []) {
+        const n = next.get(b.id)
+        if (n && (n.state !== b.state || n.number !== b.number)) Object.assign(b, n, { updatedAt: new Date(this.clock()).toISOString() })
+      }
+    })
+    return this.listBuilds()
   }
 
   // ---------- project files (@ mentions) ----------

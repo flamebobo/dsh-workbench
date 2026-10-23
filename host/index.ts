@@ -18,18 +18,20 @@ export function apply(ctx: Ctx) {
     driver,
     // Credentials are resolved per call and only ever used inside the connectors (never logged or sent to the page).
     creds: async (name) => (await ctx.credentials.resolve(name))?.value,
+    // The settings page stores into DSH's credential store (private file under ~/.dsh); values never go back to the page.
+    setCred: async (name, value) => { if (value === undefined) await ctx.credentials.unset(name); else await ctx.credentials.set(name, value) },
   })
   wb.seedDemoProjects(join(dataDir(), 'demo-repos'))
   void Promise.all(wb.listAgents().map((a) => driver.registerPreset(a)))
   ctx.effect(() => () => { wb.dispose(); return driver.disposePresets() })
 
-  const state = () => ({
-    issues: wb.listIssues(), runs: wb.listRuns(), agents: wb.listAgents(), projects: wb.listProjects(),
+  const state = async () => ({
+    issues: wb.listIssues(), runs: wb.listRuns(), agents: wb.listAgents(), projects: wb.listProjects(), builds: await wb.refreshBuilds(),
   })
 
   async function dispatch(endpoint: string, p: any): Promise<unknown> {
     switch (endpoint) {
-      case 'state': return state()
+      case 'state': return await state()
       case 'todos.list': return await wb.listTodos()
       case 'todos.start': return await wb.startWork({ item: p.item as WorkItem, agentId: p.agentId })
       case 'issue.create': return wb.createIssue(p)
@@ -44,6 +46,12 @@ export function apply(ctx: Ctx) {
       }
       case 'project.save': return wb.saveProject(p)
       case 'project.delete': return wb.deleteProject(p.id)
+      case 'connections.list': return await wb.connections()
+      case 'connections.save': return await wb.saveConnection(p.id, p.values ?? {})
+      case 'connections.clear': return await wb.clearConnection(p.id)
+      case 'connections.test': return await wb.testConnection(p.id)
+      case 'jenkins.jobs': return await wb.jenkinsJobs()
+      case 'builds.trigger': return await wb.triggerBuild({ job: p.job, params: p.params, issueIds: p.issueIds ?? [] })
       case 'files.search': return wb.searchFiles(p.projectId, p.q ?? '')
       case 'models.list': return await driver.listModels()
       default: throw new WorkbenchError('invalid', `unknown endpoint ${endpoint}`)

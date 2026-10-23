@@ -8,6 +8,7 @@ const priority = (n: unknown): Priority => PRI[Math.min(3, Math.max(0, Number(n)
 const account = (a: unknown) =>
   typeof a === 'string' ? a : ((a as { account?: string } | null)?.account ?? '')
 
+const MAX_DISCOVERED = 20
 const BUG_STATUS: Record<string, string> = { active: '已激活', resolved: '已解决', closed: '已关闭' }
 const TASK_STATUS: Record<string, string> = { wait: '未开始', doing: '进行中', done: '已完成', pause: '已暂停' }
 const day = (d: unknown) => (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}/.test(d) && !d.startsWith('0000') ? d.slice(0, 10) : undefined)
@@ -64,9 +65,20 @@ export async function fetchZentao(c: ConnectorContext): Promise<WorkItem[] | und
     body: JSON.stringify({ account: acct, password }),
   })
   const headers = { Token: token }
-  const executions = (await c.creds('WORKBENCH_ZENTAO_EXECUTION_IDS'))?.split(',').map(Number).filter(Boolean) ?? []
+  // Ids from the settings / Projects page win; with none configured, discover what the account can see (best effort, capped).
+  const discover = async (path: string, key: string): Promise<number[]> => {
+    try {
+      const j = await getJson<Record<string, Row[]>>(c.fetch, `${base}/api.php/v1/${path}?limit=100`, { headers })
+      return (j[key] ?? []).filter((x) => !['done', 'closed', 'suspend'].includes(String(x.status))).map((x) => Number(x.id)).filter(Boolean).slice(0, MAX_DISCOVERED)
+    } catch { return [] }
+  }
+  const configured = (await c.creds('WORKBENCH_ZENTAO_EXECUTION_IDS'))?.split(',').map((x) => Number(x.trim())).filter(Boolean) ?? []
+  const [productIds, executions] = await Promise.all([
+    c.zentaoProductIds.length ? c.zentaoProductIds : discover('products', 'products'),
+    configured.length ? configured : discover('executions', 'executions'),
+  ])
   const lists = await Promise.all([
-    ...c.zentaoProductIds.map(async (id) =>
+    ...productIds.map(async (id) =>
       parseBugs(await getJson(c.fetch, `${base}/api.php/v1/products/${id}/bugs?limit=200`, { headers }), acct, id, base)),
     ...executions.map(async (id) =>
       parseTasks(await getJson(c.fetch, `${base}/api.php/v1/executions/${id}/tasks?limit=200`, { headers }), acct, id, base)),

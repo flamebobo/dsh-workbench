@@ -28,3 +28,9 @@
 - 页面插槽：`sidebar.panellist` 的 `id` 必须等于 `main` 的 `key` 才会联动；图标 props 是 `{ size, active }`。
 - 样式只用 `--dsw-alias-*`（label-primary/secondary/tertiary、bg-base、bg-layer-1/2、border-l1/l2、interactive-bg-hover、state-business/error/success/warn-primary），外加 `color-mix` 做淡色底。
 - 计算机操作截图有一帧延迟：点击后需 ≥3 秒再截图才是结果态。
+
+## 设置页与构建验证
+
+- 凭据读写：`ctx.credentials.resolve/set/unset(name)`（名字沿用 `WORKBENCH_*`，写进 `~/.dsh/.credentials.yaml`，已存值优先于 env）。页面经 `connections.*` 接口只拿到 `set: boolean`，密码类字段永远不回显。测试中往真实凭据库写过 mock 值，已用「清除」还原（`grep WORKBENCH ~/.dsh/.credentials.yaml` 为空）。
+- Jenkins：`POST /job/<a>/job/<b>/build|buildWithParameters?K=V`，先取 `/crumb-issuer/api/json`（失败就忽略），成功返回 201 + `Location: /queue/item/N/`；状态：`/queue/item/N/api/json`（`executable` 出现即有构建号）→ `<buildUrl>api/json?tree=building,result,number`。
+- `WORKBENCH_HOME` 环境变量可改数据目录（默认 `~/.workbench`），用于并行起第二个 DSH profile 调试而不碰桌面端的数据。

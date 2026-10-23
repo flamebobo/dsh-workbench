@@ -5,10 +5,11 @@ import { Todos } from './Todos.tsx'
 import { Board } from './Board.tsx'
 import { Agents } from './Agents.tsx'
 import { Projects } from './Projects.tsx'
+import { Settings } from './Settings.tsx'
 
 const { useState, useEffect, useCallback, useRef } = React
-export type Tab = 'todos' | 'board' | 'agents' | 'projects'
-const TABS: [Tab, string][] = [['todos', '我的待办'], ['board', '看板'], ['agents', '智能体'], ['projects', '项目']]
+export type Tab = 'todos' | 'board' | 'agents' | 'projects' | 'settings'
+const TABS: [Tab, string][] = [['todos', '我的待办'], ['board', '看板'], ['agents', '智能体'], ['projects', '项目'], ['settings', '设置']]
 
 /** Shared props for every page. */
 export interface PageProps {
@@ -24,6 +25,7 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
   const [tab, setTab] = useState<Tab>('todos')
   const [state, setState] = useState<State>()
   const [todos, setTodos] = useState<TodoResult>()
+  const [todosAt, setTodosAt] = useState<Date>()
   const [error, setError] = useState<string>()
   const [toast, setToast] = useState<string>()
   const [focusIssue, setFocusIssue] = useState<string>()
@@ -33,7 +35,7 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
     try { setState(await rpc<State>('state')); setError(undefined) } catch (e) { setError((e as Error).message) }
   }, [])
   const loadTodos = useCallback(async () => {
-    try { setTodos(await rpc<TodoResult>('todos.list')) } catch (e) { setError((e as Error).message) }
+    try { setTodos(await rpc<TodoResult>('todos.list')); setTodosAt(new Date()) } catch (e) { setError((e as Error).message) }
   }, [])
   const notify = useCallback((msg: string) => {
     setToast(msg); clearTimeout(timer.current); timer.current = setTimeout(() => setToast(undefined), 4500)
@@ -44,7 +46,8 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
   useEffect(() => {
     void refresh(); void loadTodos()
     const id = setInterval(() => { void refresh() }, 2000)
-    return () => { clearInterval(id); clearTimeout(timer.current) }
+    const pull = setInterval(() => { void loadTodos() }, 60_000) // auto-pull Zentao / GitLab / Jenkins once a minute
+    return () => { clearInterval(id); clearInterval(pull); clearTimeout(timer.current) }
   }, [refresh, loadTodos])
 
   // Todos carry card ids/status; re-read them (cheap in demo mode, one round trip live) when issues change.
@@ -60,7 +63,7 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
       <div className="wb-head">
         <h2 className="wb-title">研发工作台</h2>
         <span className="wb-sub">{new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</span>
-        {demo && demo.length > 0 && <span className="wb-pill demo" title={demo.map(([k, s]) => `${k}: ${s.mode === 'demo' ? '未配置凭据' : s.error}`).join('\n')}>演示数据</span>}
+        {demo && demo.length > 0 && <span className="wb-pill demo" style={{ cursor: 'pointer' }} onClick={() => go('settings')} title={demo.map(([k, s]) => `${k}: ${s.mode === 'demo' ? '未配置凭据' : s.error}`).join('\n')}>演示数据</span>}
       </div>
       <div className="wb-tabs" role="tablist">
         {TABS.map(([k, label]) => (
@@ -71,10 +74,11 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
       <div className="wb-body">
         {!props ? <div className="wb-empty" style={{ flex: 1 }}>{error ? '无法连接 Host。' : '加载中…'}</div> : (
           <>
-            {tab === 'todos' && <Todos {...props} todos={todos} reloadTodos={loadTodos} />}
+            {tab === 'todos' && <Todos {...props} todos={todos} todosAt={todosAt} reloadTodos={loadTodos} />}
             {tab === 'board' && <Board {...props} />}
             {tab === 'agents' && <Agents {...props} />}
             {tab === 'projects' && <Projects {...props} />}
+            {tab === 'settings' && <Settings {...props} reloadTodos={loadTodos} />}
           </>
         )}
       </div>

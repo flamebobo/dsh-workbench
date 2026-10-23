@@ -1,8 +1,8 @@
-import type { AgentProfile, Attachment, Issue, Project, Run, WorkItem, Status } from '../core/src/types.ts'
+import type { AgentProfile, Attachment, Build, BuildState, Issue, Project, Run, WorkItem, Status } from '../core/src/types.ts'
 import type { TodoResult } from '../core/src/workbench.ts'
 
-export type { AgentProfile, Attachment, Issue, Project, Run, WorkItem, Status, TodoResult }
-export interface State { issues: Issue[]; runs: Run[]; agents: AgentProfile[]; projects: Project[] }
+export type { AgentProfile, Attachment, Build, BuildState, Issue, Project, Run, WorkItem, Status, TodoResult }
+export interface State { issues: Issue[]; runs: Run[]; agents: AgentProfile[]; projects: Project[]; builds?: Build[] }
 
 export class RpcError extends Error {
   code?: string
@@ -52,3 +52,13 @@ export const COMMANDS: { id: 'plan' | 'goal'; label: string; desc: string }[] = 
 
 export const fmtSize = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`)
 export const isImage = (a: Pick<Attachment, 'mediaType'>) => /^image\/(png|jpeg|webp|gif)$/.test(a.mediaType)
+
+export const BUILD_LABEL: Record<BuildState, string> = {
+  queued: '排队中', running: '构建中', success: '成功', failure: '失败', unstable: '不稳定', aborted: '已取消', error: '触发失败',
+}
+export const buildColor = (s: BuildState) => (s === 'success' ? 'var(--wb-green)' : s === 'failure' || s === 'error' ? 'var(--wb-red)' : 'var(--wb-amber)')
+
+export interface ConnectionView {
+  id: 'zentao' | 'gitlab' | 'jenkins'; label: string; configured: boolean
+  fields: { key: string; label: string; secret?: boolean; optional?: boolean; placeholder?: string; set: boolean; value?: string }[]
+}

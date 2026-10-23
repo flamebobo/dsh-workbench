@@ -36,7 +36,9 @@ test('zentao: token handshake then Token header, product bugs requested per conf
   assert.equal(calls[0]!.url, 'https://z.test/api.php/v1/tokens')
   assert.deepEqual(JSON.parse(String(calls[0]!.init!.body)), { account: 'me', password: 'pw' })
   assert.ok(calls.slice(1).every((x) => (x.init!.headers as Record<string, string>).Token === 'TKN'))
-  assert.deepEqual(calls.slice(1).map((x) => new URL(x.url).pathname), ['/api.php/v1/products/5/bugs', '/api.php/v1/products/6/bugs'])
+  const paths = calls.slice(1).map((x) => new URL(x.url).pathname)
+  assert.ok(paths.includes('/api.php/v1/executions')) // no execution ids configured -> discovery asks Zentao
+  assert.deepEqual(paths.filter((p) => p.includes('/bugs')), ['/api.php/v1/products/5/bugs', '/api.php/v1/products/6/bugs'])
   assert.equal(await fetchZentao({ ...c, creds: creds({}) }), undefined)
 })
 
@@ -66,4 +68,30 @@ test('jenkins: only red jobs with a last build become to-dos; Basic auth', async
   const fetchImpl = (async (_u: string, init?: RequestInit) => { auth = (init!.headers as Record<string, string>).authorization!; return Response.json(json) }) as unknown as ConnectorContext['fetch']
   await fetchJenkins({ creds: creds({ WORKBENCH_JENKINS_URL: 'https://j', WORKBENCH_JENKINS_USER: 'u', WORKBENCH_JENKINS_TOKEN: 't' }), fetch: fetchImpl, zentaoProductIds: [] })
   assert.equal(auth, `Basic ${Buffer.from('u:t').toString('base64')}`)
+})
+
+test('zentao: with no ids configured, products and open executions are discovered', async () => {
+  const urls: string[] = []
+  const fetchImpl = (async (url: string, init?: RequestInit) => {
+    urls.push(new URL(url).pathname)
+    const path = new URL(url).pathname
+    if (path.endsWith('/tokens')) return Response.json({ token: 'T' })
+    if (path.endsWith('/v1/products')) return Response.json({ products: [{ id: 5 }, { id: 6, status: 'closed' }] })
+    if (path.endsWith('/v1/executions')) return Response.json({ executions: [{ id: 21, status: 'doing' }, { id: 22, status: 'done' }, { id: 23, status: 'wait' }] })
+    if (path.endsWith('/products/5/bugs')) return Response.json({ bugs: [{ id: 1, title: 'b', pri: 1, status: 'active', assignedTo: 'me' }] })
+    if (path.endsWith('/executions/21/tasks')) return Response.json({ tasks: [{ id: 9, name: 't', pri: 2, status: 'doing', assignedTo: 'me' }] })
+    if (path.endsWith('/executions/23/tasks')) return Response.json({ tasks: [] })
+    return new Response('?', { status: 500 })
+  }) as unknown as ConnectorContext['fetch']
+  const c: ConnectorContext = { creds: creds({ WORKBENCH_ZENTAO_URL: 'https://z', WORKBENCH_ZENTAO_ACCOUNT: 'me', WORKBENCH_ZENTAO_PASSWORD: 'pw' }), fetch: fetchImpl, zentaoProductIds: [] }
+  const items = await fetchZentao(c)
+  assert.deepEqual(items!.map((i) => i.ref).sort(), ['BUG-1', 'TASK-9'])
+  assert.ok(urls.includes('/api.php/v1/executions/23/tasks') && !urls.includes('/api.php/v1/executions/22/tasks')) // finished executions are skipped
+  // an explicit configuration is never second-guessed by discovery
+  urls.length = 0
+  await fetchZentao({ ...c, zentaoProductIds: [5], creds: creds({ WORKBENCH_ZENTAO_URL: 'https://z', WORKBENCH_ZENTAO_ACCOUNT: 'me', WORKBENCH_ZENTAO_PASSWORD: 'pw', WORKBENCH_ZENTAO_EXECUTION_IDS: '21' }) })
+  assert.ok(!urls.includes('/api.php/v1/products') && !urls.includes('/api.php/v1/executions'))
+  // discovery being unavailable (older Zentao) just means fewer sources, not a failure
+  const none = await fetchZentao({ ...c, fetch: (async (u: string) => (String(u).endsWith('/tokens') ? Response.json({ token: 'T' }) : new Response('?', { status: 404 }))) as never })
+  assert.deepEqual(none, [])
 })

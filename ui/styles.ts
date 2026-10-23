@@ -82,5 +82,8 @@ export const css = `
 .wb-files.in { margin: 0; padding: 8px 10px 0; } .wb-files { margin-top: 6px; display: flex; flex-direction: column; gap: 5px; }
 .wb-file { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 8px; border: 1px solid var(--wb-bd1); border-radius: 7px; background: var(--wb-l1); }
 .wb-file img { width: 28px; height: 28px; object-fit: cover; border-radius: 4px; } .wb-file .ic { width: 28px; text-align: center; font-size: 18px; }
+.wb-conn { border: 1px solid var(--wb-bd); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; background: var(--wb-bg); }
+.wb-pick { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; }
+.wb-bld { font-size: 11px; margin-top: 4px; }
 .wb-empty { padding: 40px; text-align: center; color: var(--wb-fg3); }
 `

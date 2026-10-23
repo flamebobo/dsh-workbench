@@ -8,7 +8,7 @@ const SOURCE_LABEL = { zentao: '禅道', gitlab: 'GitLab', jenkins: 'Jenkins', m
 const STARTABLE = ['backlog', 'todo', 'blocked']
 const DEFAULT_AGENT = { gitlab: 'reviewer', jenkins: 'build-fixer', zentao: 'fullstack', manual: 'fullstack' }
 
-export function Todos(p: PageProps & { todos?: TodoResult; reloadTodos: () => Promise<void> }) {
+export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloadTodos: () => Promise<void> }) {
   const { todos, state } = p
   const [filter, setFilter] = useState<'all' | WorkItem['source']>('all')
   const [selected, setSelected] = useState<string>()
@@ -71,6 +71,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; reloadTodos: () => Pr
               {SOURCE_LABEL[s]} {todos.sources[s].mode === 'live' ? '实时' : '演示'}
             </span>
           ))}
+          {p.todosAt && <span className="wb-muted" title="每分钟自动拉取">更新于 {p.todosAt.toLocaleTimeString('zh-CN', { hour12: false })}</span>}
           <button className="wb-btn" onClick={() => { void p.reloadTodos() }}>刷新</button>
         </div>
         <table className="wb-table">
