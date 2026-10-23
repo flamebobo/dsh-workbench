@@ -18,3 +18,13 @@
   `dsh plugin --profile web add <dsh-plugin 目录>`，然后 `dsh --profile web --patch <overlay.yml> --no-open --port 3080`。
   web profile 默认模型走 `deepseek-official`（需 `DEEPSEEK_API_KEY`），用 overlay 把 `agent-default-model` 设成桌面端同款 `provider: deepseek-account / model: deepseek-flash`，凭据共用 `~/.dsh/.credentials.yaml` 的账号登录，不需要额外填 Key。`--patch` 必须写在 `--profile web` 之后、不能写在 `dsh web` 之后。
 - 不要用宽泛的 `pkill -f dsh…`：会把桌面端的 `dsh-desktop-host` 进程一起杀掉。
+
+## 第 2–4 步补充
+
+- `core/` 在 Node 22 下直接以 TypeScript strip-only 模式跑测试（`node --test core/test/*.test.ts`），因此不用 enum / 参数属性；Host 与页面由 esbuild 打包（`scripts/build.mjs`），Host 产物是单文件 ESM、不依赖任何 `@deepseek-ai/*` 包（Cordis 上下文在边界处是 `any`）。
+- Agent Preset：`ctx.agentPresets.register({ id, name, description, order, plugins: [...] })`，`plugins` 是与 `*.patch.yml` 里 `@deepseek-ai/dsh-agent-preset` 的 `config.plugins` 同形的数组（`!!js` 表达式要在代码里直接求值，如 `disabled: process.platform === 'win32'`）。重复保存时先调旧注册的 disposer 再注册。注册失败时开工回退到 `standard` 预设，并把智能体指令拼到首条消息前。
+- 会话创建照 `webhook/src/session.ts`：`workspaceRegistry.create(cwd)` → `agents.create({ sessionId, meta: { cwd, agentPreset }, agentOptions, setup: mount })` → `workspace.attachSession` → `permissionPresets.set(session, 'workspace-write')` → `sessionTitle.rename` → `agent.followup(userMessage)`。用户消息就是 `{ id, role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } }`，不需要 import `createUserMessage`。
+- 跳到会话：页面 `ctx.uiWorkspace.openSession(sessionId)`（客户端 inject `uiWorkspace`），会话立即在侧栏对应工作区下可见。
+- 页面插槽：`sidebar.panellist` 的 `id` 必须等于 `main` 的 `key` 才会联动；图标 props 是 `{ size, active }`。
+- 样式只用 `--dsw-alias-*`（label-primary/secondary/tertiary、bg-base、bg-layer-1/2、border-l1/l2、interactive-bg-hover、state-business/error/success/warn-primary），外加 `color-mix` 做淡色底。
+- 计算机操作截图有一帧延迟：点击后需 ≥3 秒再截图才是结果态。
