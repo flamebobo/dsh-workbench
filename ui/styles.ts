@@ -49,7 +49,7 @@ export const css = `
 .wb-ac { list-style: none; margin: 0; padding: 0; } .wb-ac li { display: flex; gap: 8px; padding: 3px 0; } .wb-ac li::before { content: ''; flex: none; width: 13px; height: 13px; margin-top: 3px; border: 1.5px solid var(--wb-fg3); border-radius: 3px; }
 .wb-rel { padding: 6px 9px; border: 1px solid var(--wb-bd1); border-radius: 7px; background: var(--wb-bg); margin-bottom: 5px; font-size: 12px; }
 .wb-board { display: flex; gap: 12px; padding: 14px 20px; height: 100%; align-items: stretch; overflow-x: auto; }
-.wb-col { flex: 1 0 210px; min-width: 210px; background: var(--wb-l1); border-radius: 10px; display: flex; flex-direction: column; min-height: 0; border: 1px solid transparent; }
+.wb-col { flex: 1 0 140px; min-width: 140px; background: var(--wb-l1); border-radius: 10px; display: flex; flex-direction: column; min-height: 0; border: 1px solid transparent; }
 .wb-col.over { border-color: var(--wb-blue); background: color-mix(in srgb, var(--wb-blue) 7%, var(--wb-l1)); }
 .wb-col-h { display: flex; align-items: center; gap: 6px; padding: 10px 12px; font-weight: 600; } .wb-col-h .n { color: var(--wb-fg3); font-weight: 400; margin-right: auto; }
 .wb-dot { width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--wb-fg3); } .wb-dot.in_progress { border-color: var(--wb-amber); } .wb-dot.in_review { border-color: var(--wb-green); } .wb-dot.done { border-color: var(--wb-blue); background: var(--wb-blue); } .wb-dot.blocked { border-color: var(--wb-red); }
