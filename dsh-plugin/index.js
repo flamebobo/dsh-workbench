@@ -185,6 +185,7 @@ var demoZentao = [
     source: "zentao",
     priority: "P3",
     project: "\u4E91\u652F\u4ED8 / docs",
+    zentaoProductId: 12,
     title: "\u6587\u6863\uFF1A\u652F\u4ED8\u56DE\u8C03\u65F6\u5E8F\u56FE\u8865\u5145",
     statusText: "\u5F85\u5904\u7406",
     due: void 0,
@@ -721,7 +722,7 @@ var Workbench = class {
       { name: "\u8BA2\u5355\u670D\u52A1 / order-service", cwd: join2(baseDir, "order-service"), jenkinsJob: "order-service" },
       { name: "\u524D\u7AEF / teleone-web", cwd: join2(baseDir, "teleone-web"), jenkinsJob: "teleone-web" },
       { name: "\u8BA4\u8BC1\u4E2D\u5FC3 / auth", cwd: join2(baseDir, "auth-center"), zentaoProductId: 8 },
-      { name: "\u6570\u636E\u4E2D\u5FC3 / report", cwd: join2(baseDir, "data-center") },
+      { name: "\u6570\u636E\u4E2D\u5FC3 / report", cwd: join2(baseDir, "data-center"), zentaoProductId: 9 },
       { name: "\u57FA\u7840\u8BBE\u65BD / infrastructure", cwd: join2(baseDir, "infrastructure"), gitlabProjectId: 77 }
     ];
     for (const p of demo) {

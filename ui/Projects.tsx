@@ -29,7 +29,7 @@ export function Projects(p: PageProps) {
       <div className="wb-toolbar"><span className="wb-sub">开工时使用「工作目录」作为 DSH 会话的 cwd；其余字段用于把待办对应到项目。</span><span className="wb-grow" />
         <button className="wb-btn primary" onClick={() => setDraft({ ...EMPTY })}>+ 添加项目</button></div>
       <table className="wb-table">
-        <thead><tr><th>名称</th><th>工作目录</th><th style={{ width: 110 }}>GitLab 项目 ID</th><th style={{ width: 110 }}>禅道产品 ID</th><th style={{ width: 140 }}>Jenkins Job</th><th style={{ width: 120 }} /></tr></thead>
+        <thead><tr><th>名称</th><th>工作目录</th><th style={{ width: 110 }}>GitLab 项目 ID</th><th style={{ width: 110 }}>禅道产品 ID</th><th style={{ width: 140 }}>Jenkins Job</th><th style={{ width: 150 }} /></tr></thead>
         <tbody>
           {p.state.projects.map((x) => (
             <tr key={x.id}><td>{x.name}</td><td className="wb-ellipsis" style={{ maxWidth: 320 }} title={x.cwd}>{x.cwd}</td>

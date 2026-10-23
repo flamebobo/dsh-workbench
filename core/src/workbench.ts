@@ -286,7 +286,7 @@ export class Workbench {
       { name: '订单服务 / order-service', cwd: join(baseDir, 'order-service'), jenkinsJob: 'order-service' },
       { name: '前端 / teleone-web', cwd: join(baseDir, 'teleone-web'), jenkinsJob: 'teleone-web' },
       { name: '认证中心 / auth', cwd: join(baseDir, 'auth-center'), zentaoProductId: 8 },
-      { name: '数据中心 / report', cwd: join(baseDir, 'data-center') },
+      { name: '数据中心 / report', cwd: join(baseDir, 'data-center'), zentaoProductId: 9 },
       { name: '基础设施 / infrastructure', cwd: join(baseDir, 'infrastructure'), gitlabProjectId: 77 },
     ]
     for (const p of demo) {

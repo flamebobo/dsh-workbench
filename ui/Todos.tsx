@@ -17,7 +17,8 @@ export function Todos(p: PageProps & { todos?: TodoResult; reloadTodos: () => Pr
   const rows = useMemo(() => (todos?.items ?? []).filter((r) => filter === 'all' || r.source === filter), [todos, filter])
   const count = (s: WorkItem['source']) => todos?.items.filter((r) => r.source === s).length ?? 0
   const sel: Row | undefined = rows.find((r) => `${r.source}:${r.ref}` === selected) ?? undefined
-  useEffect(() => { if (!selected && rows[0]) setSelected(`${rows[0].source}:${rows[0].ref}`) }, [rows, selected])
+  // keep a valid selection when the filter or the list changes
+  useEffect(() => { if (rows[0] && !rows.some((r) => `${r.source}:${r.ref}` === selected)) setSelected(`${rows[0].source}:${rows[0].ref}`) }, [rows, selected])
   useEffect(() => { setAgentId(undefined) }, [selected])
 
   if (!todos) return <div className="wb-empty" style={{ flex: 1 }}>正在拉取待办…</div>

@@ -131,3 +131,10 @@ test('agents and projects are editable', () => {
   assert.equal(wb.agent('fullstack').model, 'deepseek-pro')
   assert.throws(() => wb.saveProject({ name: 'x', cwd: 'relative/path' }), /绝对路径/)
 })
+
+test('every demo to-do resolves to a seeded demo project', async () => {
+  const { wb } = setup()
+  const { items } = await wb.listTodos()
+  const missing = items.filter((i) => !wb.resolveProject(i)).map((i) => i.ref)
+  assert.deepEqual(missing, [])
+})

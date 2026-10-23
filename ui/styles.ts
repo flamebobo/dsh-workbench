@@ -34,6 +34,7 @@ export const css = `
 .wb-table { width: 100%; border-collapse: collapse; }
 .wb-table th { text-align: left; font-weight: 500; font-size: 12px; color: var(--wb-fg3); padding: 6px 10px; border-bottom: 1px solid var(--wb-bd1); position: sticky; top: 0; background: var(--wb-bg); }
 .wb-table td { padding: 9px 10px; border-bottom: 1px solid var(--wb-bd1); vertical-align: middle; }
+.wb-table td .wb-btn { white-space: nowrap; }
 .wb-table tr.row { cursor: pointer; } .wb-table tr.row:hover td { background: var(--wb-hover); } .wb-table tr.sel td { background: color-mix(in srgb, var(--wb-blue) 9%, transparent); }
 .wb-pri { display: inline-block; min-width: 26px; text-align: center; border-radius: 4px; font-size: 11px; font-weight: 600; padding: 0 4px; background: var(--wb-l2); color: var(--wb-fg2); }
 .wb-pri.P0 { background: color-mix(in srgb, var(--wb-red) 16%, transparent); color: var(--wb-red); }

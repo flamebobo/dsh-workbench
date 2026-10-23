@@ -50,7 +50,7 @@ export const demoZentao: WorkItem[] = [
     related: [], url: 'https://zentao.example.com/bug-view-4818.html',
   },
   {
-    ref: 'DOC-77', source: 'zentao', priority: 'P3', project: '云支付 / docs',
+    ref: 'DOC-77', source: 'zentao', priority: 'P3', project: '云支付 / docs', zentaoProductId: 12,
     title: '文档：支付回调时序图补充', statusText: '待处理', due: undefined,
     description: '补充回调重试、补单、幂等判断三个场景的时序图，放入 payment-core/docs。',
     acceptance: ['三张时序图（mermaid）', '与代码行为一致'],
