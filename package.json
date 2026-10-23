@@ -1,0 +1,17 @@
+{
+  "name": "dsh-workbench",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test core/test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "esbuild": "^0.28.2",
+    "react": "^18.3.1",
+    "typescript": "^7.0.2"
+  }
+}
