@@ -67,7 +67,6 @@ export interface Issue {
   priority?: Priority
   /** Run the first message through this command (`/plan <prompt>` ...) instead of sending it as plain text. */
   command?: CommandName
-  links?: string[]
   attachments?: Attachment[]
   agentId: string
   projectId?: string

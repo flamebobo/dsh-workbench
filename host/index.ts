@@ -44,6 +44,7 @@ export function apply(ctx: Ctx) {
       }
       case 'project.save': return wb.saveProject(p)
       case 'project.delete': return wb.deleteProject(p.id)
+      case 'files.search': return wb.searchFiles(p.projectId, p.q ?? '')
       case 'models.list': return await driver.listModels()
       default: throw new WorkbenchError('invalid', `unknown endpoint ${endpoint}`)
     }

@@ -10,6 +10,7 @@ import { fetchJenkins } from './connectors/jenkins.ts'
 import type { ConnectorContext, Creds, FetchLike } from './connectors/http.ts'
 import { fetchZentao } from './connectors/zentao.ts'
 import { Store } from './store.ts'
+import { fuzzy, listFiles, mentionedFiles } from './files.ts'
 import type { AgentProfile, Attachment, CommandName, Issue, Priority, Project, Run, Source, Status, WorkItem } from './types.ts'
 import { STATUSES } from './types.ts'
 import { builtinAgents } from './agents.ts'
@@ -34,7 +35,6 @@ const now = () => new Date().toISOString()
 const cleanLines = (l?: string[]) => (l ?? []).map((x) => x.trim()).filter(Boolean)
 const COMMANDS: CommandName[] = ['plan', 'goal']
 const MAX_UPLOAD = 25 * 1024 * 1024
-const safeUrl = (u: string) => { try { return ['http:', 'https:'].includes(new URL(u).protocol) } catch { return false } }
 const ACTIVE: Status[] = ['todo', 'in_progress', 'in_review', 'blocked', 'backlog']
 
 export interface WorkbenchOptions {
@@ -134,14 +134,14 @@ export class Workbench {
     )
   }
 
-  buildPrompt(i: Pick<Issue, 'title' | 'description' | 'acceptance' | 'sourceRef' | 'links' | 'attachments'>, w?: WorkItem): string {
+  buildPrompt(i: Pick<Issue, 'title' | 'description' | 'acceptance' | 'sourceRef' | 'attachments'>, w?: WorkItem, files: string[] = []): string {
     const lines = [`# 任务：${i.title}`]
     if (i.sourceRef) lines.push(`来源：${i.sourceRef.source} ${i.sourceRef.ref}${w?.url ? `（${w.url}）` : ''}`)
     if (w) lines.push(`项目：${w.project}　优先级：${w.priority}${w.due ? `　截止：${w.due}` : ''}`)
     lines.push('', '## 背景', i.description || '（无）')
     lines.push('', '## 验收标准', ...(i.acceptance.length ? i.acceptance.map((a, n) => `${n + 1}. ${a}`) : ['（未给出，请先与我确认再动手）']))
     if (w?.related.length) lines.push('', '## 关联信息', ...w.related.map((r) => `- ${r.label}${r.detail ? `：${r.detail}` : ''}`))
-    if (i.links?.length) lines.push('', '## 参考链接', ...i.links.map((l) => `- ${l}`))
+    if (files.length) lines.push('', '## 引用的项目文件（相对工作目录，请先阅读）', ...files.map((f) => `- ${f}`))
     if (i.attachments?.length) lines.push('', '## 附件（已随本消息附上）', ...i.attachments.map((a) => `- ${a.name}`))
     lines.push('', '请先阅读相关代码、说明你的方案，再实施。完成后总结改动与自测结果；不要自行判定「已完成」，由我验收。')
     return lines.join('\n')
@@ -198,7 +198,7 @@ export class Workbench {
     try {
       const { sessionId } = await this.driver.start({
         runId: run.id, cwd: project.cwd, title: `${issue.key} ${issue.title}`,
-        prompt: this.buildPrompt(issue, item),
+        prompt: this.buildPrompt(issue, item, mentionedFiles(project.cwd, issue.description)),
         command: issue.command,
         attachments: (issue.attachments ?? []).map((a) => ({ name: a.name, mediaType: a.mediaType, path: this.uploadPath(a) })),
         profile: { presetId: agent.id, model: agent.model, instructions: agent.instructions },
@@ -250,6 +250,19 @@ export class Workbench {
     })
   }
 
+  // ---------- project files (@ mentions) ----------
+  private fileIndex = new Map<string, { at: number; files: string[] }>()
+
+  /** Fuzzy file search inside a project's working directory; the walk is cached for a few seconds while the user types. */
+  searchFiles(projectId: string, query: string): string[] {
+    const project = this.store.data.projects.find((p) => p.id === projectId)
+    if (!project) throw new WorkbenchError('invalid', '请先选择项目')
+    if (!existsSync(project.cwd)) throw new WorkbenchError('invalid', `工作目录不存在：${project.cwd}`)
+    let idx = this.fileIndex.get(projectId)
+    if (!idx || Date.now() - idx.at > 30_000) { idx = { at: Date.now(), files: listFiles(project.cwd) }; this.fileIndex.set(projectId, idx) }
+    return fuzzy(idx.files, query)
+  }
+
   // ---------- attachments ----------
   private get uploadsDir() { return join(dirname(this.store.path), 'uploads') }
   uploadPath(a: Pick<Attachment, 'id'>) { return join(this.uploadsDir, a.id) }
@@ -266,22 +279,19 @@ export class Workbench {
     return att
   }
 
-  /** Keep only well-formed links and attachments whose bytes are still on disk (the page is untrusted input). */
-  private cleanExtras(x: { command?: string; links?: string[]; attachments?: Attachment[] }) {
+  /** Keep only a known command and attachments whose bytes are still on disk (the page is untrusted input). */
+  private cleanExtras(x: { command?: string; attachments?: Attachment[] }) {
     if (x.command && !COMMANDS.includes(x.command as CommandName)) throw new WorkbenchError('invalid', `不支持的指令 /${x.command}`)
-    const links = cleanLines(x.links)
-    const bad = links.find((l) => !safeUrl(l))
-    if (bad) throw new WorkbenchError('invalid', `链接必须以 http:// 或 https:// 开头：${bad}`)
     const attachments = (x.attachments ?? []).filter((a) => /^[0-9a-f-]{36}$/.test(a.id) && existsSync(this.uploadPath(a)))
       .map(({ id, name, mediaType, size }) => ({ id, name, mediaType, size }))
-    return { command: (x.command || undefined) as CommandName | undefined, links, attachments }
+    return { command: (x.command || undefined) as CommandName | undefined, attachments }
   }
 
   // ---------- issues ----------
   listIssues() { return this.store.data.issues }
   listRuns(issueId?: string) { return this.store.data.runs.filter((r) => !issueId || r.issueId === issueId) }
 
-  createIssue(input: { title: string; description?: string; acceptance?: string[]; priority?: Priority; command?: string; links?: string[]; attachments?: Attachment[]; agentId?: string; projectId?: string; status?: Status }): Issue {
+  createIssue(input: { title: string; description?: string; acceptance?: string[]; priority?: Priority; command?: string; attachments?: Attachment[]; agentId?: string; projectId?: string; status?: Status }): Issue {
     if (!input.title.trim()) throw new WorkbenchError('invalid', '标题不能为空')
     if (input.status === 'done') throw new WorkbenchError('forbidden', '「已完成」只能由人在看板上设置')
     const extras = this.cleanExtras(input)
@@ -299,17 +309,16 @@ export class Workbench {
     })
   }
 
-  updateIssue(id: string, patch: Partial<Pick<Issue, 'title' | 'description' | 'acceptance' | 'priority' | 'agentId' | 'projectId'>> & { command?: string; links?: string[]; attachments?: Attachment[] }) {
-    const extras = 'command' in patch || patch.links || patch.attachments ? this.cleanExtras(patch) : undefined
+  updateIssue(id: string, patch: Partial<Pick<Issue, 'title' | 'description' | 'acceptance' | 'priority' | 'agentId' | 'projectId'>> & { command?: string; attachments?: Attachment[] }) {
+    const extras = 'command' in patch || patch.attachments ? this.cleanExtras(patch) : undefined
     return this.store.update((d) => {
       const i = d.issues.find((x) => x.id === id)
       if (!i) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
-      const { projectId, acceptance, command: _c, links: _l, attachments: _a, ...rest } = patch
+      const { projectId, acceptance, command: _c, attachments: _a, ...rest } = patch
       Object.assign(i, Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)), { updatedAt: now() })
       if (acceptance) i.acceptance = cleanLines(acceptance)
       if (extras) {
         if ('command' in patch) i.command = extras.command
-        if (patch.links) i.links = extras.links
         if (patch.attachments) i.attachments = extras.attachments
       }
       if (projectId !== undefined) i.projectId = projectId || undefined // '' clears the project

@@ -182,7 +182,7 @@ test('a blocked card can be started again; done cards cannot', async () => {
   await assert.rejects(() => wb.startIssue(issue.id), /已完成/)
 })
 
-test('task extras: links, attachments and /plan reach the driver; bad input is refused', async () => {
+test('task extras: attachments and /plan reach the driver; bad input is refused', async () => {
   const { wb, driver, dir } = setup()
   const project = wb.listProjects().find((p) => p.name.endsWith('payment-core'))!
   const att = wb.saveUpload({ name: '../设计稿.png', mediaType: 'image/png', data: Buffer.from('png-bytes') })
@@ -190,21 +190,18 @@ test('task extras: links, attachments and /plan reach the driver; bad input is r
   assert.equal(readFileSync(wb.uploadPath(att), 'utf8'), 'png-bytes')
   assert.throws(() => wb.saveUpload({ name: 'empty', data: new Uint8Array() }), /文件为空/)
 
-  assert.throws(() => wb.createIssue({ title: 'x', links: ['javascript:alert(1)'] }), /http/)
   assert.throws(() => wb.createIssue({ title: 'x', command: 'rm' }), /不支持的指令/)
 
   const issue = wb.createIssue({
-    title: '带附件的任务', projectId: project.id, command: 'plan', links: [' https://wiki.example.com/a '],
+    title: '带附件的任务', projectId: project.id, command: 'plan',
     attachments: [att, { id: '00000000-0000-0000-0000-000000000000', name: 'ghost', mediaType: 'x', size: 1 }],
   })
-  assert.deepEqual(issue.links, ['https://wiki.example.com/a'])
   assert.deepEqual(issue.attachments!.map((a) => a.name), ['.._设计稿.png']) // the missing file is dropped
 
   await wb.startIssue(issue.id)
   const req = driver.started[0]!
   assert.equal(req.command, 'plan')
   assert.deepEqual(req.attachments, [{ name: '.._设计稿.png', mediaType: 'image/png', path: join(dir, 'uploads', att.id) }])
-  assert.match(req.prompt, /## 参考链接\n- https:\/\/wiki\.example\.com\/a/)
   assert.match(req.prompt, /## 附件.*\n- \.\._设计稿\.png/)
 
   wb.updateIssue(issue.id, { command: '' }) // clearing the command
@@ -227,4 +224,25 @@ test('awaiting.user hands the card to review while the turn is still open; a lat
   wb.setStatus(issue.id, 'blocked') // a human moved it; a stray event must not change it
   driver.emit({ type: 'awaiting.user', runId: run.id, reason: 'x' })
   assert.equal(wb.listIssues()[0]!.status, 'blocked')
+})
+
+test('@ file mentions: fuzzy search inside the project, and mentioned files are listed in the prompt', async () => {
+  const { wb, driver } = setup()
+  const project = wb.listProjects().find((p) => p.name.endsWith('payment-core'))!
+  assert.deepEqual(wb.searchFiles(project.id, 'pcb').slice(0, 1), ['src/pay-callback.js']) // scattered letters
+  assert.equal(wb.searchFiles(project.id, 'ledger')[0], 'src/ledger.js') // name hit first
+  assert.ok(wb.searchFiles(project.id, '').length >= 4) // empty query lists files, shallow first
+  assert.deepEqual(wb.searchFiles(project.id, 'zzzz-nope'), [])
+  assert.throws(() => wb.searchFiles('prj_missing', 'x'), /请先选择项目/)
+
+  const issue = wb.createIssue({
+    title: '引用文件', projectId: project.id,
+    description: '看 @src/pay-callback.js，还有 @test/pay-callback.test.js。别碰 @../../etc/passwd 和 @src/missing.js，也别重复 @src/pay-callback.js',
+  })
+  await wb.startIssue(issue.id)
+  const prompt = driver.started[0]!.prompt
+  assert.match(prompt, /## 引用的项目文件.*\n- src\/pay-callback\.js\n- test\/pay-callback\.test\.js\n/)
+  const section = prompt.slice(prompt.indexOf('## 引用的项目文件'))
+  assert.doesNotMatch(section, /passwd|missing/) // escapes and non-existent files are not listed
+  assert.equal((prompt.match(/^- src\/pay-callback\.js$/gm) ?? []).length, 1)
 })

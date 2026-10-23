@@ -1,8 +1,9 @@
 import * as React from 'react'
-import { ago, COMMANDS, fmtSize, isImage, rpc, STATUS_LABEL, uploadFile, type Attachment, type Issue, type Status } from './api.ts'
+import { ago, rpc, STATUS_LABEL, type Attachment, type Issue, type Status } from './api.ts'
+import { Composer } from './Composer.tsx'
 import type { PageProps } from './App.tsx'
 
-const { useState, useEffect, useRef } = React
+const { useState, useEffect } = React
 const COLUMNS: Status[] = ['backlog', 'todo', 'in_progress', 'in_review', 'done', 'blocked']
 
 export function Board(p: PageProps) {
@@ -65,46 +66,24 @@ const STARTABLE: Status[] = ['backlog', 'todo', 'blocked']
 function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue; initialStatus?: Status; p: PageProps; onClose: () => void }) {
   const { state } = p
   const [title, setTitle] = useState(issue?.title ?? '')
-  const [description, setDescription] = useState(issue?.description ?? '')
+  // the description box works like DSH's composer: a leading /plan or /goal is the task's command
+  const [text, setText] = useState(issue?.command ? `/${issue.command} ${issue.description}` : (issue?.description ?? ''))
   const [acceptance, setAcceptance] = useState((issue?.acceptance ?? []).join('\n'))
   const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>(issue?.priority ?? 'P2')
   const [projectId, setProjectId] = useState(issue?.projectId ?? '')
   const [agentId, setAgentId] = useState(issue?.agentId ?? 'fullstack')
   const [status, setStatus] = useState<Status>(issue?.status ?? initialStatus ?? 'backlog')
-  const [command, setCommand] = useState(issue?.command ?? '')
-  const [links, setLinks] = useState<string[]>(issue?.links ?? [])
-  const [linkInput, setLinkInput] = useState('')
   const [files, setFiles] = useState<Attachment[]>(issue?.attachments ?? [])
-  const [uploading, setUploading] = useState(0)
-  const [over, setOver] = useState(false)
-  const previews = useRef(new Map<string, string>()) // object URLs for images added in this dialog
-  const picker = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
-  useEffect(() => () => { previews.current.forEach((u) => URL.revokeObjectURL(u)) }, [])
   useEffect(() => { if (issue) setStatus(issue.status) }, [issue?.status]) // a session ending changes it under us
   const runs = issue ? state.runs.filter((r) => r.issueId === issue.id).reverse() : []
   const canStart = !issue || STARTABLE.includes(issue.status)
   const lines = acceptance.split('\n')
 
-  async function addFiles(list: FileList | File[]) {
-    for (const f of Array.from(list)) {
-      setUploading((n) => n + 1)
-      try {
-        const a = await uploadFile(f)
-        if (f.type.startsWith('image/')) previews.current.set(a.id, URL.createObjectURL(f))
-        setFiles((cur) => [...cur, a])
-      } catch (e) { p.notify(`${f.name}：${(e as Error).message}`) } finally { setUploading((n) => n - 1) }
-    }
+  const fields = () => {
+    const m = /^\/(plan|goal)(?:\s+([\s\S]*))?$/.exec(text.trimStart())
+    return { title, description: m ? (m[2] ?? '') : text, command: m ? m[1] : '', acceptance: lines, priority, projectId, agentId, attachments: files }
   }
-  function addLink() {
-    const v = linkInput.trim()
-    if (!v) return
-    if (!/^https?:\/\//i.test(v)) { p.notify('链接必须以 http:// 或 https:// 开头'); return }
-    if (!links.includes(v)) setLinks([...links, v])
-    setLinkInput('')
-  }
-
-  const fields = () => ({ title, description, acceptance: lines, priority, projectId, agentId, command, links: linkInput.trim() && /^https?:\/\//i.test(linkInput.trim()) ? [...links, linkInput.trim()] : links, attachments: files })
   async function save(start: boolean) {
     if (!title.trim()) { p.notify('标题不能为空'); return }
     if (start && !projectId) { p.notify('开工前请先选择项目（会话的工作目录）'); return }
@@ -131,36 +110,15 @@ function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue; initi
 
   return (
     <div className="wb-modal-mask" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className={`wb-modal ${over ? 'drop' : ''}`} role="dialog" aria-label={issue?.key ?? '新建任务'}
-        onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true) } }}
-        onDragLeave={(e) => { if (e.currentTarget === e.target) setOver(false) }}
-        onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); setOver(false); void addFiles(e.dataTransfer.files) } }}>
+      <div className="wb-modal" role="dialog" aria-label={issue?.key ?? '新建任务'}>
         <div className="wb-row"><span className="wb-sub">{issue ? `${issue.key}${issue.sourceRef ? ` · ${issue.sourceRef.source} ${issue.sourceRef.ref}` : ' · 手工任务'}` : '新建任务'}</span><span className="wb-grow" />
           {issue?.sessionId && <button className="wb-btn" onClick={() => p.openSession(issue.sessionId!)}>打开关联会话 ↗</button>}
           <button className="wb-btn" aria-label="关闭" onClick={onClose}>✕</button></div>
         <div className="wb-field"><label>标题</label><input className="wb-input" autoFocus={!issue} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例如：补充对账脚本的幂等校验" /></div>
-        <div className="wb-field"><label>描述 / 背景</label><textarea className="wb-textarea" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="任务背景、现状；可直接粘贴截图"
-            onPaste={(e) => { const imgs = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/')); if (imgs.length) { e.preventDefault(); void addFiles(imgs) } }} /></div>
+        <div className="wb-field"><label>任务描述</label>
+          <Composer text={text} onText={setText} files={files} onFiles={setFiles} notify={p.notify} projectId={projectId || undefined} placeholder="任务背景、现状、要做什么；链接直接写在文字里，@ 可引用项目文件" /></div>
         <div className="wb-field"><label>验收标准（每行一条，开工时会写进首条消息）</label>
           <textarea className="wb-textarea" style={{ minHeight: 70 }} value={acceptance} onChange={(e) => setAcceptance(e.target.value)} placeholder={'重复请求不重复入账\n补充单测并通过'} /></div>
-        <div className="wb-field"><label>指令（相当于在 DSH 输入框里以 / 开头发送）</label>
-          <select className="wb-select" value={command} onChange={(e) => setCommand(e.target.value)}>{COMMANDS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select>
-          <div className="wb-sub" style={{ marginTop: 3 }}>{COMMANDS.find((c) => c.id === command)?.hint}</div></div>
-        <div className="wb-field"><label>链接</label>
-          {links.length > 0 && <div className="wb-chips">{links.map((l) => (
-            <span className="wb-chipx" key={l}><a href={l} target="_blank" rel="noreferrer noopener" title={l}>{l.replace(/^https?:\/\//, '')}</a>
-              <button aria-label="移除链接" onClick={() => setLinks(links.filter((x) => x !== l))}>✕</button></span>))}</div>}
-          <div className="wb-row"><input className="wb-input" value={linkInput} placeholder="粘贴链接后回车，如需求文档、设计稿、接口文档" onChange={(e) => setLinkInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLink() } }} /><button className="wb-btn" onClick={addLink}>添加</button></div></div>
-        <div className="wb-field"><label>图片 / 文档（可拖入弹窗，或在描述里粘贴截图）</label>
-          <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files) void addFiles(e.target.files); e.target.value = '' }} />
-          <div className="wb-row"><button className="wb-btn" onClick={() => picker.current?.click()}>＋ 添加图片 / 文档</button>
-            {uploading > 0 && <span className="wb-muted">正在上传 {uploading} 个…</span>}</div>
-          {files.length > 0 && <div className="wb-files">{files.map((a) => (
-            <div className="wb-file" key={a.id}>
-              {previews.current.get(a.id) ? <img src={previews.current.get(a.id)} alt="" /> : <span className="ic">{isImage(a) ? '🖼' : '📄'}</span>}
-              <span className="wb-ellipsis wb-grow" title={a.name}>{a.name}</span><span className="wb-muted">{fmtSize(a.size)}</span>
-              <button aria-label="移除附件" onClick={() => setFiles(files.filter((x) => x.id !== a.id))}>✕</button></div>))}</div>}</div>
         <div className="wb-row">
           <div className="wb-field wb-grow"><label>项目（工作目录）</label>
             <select className="wb-select" value={projectId} onChange={(e) => setProjectId(e.target.value)}>

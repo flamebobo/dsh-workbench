@@ -44,10 +44,10 @@ export async function uploadFile(file: File): Promise<Attachment> {
   return j.value as Attachment
 }
 
-export const COMMANDS: { id: string; label: string; hint: string }[] = [
-  { id: '', label: '直接发送', hint: '把任务作为普通消息发给智能体' },
-  { id: 'plan', label: '/plan 先出方案', hint: '进入计划模式：只读探索，给出方案并等你批准后再动手' },
-  { id: 'goal', label: '/goal 设为目标', hint: '把任务设为长任务目标，智能体会持续推进直到完成' },
+/** DSH composer commands that can open a task (a leading `/plan` or `/goal` in the description). */
+export const COMMANDS: { id: 'plan' | 'goal'; label: string; desc: string }[] = [
+  { id: 'goal', label: '目标', desc: '设置或查看长期任务目标' },
+  { id: 'plan', label: '计划', desc: '进入或退出计划模式' },
 ]
 
 export const fmtSize = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`)

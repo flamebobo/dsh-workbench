@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { COMMANDS, fmtSize, rpc, STATUS_LABEL, type Issue, type RpcError, type TodoResult, type WorkItem } from './api.ts'
+import { fmtSize, rpc, STATUS_LABEL, type Issue, type RpcError, type TodoResult, type WorkItem } from './api.ts'
 import type { PageProps } from './App.tsx'
 
 const { useState, useMemo, useEffect } = React
@@ -108,8 +108,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; reloadTodos: () => Pr
             <div>{sel.description || '（无）'}</div>
             <h4>验收标准</h4>
             {sel.acceptance.length ? <ul className="wb-ac">{sel.acceptance.map((a, i) => <li key={i}>{a}</li>)}</ul> : <div className="wb-muted">未给出，开工后智能体会先与你确认。</div>}
-            {issue?.command && <><h4>指令</h4><div>{COMMANDS.find((c) => c.id === issue.command)?.label}</div></>}
-            {!!issue?.links?.length && <><h4>链接</h4>{issue.links.map((l) => <div className="wb-rel" key={l}><a href={l} target="_blank" rel="noreferrer noopener">{l}</a></div>)}</>}
+            {issue?.command && <><h4>指令</h4><div>{'/' + issue.command}</div></>}
             {!!issue?.attachments?.length && <><h4>附件</h4>{issue.attachments.map((a) => <div className="wb-rel" key={a.id}>{a.name}<span className="wb-muted"> · {fmtSize(a.size)}</span></div>)}</>}
             {sel.related.length > 0 && <><h4>关联信息</h4>{sel.related.map((r, i) => <div className="wb-rel" key={i}>{r.label}{r.detail && <span className="wb-muted"> · {r.detail}</span>}</div>)}</>}
           </div>

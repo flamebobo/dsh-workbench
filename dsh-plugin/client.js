@@ -44,10 +44,10 @@ var WB = (() => {
     apply: () => apply,
     inject: () => inject
   });
-  var React6 = __toESM(__require("react"), 1);
+  var React7 = __toESM(__require("react"), 1);
 
   // ui/App.tsx
-  var React5 = __toESM(__require("react"), 1);
+  var React6 = __toESM(__require("react"), 1);
 
   // ui/styles.ts
   var css = `
@@ -120,13 +120,17 @@ var WB = (() => {
 .wb-li:hover { background: var(--wb-hover); } .wb-li[aria-selected=true] { background: var(--wb-l2); border-color: var(--wb-bd); }
 .wb-pane { flex: 1; overflow: auto; padding: 18px 24px; max-width: 760px; }
 .wb-toast { position: absolute; right: 20px; bottom: 20px; z-index: 30; padding: 9px 14px; border-radius: 9px; background: var(--wb-fg); color: var(--wb-bg); box-shadow: 0 6px 24px rgba(0,0,0,.25); max-width: 420px; }
-.wb-modal.drop { outline: 2px dashed var(--wb-blue); outline-offset: -6px; }
-.wb-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
-.wb-chipx { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 1px 4px 1px 9px; border-radius: 12px; background: var(--wb-l2); font-size: 12px; }
-.wb-chipx a { color: var(--dsw-alias-link, var(--wb-blue)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 380px; text-decoration: none; }
-.wb-chipx button, .wb-file button { border: 0; background: none; color: var(--wb-fg3); padding: 0 6px; }
-.wb-chipx button:hover, .wb-file button:hover { color: var(--wb-red); }
-.wb-files { margin-top: 6px; display: flex; flex-direction: column; gap: 5px; }
+.wb-composer { position: relative; border: 1px solid var(--wb-bd); border-radius: 12px; background: var(--wb-bg); }
+.wb-composer:focus-within { border-color: var(--wb-blue); } .wb-composer.drop { outline: 2px dashed var(--wb-blue); outline-offset: 2px; }
+.wb-composer-text { display: block; width: 100%; min-height: 120px; border: 0; background: none; color: inherit; font: inherit; line-height: 1.55; padding: 10px 12px 4px; resize: vertical; outline: none; }
+.wb-composer-bar { display: flex; align-items: center; gap: 8px; padding: 4px 8px 8px; font-size: 12px; }
+.wb-plus { width: 28px; height: 28px; border-radius: 50%; border: 0; background: var(--wb-l2); color: var(--wb-fg2); font-size: 16px; line-height: 1; padding: 0; }
+.wb-plus:hover { background: var(--wb-hover); color: var(--wb-fg); }
+.wb-slash { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 25; max-height: 280px; overflow: auto; padding: 6px; border: 1px solid var(--wb-bd); border-radius: 12px; background: var(--wb-bg); box-shadow: 0 8px 28px rgba(0,0,0,.18); }
+.wb-slash-h { padding: 6px 10px 2px; font-size: 12px; color: var(--wb-fg3); }
+.wb-slash-i { display: flex; align-items: baseline; gap: 8px; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+.wb-slash-i[aria-selected=true] { background: var(--wb-l2); } .wb-slash-i .k { color: var(--wb-fg3); } .wb-slash-i .d { margin-left: auto; color: var(--wb-fg3); font-size: 12px; }
+.wb-files.in { margin: 0; padding: 8px 10px 0; } .wb-files { margin-top: 6px; display: flex; flex-direction: column; gap: 5px; }
 .wb-file { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 8px; border: 1px solid var(--wb-bd1); border-radius: 7px; background: var(--wb-l1); }
 .wb-file img { width: 28px; height: 28px; object-fit: cover; border-radius: 4px; } .wb-file .ic { width: 28px; text-align: center; font-size: 18px; }
 .wb-empty { padding: 40px; text-align: center; color: var(--wb-fg3); }
@@ -175,9 +179,8 @@ var WB = (() => {
     return j.value;
   }
   var COMMANDS = [
-    { id: "", label: "\u76F4\u63A5\u53D1\u9001", hint: "\u628A\u4EFB\u52A1\u4F5C\u4E3A\u666E\u901A\u6D88\u606F\u53D1\u7ED9\u667A\u80FD\u4F53" },
-    { id: "plan", label: "/plan \u5148\u51FA\u65B9\u6848", hint: "\u8FDB\u5165\u8BA1\u5212\u6A21\u5F0F\uFF1A\u53EA\u8BFB\u63A2\u7D22\uFF0C\u7ED9\u51FA\u65B9\u6848\u5E76\u7B49\u4F60\u6279\u51C6\u540E\u518D\u52A8\u624B" },
-    { id: "goal", label: "/goal \u8BBE\u4E3A\u76EE\u6807", hint: "\u628A\u4EFB\u52A1\u8BBE\u4E3A\u957F\u4EFB\u52A1\u76EE\u6807\uFF0C\u667A\u80FD\u4F53\u4F1A\u6301\u7EED\u63A8\u8FDB\u76F4\u5230\u5B8C\u6210" }
+    { id: "goal", label: "\u76EE\u6807", desc: "\u8BBE\u7F6E\u6216\u67E5\u770B\u957F\u671F\u4EFB\u52A1\u76EE\u6807" },
+    { id: "plan", label: "\u8BA1\u5212", desc: "\u8FDB\u5165\u6216\u9000\u51FA\u8BA1\u5212\u6A21\u5F0F" }
   ];
   var fmtSize = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`;
   var isImage = (a) => /^image\/(png|jpeg|webp|gif)$/.test(a.mediaType);
@@ -231,22 +234,203 @@ var WB = (() => {
     } }, "\u5237\u65B0")), /* @__PURE__ */ React.createElement("table", { className: "wb-table" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { style: { width: 66 } }, "\u4F18\u5148\u7EA7"), /* @__PURE__ */ React.createElement("th", null, "\u5F85\u529E\u4E8B\u9879"), /* @__PURE__ */ React.createElement("th", { style: { width: 150 } }, "\u6765\u6E90"), /* @__PURE__ */ React.createElement("th", { style: { width: 190 } }, "\u9879\u76EE / \u6A21\u5757"), /* @__PURE__ */ React.createElement("th", { style: { width: 90 } }, "\u72B6\u6001"), /* @__PURE__ */ React.createElement("th", { style: { width: 90 } }, "\u622A\u6B62"))), /* @__PURE__ */ React.createElement("tbody", null, rows.map((r) => {
       const key = `${r.source}:${r.ref}`;
       return /* @__PURE__ */ React.createElement("tr", { key, className: `row ${key === selected ? "sel" : ""}`, onClick: () => setSelected(key) }, /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("span", { className: `wb-pri ${r.priority}` }, r.priority)), /* @__PURE__ */ React.createElement("td", null, r.title, r.issueId && /* @__PURE__ */ React.createElement("span", { className: "wb-pill", style: { marginLeft: 8 } }, state.issues.find((i) => i.id === r.issueId)?.key)), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("span", { className: "wb-src" }, /* @__PURE__ */ React.createElement("i", { className: r.source }), r.ref)), /* @__PURE__ */ React.createElement("td", { className: "wb-muted wb-ellipsis", style: { maxWidth: 190 } }, r.project), /* @__PURE__ */ React.createElement("td", null, r.issueStatus ? /* @__PURE__ */ React.createElement("span", { className: "wb-pill" }, STATUS_LABEL[r.issueStatus]) : /* @__PURE__ */ React.createElement("span", { className: "wb-muted" }, r.statusText)), /* @__PURE__ */ React.createElement("td", { className: "wb-muted" }, r.due ? r.due.slice(5) : "\u2014"));
-    }))), !rows.length && /* @__PURE__ */ React.createElement("div", { className: "wb-empty" }, "\u6CA1\u6709\u5F85\u529E\u3002")), sel && /* @__PURE__ */ React.createElement("aside", { className: "wb-detail" }, /* @__PURE__ */ React.createElement("div", { className: "wb-detail-body" }, /* @__PURE__ */ React.createElement("div", { className: "wb-sub" }, /* @__PURE__ */ React.createElement("span", { className: "wb-src" }, /* @__PURE__ */ React.createElement("i", { className: sel.source }), SOURCE_LABEL[sel.source], " \xB7 ", sel.ref), " \xB7 ", sel.project), /* @__PURE__ */ React.createElement("h3", { style: { marginTop: 6 } }, sel.title), /* @__PURE__ */ React.createElement("dl", { className: "wb-kv" }, /* @__PURE__ */ React.createElement("dt", null, "\u4F18\u5148\u7EA7"), /* @__PURE__ */ React.createElement("dd", null, /* @__PURE__ */ React.createElement("span", { className: `wb-pri ${sel.priority}` }, sel.priority)), /* @__PURE__ */ React.createElement("dt", null, "\u72B6\u6001"), /* @__PURE__ */ React.createElement("dd", null, sel.statusText), /* @__PURE__ */ React.createElement("dt", null, "\u622A\u6B62"), /* @__PURE__ */ React.createElement("dd", null, sel.due ?? "\u2014"), /* @__PURE__ */ React.createElement("dt", null, "\u5DE5\u4F5C\u76EE\u5F55"), /* @__PURE__ */ React.createElement("dd", { className: "wb-ellipsis", title: project?.cwd }, project ? project.cwd : /* @__PURE__ */ React.createElement("span", { style: { color: "var(--wb-red)" } }, sel.source === "manual" ? "\u672A\u9009\u62E9\u9879\u76EE\uFF0C\u8BF7\u5728\u770B\u677F\u5361\u7247\u91CC\u9009\u62E9" : "\u672A\u914D\u7F6E\uFF0C\u8BF7\u5230\u300C\u9879\u76EE\u300D\u9875\u6DFB\u52A0"))), /* @__PURE__ */ React.createElement("h4", null, "\u80CC\u666F"), /* @__PURE__ */ React.createElement("div", null, sel.description || "\uFF08\u65E0\uFF09"), /* @__PURE__ */ React.createElement("h4", null, "\u9A8C\u6536\u6807\u51C6"), sel.acceptance.length ? /* @__PURE__ */ React.createElement("ul", { className: "wb-ac" }, sel.acceptance.map((a, i) => /* @__PURE__ */ React.createElement("li", { key: i }, a))) : /* @__PURE__ */ React.createElement("div", { className: "wb-muted" }, "\u672A\u7ED9\u51FA\uFF0C\u5F00\u5DE5\u540E\u667A\u80FD\u4F53\u4F1A\u5148\u4E0E\u4F60\u786E\u8BA4\u3002"), issue?.command && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("h4", null, "\u6307\u4EE4"), /* @__PURE__ */ React.createElement("div", null, COMMANDS.find((c) => c.id === issue.command)?.label)), !!issue?.links?.length && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("h4", null, "\u94FE\u63A5"), issue.links.map((l) => /* @__PURE__ */ React.createElement("div", { className: "wb-rel", key: l }, /* @__PURE__ */ React.createElement("a", { href: l, target: "_blank", rel: "noreferrer noopener" }, l)))), !!issue?.attachments?.length && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("h4", null, "\u9644\u4EF6"), issue.attachments.map((a) => /* @__PURE__ */ React.createElement("div", { className: "wb-rel", key: a.id }, a.name, /* @__PURE__ */ React.createElement("span", { className: "wb-muted" }, " \xB7 ", fmtSize(a.size))))), sel.related.length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("h4", null, "\u5173\u8054\u4FE1\u606F"), sel.related.map((r, i) => /* @__PURE__ */ React.createElement("div", { className: "wb-rel", key: i }, r.label, r.detail && /* @__PURE__ */ React.createElement("span", { className: "wb-muted" }, " \xB7 ", r.detail))))), /* @__PURE__ */ React.createElement("div", { className: "wb-detail-foot" }, !startable ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "wb-pill" }, "\u5DF2\u5F00\u5361 ", issue.key, " \xB7 ", STATUS_LABEL[issue.status]), /* @__PURE__ */ React.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React.createElement("button", { className: "wb-btn", onClick: () => p.go("board", issue.id) }, "\u67E5\u770B\u5361\u7247")) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("select", { className: "wb-select", style: { width: 130 }, value: agentId ?? issueAgent ?? DEFAULT_AGENT[sel.source], onChange: (e) => setAgentId(e.target.value), "aria-label": "\u667A\u80FD\u4F53" }, state.agents.map((a) => /* @__PURE__ */ React.createElement("option", { key: a.id, value: a.id }, a.name))), /* @__PURE__ */ React.createElement("button", { className: "wb-btn primary wb-grow", disabled: busy || !project, title: project ? void 0 : "\u8BF7\u5148\u9009\u62E9\u9879\u76EE", onClick: () => {
+    }))), !rows.length && /* @__PURE__ */ React.createElement("div", { className: "wb-empty" }, "\u6CA1\u6709\u5F85\u529E\u3002")), sel && /* @__PURE__ */ React.createElement("aside", { className: "wb-detail" }, /* @__PURE__ */ React.createElement("div", { className: "wb-detail-body" }, /* @__PURE__ */ React.createElement("div", { className: "wb-sub" }, /* @__PURE__ */ React.createElement("span", { className: "wb-src" }, /* @__PURE__ */ React.createElement("i", { className: sel.source }), SOURCE_LABEL[sel.source], " \xB7 ", sel.ref), " \xB7 ", sel.project), /* @__PURE__ */ React.createElement("h3", { style: { marginTop: 6 } }, sel.title), /* @__PURE__ */ React.createElement("dl", { className: "wb-kv" }, /* @__PURE__ */ React.createElement("dt", null, "\u4F18\u5148\u7EA7"), /* @__PURE__ */ React.createElement("dd", null, /* @__PURE__ */ React.createElement("span", { className: `wb-pri ${sel.priority}` }, sel.priority)), /* @__PURE__ */ React.createElement("dt", null, "\u72B6\u6001"), /* @__PURE__ */ React.createElement("dd", null, sel.statusText), /* @__PURE__ */ React.createElement("dt", null, "\u622A\u6B62"), /* @__PURE__ */ React.createElement("dd", null, sel.due ?? "\u2014"), /* @__PURE__ */ React.createElement("dt", null, "\u5DE5\u4F5C\u76EE\u5F55"), /* @__PURE__ */ React.createElement("dd", { className: "wb-ellipsis", title: project?.cwd }, project ? project.cwd : /* @__PURE__ */ React.createElement("span", { style: { color: "var(--wb-red)" } }, sel.source === "manual" ? "\u672A\u9009\u62E9\u9879\u76EE\uFF0C\u8BF7\u5728\u770B\u677F\u5361\u7247\u91CC\u9009\u62E9" : "\u672A\u914D\u7F6E\uFF0C\u8BF7\u5230\u300C\u9879\u76EE\u300D\u9875\u6DFB\u52A0"))), /* @__PURE__ */ React.createElement("h4", null, "\u80CC\u666F"), /* @__PURE__ */ React.createElement("div", null, sel.description || "\uFF08\u65E0\uFF09"), /* @__PURE__ */ React.createElement("h4", null, "\u9A8C\u6536\u6807\u51C6"), sel.acceptance.length ? /* @__PURE__ */ React.createElement("ul", { className: "wb-ac" }, sel.acceptance.map((a, i) => /* @__PURE__ */ React.createElement("li", { key: i }, a))) : /* @__PURE__ */ React.createElement("div", { className: "wb-muted" }, "\u672A\u7ED9\u51FA\uFF0C\u5F00\u5DE5\u540E\u667A\u80FD\u4F53\u4F1A\u5148\u4E0E\u4F60\u786E\u8BA4\u3002"), issue?.command && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("h4", null, "\u6307\u4EE4"), /* @__PURE__ */ React.createElement("div", null, "/" + issue.command)), !!issue?.attachments?.length && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("h4", null, "\u9644\u4EF6"), issue.attachments.map((a) => /* @__PURE__ */ React.createElement("div", { className: "wb-rel", key: a.id }, a.name, /* @__PURE__ */ React.createElement("span", { className: "wb-muted" }, " \xB7 ", fmtSize(a.size))))), sel.related.length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("h4", null, "\u5173\u8054\u4FE1\u606F"), sel.related.map((r, i) => /* @__PURE__ */ React.createElement("div", { className: "wb-rel", key: i }, r.label, r.detail && /* @__PURE__ */ React.createElement("span", { className: "wb-muted" }, " \xB7 ", r.detail))))), /* @__PURE__ */ React.createElement("div", { className: "wb-detail-foot" }, !startable ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "wb-pill" }, "\u5DF2\u5F00\u5361 ", issue.key, " \xB7 ", STATUS_LABEL[issue.status]), /* @__PURE__ */ React.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React.createElement("button", { className: "wb-btn", onClick: () => p.go("board", issue.id) }, "\u67E5\u770B\u5361\u7247")) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("select", { className: "wb-select", style: { width: 130 }, value: agentId ?? issueAgent ?? DEFAULT_AGENT[sel.source], onChange: (e) => setAgentId(e.target.value), "aria-label": "\u667A\u80FD\u4F53" }, state.agents.map((a) => /* @__PURE__ */ React.createElement("option", { key: a.id, value: a.id }, a.name))), /* @__PURE__ */ React.createElement("button", { className: "wb-btn primary wb-grow", disabled: busy || !project, title: project ? void 0 : "\u8BF7\u5148\u9009\u62E9\u9879\u76EE", onClick: () => {
       void start();
     } }, busy ? "\u6B63\u5728\u521B\u5EFA\u4F1A\u8BDD\u2026" : "\u5F00\u5DE5\uFF08\u521B\u5EFA\u4F1A\u8BDD\uFF09")))));
   }
 
   // ui/Board.tsx
+  var React3 = __toESM(__require("react"), 1);
+
+  // ui/Composer.tsx
   var React2 = __toESM(__require("react"), 1);
-  var { useState: useState2, useEffect: useEffect2, useRef } = React2;
+  var { useState: useState2, useRef, useEffect: useEffect2 } = React2;
+  var ITEMS = [
+    { key: "file", label: "\u6587\u4EF6", desc: "\u6DFB\u52A0\u56FE\u7247\u6216\u6587\u6863", section: "\u6DFB\u52A0" },
+    ...COMMANDS.map((c) => ({ key: c.id, label: c.label, desc: c.desc, section: "\u6307\u4EE4" }))
+  ];
+  var SECTIONS = ["\u6DFB\u52A0", "\u6307\u4EE4", "\u9879\u76EE\u6587\u4EF6"];
+  function Composer(p) {
+    const [uploading, setUploading] = useState2(0);
+    const [over, setOver] = useState2(false);
+    const [index, setIndex] = useState2(0);
+    const [dismissed, setDismissed] = useState2(false);
+    const [caret, setCaret] = useState2(0);
+    const [hits, setHits] = useState2([]);
+    const [hitErr, setHitErr] = useState2();
+    const previews = useRef(/* @__PURE__ */ new Map());
+    const picker = useRef(null);
+    const area = useRef(null);
+    const filesRef = useRef(p.files);
+    filesRef.current = p.files;
+    useEffect2(() => () => {
+      previews.current.forEach((u) => URL.revokeObjectURL(u));
+    }, []);
+    const q = /^\/([a-z]*)$/.exec(p.text);
+    const before = p.text.slice(0, caret);
+    const mention = /(?:^|\s)@([^\s@]*)$/.exec(before);
+    const mentionQuery = !q && mention ? mention[1] : void 0;
+    const slashItems = q && !dismissed ? ITEMS.filter((i) => i.key.startsWith(q[1]) || i.label.startsWith(q[1])) : [];
+    const fileItems = mentionQuery !== void 0 && !dismissed && p.projectId ? hits.map((f) => ({ key: f, label: f.slice(f.lastIndexOf("/") + 1), sub: f.includes("/") ? f.slice(0, f.lastIndexOf("/")) : "", section: "\u9879\u76EE\u6587\u4EF6" })) : [];
+    const items = slashItems.length ? slashItems : fileItems;
+    const needProject = mentionQuery !== void 0 && !dismissed && !p.projectId;
+    useEffect2(() => {
+      setIndex(0);
+    }, [p.text, hits]);
+    useEffect2(() => {
+      if (mentionQuery === void 0 || !p.projectId) {
+        setHits([]);
+        setHitErr(void 0);
+        return;
+      }
+      let live = true;
+      const t = setTimeout(() => {
+        rpc("files.search", { projectId: p.projectId, q: mentionQuery }).then((r) => {
+          if (live) {
+            setHits(r);
+            setHitErr(void 0);
+          }
+        }).catch((e) => {
+          if (live) {
+            setHits([]);
+            setHitErr(e.message);
+          }
+        });
+      }, 120);
+      return () => {
+        live = false;
+        clearTimeout(t);
+      };
+    }, [mentionQuery, p.projectId]);
+    async function add(list) {
+      for (const f of Array.from(list)) {
+        setUploading((n) => n + 1);
+        try {
+          const a = await uploadFile(f);
+          if (f.type.startsWith("image/")) previews.current.set(a.id, URL.createObjectURL(f));
+          p.onFiles([...filesRef.current, a]);
+        } catch (e) {
+          p.notify(`${f.name}\uFF1A${e.message}`);
+        } finally {
+          setUploading((n) => n - 1);
+        }
+      }
+    }
+    function choose(i) {
+      if (i.section === "\u9879\u76EE\u6587\u4EF6") {
+        const start = before.length - (mention[1].length + 1);
+        const next = `${p.text.slice(0, start)}@${i.key} ${p.text.slice(caret)}`;
+        const pos = start + i.key.length + 2;
+        p.onText(next);
+        setCaret(pos);
+        requestAnimationFrame(() => {
+          area.current?.focus();
+          area.current?.setSelectionRange(pos, pos);
+        });
+      } else if (i.key === "file") {
+        p.onText("");
+        picker.current?.click();
+      } else {
+        p.onText(`/${i.key} `);
+        area.current?.focus();
+      }
+    }
+    return /* @__PURE__ */ React2.createElement(
+      "div",
+      {
+        className: `wb-composer ${over ? "drop" : ""}`,
+        onDragOver: (e) => {
+          if (e.dataTransfer.types.includes("Files")) {
+            e.preventDefault();
+            setOver(true);
+          }
+        },
+        onDragLeave: (e) => {
+          if (!e.currentTarget.contains(e.relatedTarget)) setOver(false);
+        },
+        onDrop: (e) => {
+          if (e.dataTransfer.files.length) {
+            e.preventDefault();
+            setOver(false);
+            void add(e.dataTransfer.files);
+          }
+        }
+      },
+      (items.length > 0 || needProject || hitErr && mentionQuery !== void 0 || fileItems.length === 0 && mentionQuery !== void 0 && !dismissed && p.projectId && !hitErr && hits.length === 0 && mentionQuery !== "") && /* @__PURE__ */ React2.createElement("div", { className: "wb-slash", role: "listbox" }, SECTIONS.map((sec) => items.some((i) => i.section === sec) && /* @__PURE__ */ React2.createElement("div", { key: sec }, /* @__PURE__ */ React2.createElement("div", { className: "wb-slash-h" }, sec), items.filter((i) => i.section === sec).map((i) => /* @__PURE__ */ React2.createElement(
+        "div",
+        {
+          key: i.key,
+          role: "option",
+          "aria-selected": items[index] === i,
+          className: "wb-slash-i",
+          onMouseEnter: () => setIndex(items.indexOf(i)),
+          onMouseDown: (e) => {
+            e.preventDefault();
+            choose(i);
+          }
+        },
+        /* @__PURE__ */ React2.createElement("b", null, i.label),
+        i.section === "\u6307\u4EE4" || i.section === "\u6DFB\u52A0" ? /* @__PURE__ */ React2.createElement("span", { className: "k" }, i.key) : /* @__PURE__ */ React2.createElement("span", { className: "k wb-ellipsis" }, i.sub),
+        i.desc && /* @__PURE__ */ React2.createElement("span", { className: "d" }, i.desc)
+      )))), needProject && /* @__PURE__ */ React2.createElement("div", { className: "wb-slash-h" }, "\u8BF7\u5148\u5728\u4E0B\u65B9\u9009\u62E9\u9879\u76EE\uFF0C\u624D\u80FD\u641C\u7D22\u9879\u76EE\u6587\u4EF6"), hitErr && /* @__PURE__ */ React2.createElement("div", { className: "wb-slash-h", style: { color: "var(--wb-red)" } }, hitErr), !items.length && !needProject && !hitErr && /* @__PURE__ */ React2.createElement("div", { className: "wb-slash-h" }, "\u6CA1\u6709\u5339\u914D\u7684\u6587\u4EF6")),
+      p.files.length > 0 && /* @__PURE__ */ React2.createElement("div", { className: "wb-files in" }, p.files.map((a) => /* @__PURE__ */ React2.createElement("div", { className: "wb-file", key: a.id }, previews.current.get(a.id) ? /* @__PURE__ */ React2.createElement("img", { src: previews.current.get(a.id), alt: "" }) : /* @__PURE__ */ React2.createElement("span", { className: "ic" }, isImage(a) ? "\u{1F5BC}" : "\u{1F4C4}"), /* @__PURE__ */ React2.createElement("span", { className: "wb-ellipsis wb-grow", title: a.name }, a.name), /* @__PURE__ */ React2.createElement("span", { className: "wb-muted" }, fmtSize(a.size)), /* @__PURE__ */ React2.createElement("button", { "aria-label": "\u79FB\u9664\u9644\u4EF6", onClick: () => p.onFiles(p.files.filter((x) => x.id !== a.id)) }, "\u2715")))),
+      /* @__PURE__ */ React2.createElement(
+        "textarea",
+        {
+          ref: area,
+          className: "wb-composer-text",
+          value: p.text,
+          placeholder: p.placeholder,
+          onChange: (e) => {
+            p.onText(e.target.value);
+            setCaret(e.target.selectionStart);
+            setDismissed(false);
+          },
+          onKeyUp: (e) => setCaret(e.currentTarget.selectionStart),
+          onClick: (e) => setCaret(e.currentTarget.selectionStart),
+          onPaste: (e) => {
+            const fs = Array.from(e.clipboardData.files);
+            if (fs.length) {
+              e.preventDefault();
+              void add(fs);
+            }
+          },
+          onKeyDown: (e) => {
+            if (!items.length) return;
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setIndex((index + 1) % items.length);
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setIndex((index - 1 + items.length) % items.length);
+            } else if (e.key === "Enter" || e.key === "Tab") {
+              e.preventDefault();
+              choose(items[index]);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              setDismissed(true);
+            }
+          }
+        }
+      ),
+      /* @__PURE__ */ React2.createElement("div", { className: "wb-composer-bar" }, /* @__PURE__ */ React2.createElement("input", { ref: picker, type: "file", multiple: true, hidden: true, onChange: (e) => {
+        if (e.target.files) void add(e.target.files);
+        e.target.value = "";
+      } }), /* @__PURE__ */ React2.createElement("button", { className: "wb-plus", "aria-label": "\u6DFB\u52A0\u56FE\u7247\u6216\u6587\u6863", title: "\u6DFB\u52A0\u56FE\u7247\u6216\u6587\u6863", onClick: () => picker.current?.click() }, "\uFF0B"), uploading > 0 && /* @__PURE__ */ React2.createElement("span", { className: "wb-muted" }, "\u6B63\u5728\u4E0A\u4F20 ", uploading, " \u4E2A\u2026"), /* @__PURE__ */ React2.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React2.createElement("span", { className: "wb-muted" }, "\u8F93\u5165 / \u9009\u62E9\u6307\u4EE4 \xB7 @ \u5F15\u7528\u9879\u76EE\u6587\u4EF6 \xB7 \u53EF\u7C98\u8D34\u6216\u62D6\u5165\u56FE\u7247\u3001\u6587\u6863"))
+    );
+  }
+
+  // ui/Board.tsx
+  var { useState: useState3, useEffect: useEffect3 } = React3;
   var COLUMNS = ["backlog", "todo", "in_progress", "in_review", "done", "blocked"];
   function Board(p) {
     const { state } = p;
-    const [dragging, setDragging] = useState2();
-    const [over, setOver] = useState2();
-    const [openId, setOpenId] = useState2(p.focusIssue);
-    const [creating, setCreating] = useState2();
-    useEffect2(() => {
+    const [dragging, setDragging] = useState3();
+    const [over, setOver] = useState3();
+    const [openId, setOpenId] = useState3(p.focusIssue);
+    const [creating, setCreating] = useState3();
+    useEffect3(() => {
       if (p.focusIssue) setOpenId(p.focusIssue);
     }, [p.focusIssue]);
     const running = new Set(state.runs.filter((r) => r.status === "running").map((r) => r.issueId));
@@ -262,9 +446,9 @@ var WB = (() => {
       }
     }
     const open = state.issues.find((i) => i.id === openId);
-    return /* @__PURE__ */ React2.createElement("div", { className: "wb-main", style: { position: "relative" } }, /* @__PURE__ */ React2.createElement("div", { className: "wb-board" }, COLUMNS.map((col) => {
+    return /* @__PURE__ */ React3.createElement("div", { className: "wb-main", style: { position: "relative" } }, /* @__PURE__ */ React3.createElement("div", { className: "wb-board" }, COLUMNS.map((col) => {
       const items = state.issues.filter((i) => i.status === col).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      return /* @__PURE__ */ React2.createElement(
+      return /* @__PURE__ */ React3.createElement(
         "section",
         {
           key: col,
@@ -282,8 +466,8 @@ var WB = (() => {
             if (id) void move(id, col);
           }
         },
-        /* @__PURE__ */ React2.createElement("div", { className: "wb-col-h" }, /* @__PURE__ */ React2.createElement("span", { className: `wb-dot ${col}` }), STATUS_LABEL[col], /* @__PURE__ */ React2.createElement("span", { className: "n" }, items.length), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", style: { padding: "0 8px" }, "aria-label": `\u5728${STATUS_LABEL[col]}\u65B0\u5EFA`, onClick: () => setCreating(col) }, "+")),
-        /* @__PURE__ */ React2.createElement("div", { className: "wb-col-b" }, items.map((i) => /* @__PURE__ */ React2.createElement(
+        /* @__PURE__ */ React3.createElement("div", { className: "wb-col-h" }, /* @__PURE__ */ React3.createElement("span", { className: `wb-dot ${col}` }), STATUS_LABEL[col], /* @__PURE__ */ React3.createElement("span", { className: "n" }, items.length), /* @__PURE__ */ React3.createElement("button", { className: "wb-btn", style: { padding: "0 8px" }, "aria-label": `\u5728${STATUS_LABEL[col]}\u65B0\u5EFA`, onClick: () => setCreating(col) }, "+")),
+        /* @__PURE__ */ React3.createElement("div", { className: "wb-col-b" }, items.map((i) => /* @__PURE__ */ React3.createElement(
           "article",
           {
             key: i.id,
@@ -299,68 +483,37 @@ var WB = (() => {
             },
             onClick: () => setOpenId(i.id)
           },
-          /* @__PURE__ */ React2.createElement("div", { className: "k" }, running.has(i.id) && /* @__PURE__ */ React2.createElement("span", { className: "wb-spin", title: "\u4F1A\u8BDD\u8FD0\u884C\u4E2D" }), /* @__PURE__ */ React2.createElement("span", null, i.key), i.sourceRef && /* @__PURE__ */ React2.createElement("span", null, "\xB7 ", i.sourceRef.ref)),
-          /* @__PURE__ */ React2.createElement("div", { className: "t" }, i.title),
-          i.note && /* @__PURE__ */ React2.createElement("div", { className: "wb-ellipsis", style: { color: i.status === "blocked" ? "var(--wb-red)" : "var(--wb-amber)", fontSize: 11, marginBottom: 4 }, title: i.note }, i.note),
-          /* @__PURE__ */ React2.createElement("div", { className: "m" }, /* @__PURE__ */ React2.createElement("span", { className: "wb-pill" }, agentName2(i.agentId)), /* @__PURE__ */ React2.createElement("span", { style: { marginLeft: "auto" } }, ago(i.updatedAt)))
+          /* @__PURE__ */ React3.createElement("div", { className: "k" }, running.has(i.id) && /* @__PURE__ */ React3.createElement("span", { className: "wb-spin", title: "\u4F1A\u8BDD\u8FD0\u884C\u4E2D" }), /* @__PURE__ */ React3.createElement("span", null, i.key), i.sourceRef && /* @__PURE__ */ React3.createElement("span", null, "\xB7 ", i.sourceRef.ref)),
+          /* @__PURE__ */ React3.createElement("div", { className: "t" }, i.title),
+          i.note && /* @__PURE__ */ React3.createElement("div", { className: "wb-ellipsis", style: { color: i.status === "blocked" ? "var(--wb-red)" : "var(--wb-amber)", fontSize: 11, marginBottom: 4 }, title: i.note }, i.note),
+          /* @__PURE__ */ React3.createElement("div", { className: "m" }, /* @__PURE__ */ React3.createElement("span", { className: "wb-pill" }, agentName2(i.agentId)), /* @__PURE__ */ React3.createElement("span", { style: { marginLeft: "auto" } }, ago(i.updatedAt)))
         )))
       );
-    })), open && /* @__PURE__ */ React2.createElement(IssueModal, { issue: open, p, onClose: () => setOpenId(void 0) }), creating && /* @__PURE__ */ React2.createElement(IssueModal, { initialStatus: creating, p, onClose: () => setCreating(void 0) }));
+    })), open && /* @__PURE__ */ React3.createElement(IssueModal, { issue: open, p, onClose: () => setOpenId(void 0) }), creating && /* @__PURE__ */ React3.createElement(IssueModal, { initialStatus: creating, p, onClose: () => setCreating(void 0) }));
   }
   var PRIORITIES = ["P0", "P1", "P2", "P3"];
   var STARTABLE2 = ["backlog", "todo", "blocked"];
   function IssueModal({ issue, initialStatus, p, onClose }) {
     const { state } = p;
-    const [title, setTitle] = useState2(issue?.title ?? "");
-    const [description, setDescription] = useState2(issue?.description ?? "");
-    const [acceptance, setAcceptance] = useState2((issue?.acceptance ?? []).join("\n"));
-    const [priority, setPriority] = useState2(issue?.priority ?? "P2");
-    const [projectId, setProjectId] = useState2(issue?.projectId ?? "");
-    const [agentId, setAgentId] = useState2(issue?.agentId ?? "fullstack");
-    const [status, setStatus] = useState2(issue?.status ?? initialStatus ?? "backlog");
-    const [command, setCommand] = useState2(issue?.command ?? "");
-    const [links, setLinks] = useState2(issue?.links ?? []);
-    const [linkInput, setLinkInput] = useState2("");
-    const [files, setFiles] = useState2(issue?.attachments ?? []);
-    const [uploading, setUploading] = useState2(0);
-    const [over, setOver] = useState2(false);
-    const previews = useRef(/* @__PURE__ */ new Map());
-    const picker = useRef(null);
-    const [busy, setBusy] = useState2(false);
-    useEffect2(() => () => {
-      previews.current.forEach((u) => URL.revokeObjectURL(u));
-    }, []);
-    useEffect2(() => {
+    const [title, setTitle] = useState3(issue?.title ?? "");
+    const [text, setText] = useState3(issue?.command ? `/${issue.command} ${issue.description}` : issue?.description ?? "");
+    const [acceptance, setAcceptance] = useState3((issue?.acceptance ?? []).join("\n"));
+    const [priority, setPriority] = useState3(issue?.priority ?? "P2");
+    const [projectId, setProjectId] = useState3(issue?.projectId ?? "");
+    const [agentId, setAgentId] = useState3(issue?.agentId ?? "fullstack");
+    const [status, setStatus] = useState3(issue?.status ?? initialStatus ?? "backlog");
+    const [files, setFiles] = useState3(issue?.attachments ?? []);
+    const [busy, setBusy] = useState3(false);
+    useEffect3(() => {
       if (issue) setStatus(issue.status);
     }, [issue?.status]);
     const runs = issue ? state.runs.filter((r) => r.issueId === issue.id).reverse() : [];
     const canStart = !issue || STARTABLE2.includes(issue.status);
     const lines = acceptance.split("\n");
-    async function addFiles(list) {
-      for (const f of Array.from(list)) {
-        setUploading((n) => n + 1);
-        try {
-          const a = await uploadFile(f);
-          if (f.type.startsWith("image/")) previews.current.set(a.id, URL.createObjectURL(f));
-          setFiles((cur) => [...cur, a]);
-        } catch (e) {
-          p.notify(`${f.name}\uFF1A${e.message}`);
-        } finally {
-          setUploading((n) => n - 1);
-        }
-      }
-    }
-    function addLink() {
-      const v = linkInput.trim();
-      if (!v) return;
-      if (!/^https?:\/\//i.test(v)) {
-        p.notify("\u94FE\u63A5\u5FC5\u987B\u4EE5 http:// \u6216 https:// \u5F00\u5934");
-        return;
-      }
-      if (!links.includes(v)) setLinks([...links, v]);
-      setLinkInput("");
-    }
-    const fields = () => ({ title, description, acceptance: lines, priority, projectId, agentId, command, links: linkInput.trim() && /^https?:\/\//i.test(linkInput.trim()) ? [...links, linkInput.trim()] : links, attachments: files });
+    const fields = () => {
+      const m = /^\/(plan|goal)(?:\s+([\s\S]*))?$/.exec(text.trimStart());
+      return { title, description: m ? m[2] ?? "" : text, command: m ? m[1] : "", acceptance: lines, priority, projectId, agentId, attachments: files };
+    };
     async function save(start) {
       if (!title.trim()) {
         p.notify("\u6807\u9898\u4E0D\u80FD\u4E3A\u7A7A");
@@ -398,99 +551,32 @@ var WB = (() => {
       await p.refresh();
       onClose();
     }
-    return /* @__PURE__ */ React2.createElement("div", { className: "wb-modal-mask", onMouseDown: (e) => {
+    return /* @__PURE__ */ React3.createElement("div", { className: "wb-modal-mask", onMouseDown: (e) => {
       if (e.target === e.currentTarget) onClose();
-    } }, /* @__PURE__ */ React2.createElement(
-      "div",
-      {
-        className: `wb-modal ${over ? "drop" : ""}`,
-        role: "dialog",
-        "aria-label": issue?.key ?? "\u65B0\u5EFA\u4EFB\u52A1",
-        onDragOver: (e) => {
-          if (e.dataTransfer.types.includes("Files")) {
-            e.preventDefault();
-            setOver(true);
-          }
-        },
-        onDragLeave: (e) => {
-          if (e.currentTarget === e.target) setOver(false);
-        },
-        onDrop: (e) => {
-          if (e.dataTransfer.files.length) {
-            e.preventDefault();
-            setOver(false);
-            void addFiles(e.dataTransfer.files);
-          }
-        }
-      },
-      /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("span", { className: "wb-sub" }, issue ? `${issue.key}${issue.sourceRef ? ` \xB7 ${issue.sourceRef.source} ${issue.sourceRef.ref}` : " \xB7 \u624B\u5DE5\u4EFB\u52A1"}` : "\u65B0\u5EFA\u4EFB\u52A1"), /* @__PURE__ */ React2.createElement("span", { className: "wb-grow" }), issue?.sessionId && /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", onClick: () => p.openSession(issue.sessionId) }, "\u6253\u5F00\u5173\u8054\u4F1A\u8BDD \u2197"), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", "aria-label": "\u5173\u95ED", onClick: onClose }, "\u2715")),
-      /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u6807\u9898"), /* @__PURE__ */ React2.createElement("input", { className: "wb-input", autoFocus: !issue, value: title, onChange: (e) => setTitle(e.target.value), placeholder: "\u4F8B\u5982\uFF1A\u8865\u5145\u5BF9\u8D26\u811A\u672C\u7684\u5E42\u7B49\u6821\u9A8C" })),
-      /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u63CF\u8FF0 / \u80CC\u666F"), /* @__PURE__ */ React2.createElement(
-        "textarea",
-        {
-          className: "wb-textarea",
-          value: description,
-          onChange: (e) => setDescription(e.target.value),
-          placeholder: "\u4EFB\u52A1\u80CC\u666F\u3001\u73B0\u72B6\uFF1B\u53EF\u76F4\u63A5\u7C98\u8D34\u622A\u56FE",
-          onPaste: (e) => {
-            const imgs = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
-            if (imgs.length) {
-              e.preventDefault();
-              void addFiles(imgs);
-            }
-          }
-        }
-      )),
-      /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u9A8C\u6536\u6807\u51C6\uFF08\u6BCF\u884C\u4E00\u6761\uFF0C\u5F00\u5DE5\u65F6\u4F1A\u5199\u8FDB\u9996\u6761\u6D88\u606F\uFF09"), /* @__PURE__ */ React2.createElement("textarea", { className: "wb-textarea", style: { minHeight: 70 }, value: acceptance, onChange: (e) => setAcceptance(e.target.value), placeholder: "\u91CD\u590D\u8BF7\u6C42\u4E0D\u91CD\u590D\u5165\u8D26\n\u8865\u5145\u5355\u6D4B\u5E76\u901A\u8FC7" })),
-      /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u6307\u4EE4\uFF08\u76F8\u5F53\u4E8E\u5728 DSH \u8F93\u5165\u6846\u91CC\u4EE5 / \u5F00\u5934\u53D1\u9001\uFF09"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: command, onChange: (e) => setCommand(e.target.value) }, COMMANDS.map((c) => /* @__PURE__ */ React2.createElement("option", { key: c.id, value: c.id }, c.label))), /* @__PURE__ */ React2.createElement("div", { className: "wb-sub", style: { marginTop: 3 } }, COMMANDS.find((c) => c.id === command)?.hint)),
-      /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u94FE\u63A5"), links.length > 0 && /* @__PURE__ */ React2.createElement("div", { className: "wb-chips" }, links.map((l) => /* @__PURE__ */ React2.createElement("span", { className: "wb-chipx", key: l }, /* @__PURE__ */ React2.createElement("a", { href: l, target: "_blank", rel: "noreferrer noopener", title: l }, l.replace(/^https?:\/\//, "")), /* @__PURE__ */ React2.createElement("button", { "aria-label": "\u79FB\u9664\u94FE\u63A5", onClick: () => setLinks(links.filter((x) => x !== l)) }, "\u2715")))), /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement(
-        "input",
-        {
-          className: "wb-input",
-          value: linkInput,
-          placeholder: "\u7C98\u8D34\u94FE\u63A5\u540E\u56DE\u8F66\uFF0C\u5982\u9700\u6C42\u6587\u6863\u3001\u8BBE\u8BA1\u7A3F\u3001\u63A5\u53E3\u6587\u6863",
-          onChange: (e) => setLinkInput(e.target.value),
-          onKeyDown: (e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              addLink();
-            }
-          }
-        }
-      ), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", onClick: addLink }, "\u6DFB\u52A0"))),
-      /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u56FE\u7247 / \u6587\u6863\uFF08\u53EF\u62D6\u5165\u5F39\u7A97\uFF0C\u6216\u5728\u63CF\u8FF0\u91CC\u7C98\u8D34\u622A\u56FE\uFF09"), /* @__PURE__ */ React2.createElement("input", { ref: picker, type: "file", multiple: true, hidden: true, onChange: (e) => {
-        if (e.target.files) void addFiles(e.target.files);
-        e.target.value = "";
-      } }), /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", onClick: () => picker.current?.click() }, "\uFF0B \u6DFB\u52A0\u56FE\u7247 / \u6587\u6863"), uploading > 0 && /* @__PURE__ */ React2.createElement("span", { className: "wb-muted" }, "\u6B63\u5728\u4E0A\u4F20 ", uploading, " \u4E2A\u2026")), files.length > 0 && /* @__PURE__ */ React2.createElement("div", { className: "wb-files" }, files.map((a) => /* @__PURE__ */ React2.createElement("div", { className: "wb-file", key: a.id }, previews.current.get(a.id) ? /* @__PURE__ */ React2.createElement("img", { src: previews.current.get(a.id), alt: "" }) : /* @__PURE__ */ React2.createElement("span", { className: "ic" }, isImage(a) ? "\u{1F5BC}" : "\u{1F4C4}"), /* @__PURE__ */ React2.createElement("span", { className: "wb-ellipsis wb-grow", title: a.name }, a.name), /* @__PURE__ */ React2.createElement("span", { className: "wb-muted" }, fmtSize(a.size)), /* @__PURE__ */ React2.createElement("button", { "aria-label": "\u79FB\u9664\u9644\u4EF6", onClick: () => setFiles(files.filter((x) => x.id !== a.id)) }, "\u2715"))))),
-      /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React2.createElement("label", null, "\u9879\u76EE\uFF08\u5DE5\u4F5C\u76EE\u5F55\uFF09"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: projectId, onChange: (e) => setProjectId(e.target.value) }, /* @__PURE__ */ React2.createElement("option", { value: "" }, "\u672A\u9009\u62E9"), state.projects.map((x) => /* @__PURE__ */ React2.createElement("option", { key: x.id, value: x.id }, x.name)))), /* @__PURE__ */ React2.createElement("div", { className: "wb-field", style: { width: 90 } }, /* @__PURE__ */ React2.createElement("label", null, "\u4F18\u5148\u7EA7"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: priority, onChange: (e) => setPriority(e.target.value) }, PRIORITIES.map((x) => /* @__PURE__ */ React2.createElement("option", { key: x }, x))))),
-      /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React2.createElement("label", null, "\u6307\u6D3E\u667A\u80FD\u4F53"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: agentId, onChange: (e) => setAgentId(e.target.value) }, state.agents.map((a) => /* @__PURE__ */ React2.createElement("option", { key: a.id, value: a.id }, a.name)))), /* @__PURE__ */ React2.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React2.createElement("label", null, "\u72B6\u6001\uFF08\u5DF2\u5B8C\u6210\u53EA\u80FD\u7531\u4F60\u8BBE\u7F6E\uFF09"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: status, onChange: (e) => setStatus(e.target.value) }, COLUMNS.map((s) => /* @__PURE__ */ React2.createElement("option", { key: s, value: s }, STATUS_LABEL[s]))))),
-      issue?.note && /* @__PURE__ */ React2.createElement("div", { className: `wb-banner ${issue.status === "blocked" ? "err" : ""}`, style: { margin: "4px 0" } }, issue.note),
-      issue && /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u6267\u884C\u8BB0\u5F55"), runs.length ? runs.map((r) => /* @__PURE__ */ React2.createElement("div", { className: "wb-rel", key: r.id }, /* @__PURE__ */ React2.createElement("b", null, r.status === "running" ? "\u8FD0\u884C\u4E2D" : r.status === "completed" ? "\u5DF2\u7ED3\u675F" : r.status === "failed" ? "\u51FA\u9519" : "\u5DF2\u4E2D\u65AD"), /* @__PURE__ */ React2.createElement("span", { className: "wb-muted" }, " \xB7 ", agentName(state, r.agentId), " \xB7 ", ago(r.startedAt)), r.error && /* @__PURE__ */ React2.createElement("div", { style: { color: "var(--wb-red)" } }, r.error), r.finalText && /* @__PURE__ */ React2.createElement("div", { className: "wb-muted", style: { whiteSpace: "pre-wrap", maxHeight: 120, overflow: "auto", marginTop: 4 } }, r.finalText))) : /* @__PURE__ */ React2.createElement("div", { className: "wb-muted" }, "\u6682\u65E0\u6267\u884C\u8BB0\u5F55")),
-      /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, issue && /* @__PURE__ */ React2.createElement("button", { className: "wb-btn danger", onClick: () => {
-        void remove();
-      } }, "\u5220\u9664"), /* @__PURE__ */ React2.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", onClick: onClose }, "\u53D6\u6D88"), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", disabled: busy, onClick: () => {
-        void save(false);
-      } }, issue ? "\u4FDD\u5B58" : "\u521B\u5EFA"), canStart && /* @__PURE__ */ React2.createElement("button", { className: "wb-btn primary", disabled: busy, onClick: () => {
-        void save(true);
-      } }, issue ? "\u4FDD\u5B58\u5E76\u5F00\u5DE5" : "\u521B\u5EFA\u5E76\u5F00\u5DE5"))
-    ));
+    } }, /* @__PURE__ */ React3.createElement("div", { className: "wb-modal", role: "dialog", "aria-label": issue?.key ?? "\u65B0\u5EFA\u4EFB\u52A1" }, /* @__PURE__ */ React3.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React3.createElement("span", { className: "wb-sub" }, issue ? `${issue.key}${issue.sourceRef ? ` \xB7 ${issue.sourceRef.source} ${issue.sourceRef.ref}` : " \xB7 \u624B\u5DE5\u4EFB\u52A1"}` : "\u65B0\u5EFA\u4EFB\u52A1"), /* @__PURE__ */ React3.createElement("span", { className: "wb-grow" }), issue?.sessionId && /* @__PURE__ */ React3.createElement("button", { className: "wb-btn", onClick: () => p.openSession(issue.sessionId) }, "\u6253\u5F00\u5173\u8054\u4F1A\u8BDD \u2197"), /* @__PURE__ */ React3.createElement("button", { className: "wb-btn", "aria-label": "\u5173\u95ED", onClick: onClose }, "\u2715")), /* @__PURE__ */ React3.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React3.createElement("label", null, "\u6807\u9898"), /* @__PURE__ */ React3.createElement("input", { className: "wb-input", autoFocus: !issue, value: title, onChange: (e) => setTitle(e.target.value), placeholder: "\u4F8B\u5982\uFF1A\u8865\u5145\u5BF9\u8D26\u811A\u672C\u7684\u5E42\u7B49\u6821\u9A8C" })), /* @__PURE__ */ React3.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React3.createElement("label", null, "\u4EFB\u52A1\u63CF\u8FF0"), /* @__PURE__ */ React3.createElement(Composer, { text, onText: setText, files, onFiles: setFiles, notify: p.notify, projectId: projectId || void 0, placeholder: "\u4EFB\u52A1\u80CC\u666F\u3001\u73B0\u72B6\u3001\u8981\u505A\u4EC0\u4E48\uFF1B\u94FE\u63A5\u76F4\u63A5\u5199\u5728\u6587\u5B57\u91CC\uFF0C@ \u53EF\u5F15\u7528\u9879\u76EE\u6587\u4EF6" })), /* @__PURE__ */ React3.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React3.createElement("label", null, "\u9A8C\u6536\u6807\u51C6\uFF08\u6BCF\u884C\u4E00\u6761\uFF0C\u5F00\u5DE5\u65F6\u4F1A\u5199\u8FDB\u9996\u6761\u6D88\u606F\uFF09"), /* @__PURE__ */ React3.createElement("textarea", { className: "wb-textarea", style: { minHeight: 70 }, value: acceptance, onChange: (e) => setAcceptance(e.target.value), placeholder: "\u91CD\u590D\u8BF7\u6C42\u4E0D\u91CD\u590D\u5165\u8D26\n\u8865\u5145\u5355\u6D4B\u5E76\u901A\u8FC7" })), /* @__PURE__ */ React3.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React3.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React3.createElement("label", null, "\u9879\u76EE\uFF08\u5DE5\u4F5C\u76EE\u5F55\uFF09"), /* @__PURE__ */ React3.createElement("select", { className: "wb-select", value: projectId, onChange: (e) => setProjectId(e.target.value) }, /* @__PURE__ */ React3.createElement("option", { value: "" }, "\u672A\u9009\u62E9"), state.projects.map((x) => /* @__PURE__ */ React3.createElement("option", { key: x.id, value: x.id }, x.name)))), /* @__PURE__ */ React3.createElement("div", { className: "wb-field", style: { width: 90 } }, /* @__PURE__ */ React3.createElement("label", null, "\u4F18\u5148\u7EA7"), /* @__PURE__ */ React3.createElement("select", { className: "wb-select", value: priority, onChange: (e) => setPriority(e.target.value) }, PRIORITIES.map((x) => /* @__PURE__ */ React3.createElement("option", { key: x }, x))))), /* @__PURE__ */ React3.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React3.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React3.createElement("label", null, "\u6307\u6D3E\u667A\u80FD\u4F53"), /* @__PURE__ */ React3.createElement("select", { className: "wb-select", value: agentId, onChange: (e) => setAgentId(e.target.value) }, state.agents.map((a) => /* @__PURE__ */ React3.createElement("option", { key: a.id, value: a.id }, a.name)))), /* @__PURE__ */ React3.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React3.createElement("label", null, "\u72B6\u6001\uFF08\u5DF2\u5B8C\u6210\u53EA\u80FD\u7531\u4F60\u8BBE\u7F6E\uFF09"), /* @__PURE__ */ React3.createElement("select", { className: "wb-select", value: status, onChange: (e) => setStatus(e.target.value) }, COLUMNS.map((s) => /* @__PURE__ */ React3.createElement("option", { key: s, value: s }, STATUS_LABEL[s]))))), issue?.note && /* @__PURE__ */ React3.createElement("div", { className: `wb-banner ${issue.status === "blocked" ? "err" : ""}`, style: { margin: "4px 0" } }, issue.note), issue && /* @__PURE__ */ React3.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React3.createElement("label", null, "\u6267\u884C\u8BB0\u5F55"), runs.length ? runs.map((r) => /* @__PURE__ */ React3.createElement("div", { className: "wb-rel", key: r.id }, /* @__PURE__ */ React3.createElement("b", null, r.status === "running" ? "\u8FD0\u884C\u4E2D" : r.status === "completed" ? "\u5DF2\u7ED3\u675F" : r.status === "failed" ? "\u51FA\u9519" : "\u5DF2\u4E2D\u65AD"), /* @__PURE__ */ React3.createElement("span", { className: "wb-muted" }, " \xB7 ", agentName(state, r.agentId), " \xB7 ", ago(r.startedAt)), r.error && /* @__PURE__ */ React3.createElement("div", { style: { color: "var(--wb-red)" } }, r.error), r.finalText && /* @__PURE__ */ React3.createElement("div", { className: "wb-muted", style: { whiteSpace: "pre-wrap", maxHeight: 120, overflow: "auto", marginTop: 4 } }, r.finalText))) : /* @__PURE__ */ React3.createElement("div", { className: "wb-muted" }, "\u6682\u65E0\u6267\u884C\u8BB0\u5F55")), /* @__PURE__ */ React3.createElement("div", { className: "wb-row" }, issue && /* @__PURE__ */ React3.createElement("button", { className: "wb-btn danger", onClick: () => {
+      void remove();
+    } }, "\u5220\u9664"), /* @__PURE__ */ React3.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React3.createElement("button", { className: "wb-btn", onClick: onClose }, "\u53D6\u6D88"), /* @__PURE__ */ React3.createElement("button", { className: "wb-btn", disabled: busy, onClick: () => {
+      void save(false);
+    } }, issue ? "\u4FDD\u5B58" : "\u521B\u5EFA"), canStart && /* @__PURE__ */ React3.createElement("button", { className: "wb-btn primary", disabled: busy, onClick: () => {
+      void save(true);
+    } }, issue ? "\u4FDD\u5B58\u5E76\u5F00\u5DE5" : "\u521B\u5EFA\u5E76\u5F00\u5DE5"))));
   }
   var agentName = (s, id) => s.agents.find((a) => a.id === id)?.name ?? id;
 
   // ui/Agents.tsx
-  var React3 = __toESM(__require("react"), 1);
-  var { useState: useState3, useEffect: useEffect3 } = React3;
+  var React4 = __toESM(__require("react"), 1);
+  var { useState: useState4, useEffect: useEffect4 } = React4;
   var NEW = "__new";
   function Agents(p) {
     const { state } = p;
-    const [id, setId] = useState3(state.agents[0]?.id ?? NEW);
+    const [id, setId] = useState4(state.agents[0]?.id ?? NEW);
     const cur = id === NEW ? void 0 : state.agents.find((a) => a.id === id);
-    const [f, setF] = useState3(blank(cur));
-    const [models, setModels] = useState3([]);
-    useEffect3(() => {
+    const [f, setF] = useState4(blank(cur));
+    const [models, setModels] = useState4([]);
+    useEffect4(() => {
       setF(blank(cur));
     }, [id]);
-    useEffect3(() => {
+    useEffect4(() => {
       void rpc("models.list").then(setModels).catch(() => {
       });
     }, []);
@@ -505,19 +591,19 @@ var WB = (() => {
         p.notify(e.message);
       }
     }
-    return /* @__PURE__ */ React3.createElement("div", { className: "wb-split", style: { flex: 1 } }, /* @__PURE__ */ React3.createElement("div", { className: "wb-list" }, state.agents.map((a) => /* @__PURE__ */ React3.createElement("button", { key: a.id, className: "wb-li", "aria-selected": a.id === id, onClick: () => setId(a.id) }, /* @__PURE__ */ React3.createElement("b", null, a.name), /* @__PURE__ */ React3.createElement("div", { className: "wb-muted wb-ellipsis" }, a.description))), /* @__PURE__ */ React3.createElement("button", { className: "wb-btn", style: { width: "100%" }, onClick: () => setId(NEW) }, "+ \u65B0\u5EFA\u667A\u80FD\u4F53")), /* @__PURE__ */ React3.createElement("div", { className: "wb-pane" }, /* @__PURE__ */ React3.createElement("h3", { style: { marginTop: 0 } }, cur ? cur.name : "\u65B0\u5EFA\u667A\u80FD\u4F53"), /* @__PURE__ */ React3.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React3.createElement("label", null, "\u540D\u79F0"), /* @__PURE__ */ React3.createElement("input", { className: "wb-input", value: f.name, onChange: (e) => setF({ ...f, name: e.target.value }) })), /* @__PURE__ */ React3.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React3.createElement("label", null, "\u63CF\u8FF0"), /* @__PURE__ */ React3.createElement("input", { className: "wb-input", value: f.description, onChange: (e) => setF({ ...f, description: e.target.value }) })), /* @__PURE__ */ React3.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React3.createElement("label", null, "\u6A21\u578B"), /* @__PURE__ */ React3.createElement("select", { className: "wb-select", value: f.model ?? "", onChange: (e) => setF({ ...f, model: e.target.value || void 0 }) }, /* @__PURE__ */ React3.createElement("option", { value: "" }, "\u8DDF\u968F DSH \u9ED8\u8BA4\u6A21\u578B"), models.map((m) => /* @__PURE__ */ React3.createElement("option", { key: m.id, value: m.id }, m.name)))), /* @__PURE__ */ React3.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React3.createElement("label", null, "\u7CFB\u7EDF\u6307\u4EE4"), /* @__PURE__ */ React3.createElement("textarea", { className: "wb-textarea", style: { minHeight: 220 }, value: f.instructions, onChange: (e) => setF({ ...f, instructions: e.target.value }) })), /* @__PURE__ */ React3.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React3.createElement("button", { className: "wb-btn primary", onClick: () => {
+    return /* @__PURE__ */ React4.createElement("div", { className: "wb-split", style: { flex: 1 } }, /* @__PURE__ */ React4.createElement("div", { className: "wb-list" }, state.agents.map((a) => /* @__PURE__ */ React4.createElement("button", { key: a.id, className: "wb-li", "aria-selected": a.id === id, onClick: () => setId(a.id) }, /* @__PURE__ */ React4.createElement("b", null, a.name), /* @__PURE__ */ React4.createElement("div", { className: "wb-muted wb-ellipsis" }, a.description))), /* @__PURE__ */ React4.createElement("button", { className: "wb-btn", style: { width: "100%" }, onClick: () => setId(NEW) }, "+ \u65B0\u5EFA\u667A\u80FD\u4F53")), /* @__PURE__ */ React4.createElement("div", { className: "wb-pane" }, /* @__PURE__ */ React4.createElement("h3", { style: { marginTop: 0 } }, cur ? cur.name : "\u65B0\u5EFA\u667A\u80FD\u4F53"), /* @__PURE__ */ React4.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React4.createElement("label", null, "\u540D\u79F0"), /* @__PURE__ */ React4.createElement("input", { className: "wb-input", value: f.name, onChange: (e) => setF({ ...f, name: e.target.value }) })), /* @__PURE__ */ React4.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React4.createElement("label", null, "\u63CF\u8FF0"), /* @__PURE__ */ React4.createElement("input", { className: "wb-input", value: f.description, onChange: (e) => setF({ ...f, description: e.target.value }) })), /* @__PURE__ */ React4.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React4.createElement("label", null, "\u6A21\u578B"), /* @__PURE__ */ React4.createElement("select", { className: "wb-select", value: f.model ?? "", onChange: (e) => setF({ ...f, model: e.target.value || void 0 }) }, /* @__PURE__ */ React4.createElement("option", { value: "" }, "\u8DDF\u968F DSH \u9ED8\u8BA4\u6A21\u578B"), models.map((m) => /* @__PURE__ */ React4.createElement("option", { key: m.id, value: m.id }, m.name)))), /* @__PURE__ */ React4.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React4.createElement("label", null, "\u7CFB\u7EDF\u6307\u4EE4"), /* @__PURE__ */ React4.createElement("textarea", { className: "wb-textarea", style: { minHeight: 220 }, value: f.instructions, onChange: (e) => setF({ ...f, instructions: e.target.value }) })), /* @__PURE__ */ React4.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React4.createElement("button", { className: "wb-btn primary", onClick: () => {
       void save();
-    } }, "\u4FDD\u5B58"), /* @__PURE__ */ React3.createElement("span", { className: "wb-muted" }, "\u4FDD\u5B58\u540E\u6CE8\u518C\u4E3A DSH \u667A\u80FD\u4F53\u9884\u8BBE\uFF0C\u5F00\u5DE5\u65F6\u6309\u5361\u7247\u6307\u6D3E\u7684\u667A\u80FD\u4F53\u4F7F\u7528\u3002"))));
+    } }, "\u4FDD\u5B58"), /* @__PURE__ */ React4.createElement("span", { className: "wb-muted" }, "\u4FDD\u5B58\u540E\u6CE8\u518C\u4E3A DSH \u667A\u80FD\u4F53\u9884\u8BBE\uFF0C\u5F00\u5DE5\u65F6\u6309\u5361\u7247\u6307\u6D3E\u7684\u667A\u80FD\u4F53\u4F7F\u7528\u3002"))));
   }
   var blank = (a) => a ? { ...a } : { id: "", name: "", description: "", instructions: "" };
 
   // ui/Projects.tsx
-  var React4 = __toESM(__require("react"), 1);
-  var { useState: useState4 } = React4;
+  var React5 = __toESM(__require("react"), 1);
+  var { useState: useState5 } = React5;
   var EMPTY = { name: "", cwd: "" };
   var num = (v) => v.trim() ? Number(v) : void 0;
   function Projects(p) {
-    const [draft, setDraft] = useState4();
+    const [draft, setDraft] = useState5();
     async function save() {
       if (!draft) return;
       try {
@@ -533,7 +619,7 @@ var WB = (() => {
       await rpc("project.delete", { id: x.id });
       await p.refresh();
     }
-    const f = (k, label, ph = "") => /* @__PURE__ */ React4.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React4.createElement("label", null, label), /* @__PURE__ */ React4.createElement(
+    const f = (k, label, ph = "") => /* @__PURE__ */ React5.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React5.createElement("label", null, label), /* @__PURE__ */ React5.createElement(
       "input",
       {
         className: "wb-input",
@@ -542,25 +628,25 @@ var WB = (() => {
         onChange: (e) => setDraft({ ...draft, [k]: k === "gitlabProjectId" || k === "zentaoProductId" ? num(e.target.value) : e.target.value })
       }
     ));
-    return /* @__PURE__ */ React4.createElement("div", { className: "wb-main", style: { position: "relative" } }, /* @__PURE__ */ React4.createElement("div", { className: "wb-toolbar" }, /* @__PURE__ */ React4.createElement("span", { className: "wb-sub" }, "\u5F00\u5DE5\u65F6\u4F7F\u7528\u300C\u5DE5\u4F5C\u76EE\u5F55\u300D\u4F5C\u4E3A DSH \u4F1A\u8BDD\u7684 cwd\uFF1B\u5176\u4F59\u5B57\u6BB5\u7528\u4E8E\u628A\u5F85\u529E\u5BF9\u5E94\u5230\u9879\u76EE\u3002"), /* @__PURE__ */ React4.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React4.createElement("button", { className: "wb-btn primary", onClick: () => setDraft({ ...EMPTY }) }, "+ \u6DFB\u52A0\u9879\u76EE")), /* @__PURE__ */ React4.createElement("table", { className: "wb-table" }, /* @__PURE__ */ React4.createElement("thead", null, /* @__PURE__ */ React4.createElement("tr", null, /* @__PURE__ */ React4.createElement("th", null, "\u540D\u79F0"), /* @__PURE__ */ React4.createElement("th", null, "\u5DE5\u4F5C\u76EE\u5F55"), /* @__PURE__ */ React4.createElement("th", { style: { width: 110 } }, "GitLab \u9879\u76EE ID"), /* @__PURE__ */ React4.createElement("th", { style: { width: 110 } }, "\u7985\u9053\u4EA7\u54C1 ID"), /* @__PURE__ */ React4.createElement("th", { style: { width: 140 } }, "Jenkins Job"), /* @__PURE__ */ React4.createElement("th", { style: { width: 150 } }))), /* @__PURE__ */ React4.createElement("tbody", null, p.state.projects.map((x) => /* @__PURE__ */ React4.createElement("tr", { key: x.id }, /* @__PURE__ */ React4.createElement("td", null, x.name), /* @__PURE__ */ React4.createElement("td", { className: "wb-ellipsis", style: { maxWidth: 320 }, title: x.cwd }, x.cwd), /* @__PURE__ */ React4.createElement("td", null, x.gitlabProjectId ?? "\u2014"), /* @__PURE__ */ React4.createElement("td", null, x.zentaoProductId ?? "\u2014"), /* @__PURE__ */ React4.createElement("td", null, x.jenkinsJob ?? "\u2014"), /* @__PURE__ */ React4.createElement("td", null, /* @__PURE__ */ React4.createElement("button", { className: "wb-btn", onClick: () => setDraft({ ...x }) }, "\u7F16\u8F91"), " ", /* @__PURE__ */ React4.createElement("button", { className: "wb-btn danger", onClick: () => {
+    return /* @__PURE__ */ React5.createElement("div", { className: "wb-main", style: { position: "relative" } }, /* @__PURE__ */ React5.createElement("div", { className: "wb-toolbar" }, /* @__PURE__ */ React5.createElement("span", { className: "wb-sub" }, "\u5F00\u5DE5\u65F6\u4F7F\u7528\u300C\u5DE5\u4F5C\u76EE\u5F55\u300D\u4F5C\u4E3A DSH \u4F1A\u8BDD\u7684 cwd\uFF1B\u5176\u4F59\u5B57\u6BB5\u7528\u4E8E\u628A\u5F85\u529E\u5BF9\u5E94\u5230\u9879\u76EE\u3002"), /* @__PURE__ */ React5.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React5.createElement("button", { className: "wb-btn primary", onClick: () => setDraft({ ...EMPTY }) }, "+ \u6DFB\u52A0\u9879\u76EE")), /* @__PURE__ */ React5.createElement("table", { className: "wb-table" }, /* @__PURE__ */ React5.createElement("thead", null, /* @__PURE__ */ React5.createElement("tr", null, /* @__PURE__ */ React5.createElement("th", null, "\u540D\u79F0"), /* @__PURE__ */ React5.createElement("th", null, "\u5DE5\u4F5C\u76EE\u5F55"), /* @__PURE__ */ React5.createElement("th", { style: { width: 110 } }, "GitLab \u9879\u76EE ID"), /* @__PURE__ */ React5.createElement("th", { style: { width: 110 } }, "\u7985\u9053\u4EA7\u54C1 ID"), /* @__PURE__ */ React5.createElement("th", { style: { width: 140 } }, "Jenkins Job"), /* @__PURE__ */ React5.createElement("th", { style: { width: 150 } }))), /* @__PURE__ */ React5.createElement("tbody", null, p.state.projects.map((x) => /* @__PURE__ */ React5.createElement("tr", { key: x.id }, /* @__PURE__ */ React5.createElement("td", null, x.name), /* @__PURE__ */ React5.createElement("td", { className: "wb-ellipsis", style: { maxWidth: 320 }, title: x.cwd }, x.cwd), /* @__PURE__ */ React5.createElement("td", null, x.gitlabProjectId ?? "\u2014"), /* @__PURE__ */ React5.createElement("td", null, x.zentaoProductId ?? "\u2014"), /* @__PURE__ */ React5.createElement("td", null, x.jenkinsJob ?? "\u2014"), /* @__PURE__ */ React5.createElement("td", null, /* @__PURE__ */ React5.createElement("button", { className: "wb-btn", onClick: () => setDraft({ ...x }) }, "\u7F16\u8F91"), " ", /* @__PURE__ */ React5.createElement("button", { className: "wb-btn danger", onClick: () => {
       void remove(x);
-    } }, "\u5220\u9664")))))), !p.state.projects.length && /* @__PURE__ */ React4.createElement("div", { className: "wb-empty" }, "\u8FD8\u6CA1\u6709\u9879\u76EE\u3002\u6DFB\u52A0\u540E\uFF0C\u5F85\u529E\u624D\u80FD\u300C\u5F00\u5DE5\u300D\u3002"), draft && /* @__PURE__ */ React4.createElement("div", { className: "wb-modal-mask", onMouseDown: (e) => {
+    } }, "\u5220\u9664")))))), !p.state.projects.length && /* @__PURE__ */ React5.createElement("div", { className: "wb-empty" }, "\u8FD8\u6CA1\u6709\u9879\u76EE\u3002\u6DFB\u52A0\u540E\uFF0C\u5F85\u529E\u624D\u80FD\u300C\u5F00\u5DE5\u300D\u3002"), draft && /* @__PURE__ */ React5.createElement("div", { className: "wb-modal-mask", onMouseDown: (e) => {
       if (e.target === e.currentTarget) setDraft(void 0);
-    } }, /* @__PURE__ */ React4.createElement("div", { className: "wb-modal", role: "dialog", "aria-label": "\u9879\u76EE" }, /* @__PURE__ */ React4.createElement("h3", { style: { marginTop: 0 } }, draft.id ? "\u7F16\u8F91\u9879\u76EE" : "\u6DFB\u52A0\u9879\u76EE"), f("name", "\u540D\u79F0", "\u4E91\u652F\u4ED8 / payment-core"), f("cwd", "\u5DE5\u4F5C\u76EE\u5F55\uFF08\u7EDD\u5BF9\u8DEF\u5F84\uFF09", "/Users/me/code/payment-core"), /* @__PURE__ */ React4.createElement("div", { className: "wb-row" }, f("gitlabProjectId", "GitLab \u9879\u76EE ID", "101"), f("zentaoProductId", "\u7985\u9053\u4EA7\u54C1 ID", "12"), f("jenkinsJob", "Jenkins Job \u540D", "payment-core")), /* @__PURE__ */ React4.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React4.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React4.createElement("button", { className: "wb-btn", onClick: () => setDraft(void 0) }, "\u53D6\u6D88"), /* @__PURE__ */ React4.createElement("button", { className: "wb-btn primary", onClick: () => {
+    } }, /* @__PURE__ */ React5.createElement("div", { className: "wb-modal", role: "dialog", "aria-label": "\u9879\u76EE" }, /* @__PURE__ */ React5.createElement("h3", { style: { marginTop: 0 } }, draft.id ? "\u7F16\u8F91\u9879\u76EE" : "\u6DFB\u52A0\u9879\u76EE"), f("name", "\u540D\u79F0", "\u4E91\u652F\u4ED8 / payment-core"), f("cwd", "\u5DE5\u4F5C\u76EE\u5F55\uFF08\u7EDD\u5BF9\u8DEF\u5F84\uFF09", "/Users/me/code/payment-core"), /* @__PURE__ */ React5.createElement("div", { className: "wb-row" }, f("gitlabProjectId", "GitLab \u9879\u76EE ID", "101"), f("zentaoProductId", "\u7985\u9053\u4EA7\u54C1 ID", "12"), f("jenkinsJob", "Jenkins Job \u540D", "payment-core")), /* @__PURE__ */ React5.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React5.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React5.createElement("button", { className: "wb-btn", onClick: () => setDraft(void 0) }, "\u53D6\u6D88"), /* @__PURE__ */ React5.createElement("button", { className: "wb-btn primary", onClick: () => {
       void save();
     } }, "\u4FDD\u5B58")))));
   }
 
   // ui/App.tsx
-  var { useState: useState5, useEffect: useEffect4, useCallback, useRef: useRef2 } = React5;
+  var { useState: useState6, useEffect: useEffect5, useCallback, useRef: useRef2 } = React6;
   var TABS = [["todos", "\u6211\u7684\u5F85\u529E"], ["board", "\u770B\u677F"], ["agents", "\u667A\u80FD\u4F53"], ["projects", "\u9879\u76EE"]];
   function App({ openSession }) {
-    const [tab, setTab] = useState5("todos");
-    const [state, setState] = useState5();
-    const [todos, setTodos] = useState5();
-    const [error, setError] = useState5();
-    const [toast, setToast] = useState5();
-    const [focusIssue, setFocusIssue] = useState5();
+    const [tab, setTab] = useState6("todos");
+    const [state, setState] = useState6();
+    const [todos, setTodos] = useState6();
+    const [error, setError] = useState6();
+    const [toast, setToast] = useState6();
+    const [focusIssue, setFocusIssue] = useState6();
     const timer = useRef2(void 0);
     const refresh = useCallback(async () => {
       try {
@@ -586,7 +672,7 @@ var WB = (() => {
       setTab(t);
       setFocusIssue(issueId);
     }, []);
-    useEffect4(() => {
+    useEffect5(() => {
       void refresh();
       void loadTodos();
       const id = setInterval(() => {
@@ -598,19 +684,19 @@ var WB = (() => {
       };
     }, [refresh, loadTodos]);
     const sig = state?.issues.map((i) => i.id + i.status + i.updatedAt).join(",");
-    useEffect4(() => {
+    useEffect5(() => {
       if (todos) void loadTodos();
     }, [sig]);
     const demo = todos && Object.entries(todos.sources).filter(([, s]) => s.mode !== "live");
     const props = state && { state, refresh, notify, openSession, go, focusIssue };
-    return /* @__PURE__ */ React5.createElement("div", { className: "wb", style: { position: "relative" } }, /* @__PURE__ */ React5.createElement("style", null, css), /* @__PURE__ */ React5.createElement("div", { className: "wb-head" }, /* @__PURE__ */ React5.createElement("h2", { className: "wb-title" }, "\u7814\u53D1\u5DE5\u4F5C\u53F0"), /* @__PURE__ */ React5.createElement("span", { className: "wb-sub" }, (/* @__PURE__ */ new Date()).toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" })), demo && demo.length > 0 && /* @__PURE__ */ React5.createElement("span", { className: "wb-pill demo", title: demo.map(([k, s]) => `${k}: ${s.mode === "demo" ? "\u672A\u914D\u7F6E\u51ED\u636E" : s.error}`).join("\n") }, "\u6F14\u793A\u6570\u636E")), /* @__PURE__ */ React5.createElement("div", { className: "wb-tabs", role: "tablist" }, TABS.map(([k, label]) => /* @__PURE__ */ React5.createElement("button", { key: k, className: "wb-tab", role: "tab", "aria-selected": tab === k, onClick: () => go(k) }, label))), error && /* @__PURE__ */ React5.createElement("div", { className: "wb-banner err" }, error), /* @__PURE__ */ React5.createElement("div", { className: "wb-body" }, !props ? /* @__PURE__ */ React5.createElement("div", { className: "wb-empty", style: { flex: 1 } }, error ? "\u65E0\u6CD5\u8FDE\u63A5 Host\u3002" : "\u52A0\u8F7D\u4E2D\u2026") : /* @__PURE__ */ React5.createElement(React5.Fragment, null, tab === "todos" && /* @__PURE__ */ React5.createElement(Todos, { ...props, todos, reloadTodos: loadTodos }), tab === "board" && /* @__PURE__ */ React5.createElement(Board, { ...props }), tab === "agents" && /* @__PURE__ */ React5.createElement(Agents, { ...props }), tab === "projects" && /* @__PURE__ */ React5.createElement(Projects, { ...props }))), toast && /* @__PURE__ */ React5.createElement("div", { className: "wb-toast", role: "status" }, toast));
+    return /* @__PURE__ */ React6.createElement("div", { className: "wb", style: { position: "relative" } }, /* @__PURE__ */ React6.createElement("style", null, css), /* @__PURE__ */ React6.createElement("div", { className: "wb-head" }, /* @__PURE__ */ React6.createElement("h2", { className: "wb-title" }, "\u7814\u53D1\u5DE5\u4F5C\u53F0"), /* @__PURE__ */ React6.createElement("span", { className: "wb-sub" }, (/* @__PURE__ */ new Date()).toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" })), demo && demo.length > 0 && /* @__PURE__ */ React6.createElement("span", { className: "wb-pill demo", title: demo.map(([k, s]) => `${k}: ${s.mode === "demo" ? "\u672A\u914D\u7F6E\u51ED\u636E" : s.error}`).join("\n") }, "\u6F14\u793A\u6570\u636E")), /* @__PURE__ */ React6.createElement("div", { className: "wb-tabs", role: "tablist" }, TABS.map(([k, label]) => /* @__PURE__ */ React6.createElement("button", { key: k, className: "wb-tab", role: "tab", "aria-selected": tab === k, onClick: () => go(k) }, label))), error && /* @__PURE__ */ React6.createElement("div", { className: "wb-banner err" }, error), /* @__PURE__ */ React6.createElement("div", { className: "wb-body" }, !props ? /* @__PURE__ */ React6.createElement("div", { className: "wb-empty", style: { flex: 1 } }, error ? "\u65E0\u6CD5\u8FDE\u63A5 Host\u3002" : "\u52A0\u8F7D\u4E2D\u2026") : /* @__PURE__ */ React6.createElement(React6.Fragment, null, tab === "todos" && /* @__PURE__ */ React6.createElement(Todos, { ...props, todos, reloadTodos: loadTodos }), tab === "board" && /* @__PURE__ */ React6.createElement(Board, { ...props }), tab === "agents" && /* @__PURE__ */ React6.createElement(Agents, { ...props }), tab === "projects" && /* @__PURE__ */ React6.createElement(Projects, { ...props }))), toast && /* @__PURE__ */ React6.createElement("div", { className: "wb-toast", role: "status" }, toast));
   }
 
   // ui/main.tsx
   var PANEL = "workbench";
   var inject = ["slots", "uiWorkspace"];
   function Icon({ size }) {
-    return /* @__PURE__ */ React6.createElement("svg", { viewBox: "0 0 24 24", width: size, height: size, fill: "none", stroke: "currentColor", strokeWidth: 1.8, "aria-hidden": true }, /* @__PURE__ */ React6.createElement("rect", { x: 3, y: 4, width: 18, height: 16, rx: 3 }), /* @__PURE__ */ React6.createElement("path", { d: "M8 8v8M12 8v5M16 8v10" }));
+    return /* @__PURE__ */ React7.createElement("svg", { viewBox: "0 0 24 24", width: size, height: size, fill: "none", stroke: "currentColor", strokeWidth: 1.8, "aria-hidden": true }, /* @__PURE__ */ React7.createElement("rect", { x: 3, y: 4, width: 18, height: 16, rx: 3 }), /* @__PURE__ */ React7.createElement("path", { d: "M8 8v8M12 8v5M16 8v10" }));
   }
   function apply(ctx) {
     const openSession = (id) => {
@@ -620,7 +706,7 @@ var WB = (() => {
         console.warn("[workbench] openSession failed", e);
       }
     };
-    const Page = () => /* @__PURE__ */ React6.createElement(App, { openSession });
+    const Page = () => /* @__PURE__ */ React7.createElement(App, { openSession });
     ctx.slots.inject("main", () => ctx.slots.register({ name: "main", key: PANEL }, Page));
     ctx.slots.inject("sidebar.panellist", () => ctx.slots.register({ name: "sidebar.panellist", id: PANEL, order: 20, label: () => "\u5DE5\u4F5C\u53F0" }, Icon));
   }
