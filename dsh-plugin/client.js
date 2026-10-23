@@ -120,6 +120,15 @@ var WB = (() => {
 .wb-li:hover { background: var(--wb-hover); } .wb-li[aria-selected=true] { background: var(--wb-l2); border-color: var(--wb-bd); }
 .wb-pane { flex: 1; overflow: auto; padding: 18px 24px; max-width: 760px; }
 .wb-toast { position: absolute; right: 20px; bottom: 20px; z-index: 30; padding: 9px 14px; border-radius: 9px; background: var(--wb-fg); color: var(--wb-bg); box-shadow: 0 6px 24px rgba(0,0,0,.25); max-width: 420px; }
+.wb-modal.drop { outline: 2px dashed var(--wb-blue); outline-offset: -6px; }
+.wb-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.wb-chipx { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 1px 4px 1px 9px; border-radius: 12px; background: var(--wb-l2); font-size: 12px; }
+.wb-chipx a { color: var(--dsw-alias-link, var(--wb-blue)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 380px; text-decoration: none; }
+.wb-chipx button, .wb-file button { border: 0; background: none; color: var(--wb-fg3); padding: 0 6px; }
+.wb-chipx button:hover, .wb-file button:hover { color: var(--wb-red); }
+.wb-files { margin-top: 6px; display: flex; flex-direction: column; gap: 5px; }
+.wb-file { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 8px; border: 1px solid var(--wb-bd1); border-radius: 7px; background: var(--wb-l1); }
+.wb-file img { width: 28px; height: 28px; object-fit: cover; border-radius: 4px; } .wb-file .ic { width: 28px; text-align: center; font-size: 18px; }
 .wb-empty { padding: 40px; text-align: center; color: var(--wb-fg3); }
 `;
 
@@ -154,6 +163,24 @@ var WB = (() => {
     if (s < 86400) return `${Math.floor(s / 3600)} \u5C0F\u65F6\u524D`;
     return `${Math.floor(s / 86400)} \u5929\u524D`;
   }
+  async function uploadFile(file) {
+    const res = await fetch("api/workbench.upload", {
+      method: "POST",
+      body: file,
+      headers: { "x-wb-name": encodeURIComponent(file.name), "content-type": file.type || "application/octet-stream" }
+    });
+    if (!res.ok) throw new RpcError(`\u4E0A\u4F20\u5931\u8D25\uFF08HTTP ${res.status}\uFF09`);
+    const j = await res.json();
+    if (!j.ok) throw new RpcError(j.error);
+    return j.value;
+  }
+  var COMMANDS = [
+    { id: "", label: "\u76F4\u63A5\u53D1\u9001", hint: "\u628A\u4EFB\u52A1\u4F5C\u4E3A\u666E\u901A\u6D88\u606F\u53D1\u7ED9\u667A\u80FD\u4F53" },
+    { id: "plan", label: "/plan \u5148\u51FA\u65B9\u6848", hint: "\u8FDB\u5165\u8BA1\u5212\u6A21\u5F0F\uFF1A\u53EA\u8BFB\u63A2\u7D22\uFF0C\u7ED9\u51FA\u65B9\u6848\u5E76\u7B49\u4F60\u6279\u51C6\u540E\u518D\u52A8\u624B" },
+    { id: "goal", label: "/goal \u8BBE\u4E3A\u76EE\u6807", hint: "\u628A\u4EFB\u52A1\u8BBE\u4E3A\u957F\u4EFB\u52A1\u76EE\u6807\uFF0C\u667A\u80FD\u4F53\u4F1A\u6301\u7EED\u63A8\u8FDB\u76F4\u5230\u5B8C\u6210" }
+  ];
+  var fmtSize = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`;
+  var isImage = (a) => /^image\/(png|jpeg|webp|gif)$/.test(a.mediaType);
 
   // ui/Todos.tsx
   var React = __toESM(__require("react"), 1);
@@ -204,14 +231,14 @@ var WB = (() => {
     } }, "\u5237\u65B0")), /* @__PURE__ */ React.createElement("table", { className: "wb-table" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { style: { width: 66 } }, "\u4F18\u5148\u7EA7"), /* @__PURE__ */ React.createElement("th", null, "\u5F85\u529E\u4E8B\u9879"), /* @__PURE__ */ React.createElement("th", { style: { width: 150 } }, "\u6765\u6E90"), /* @__PURE__ */ React.createElement("th", { style: { width: 190 } }, "\u9879\u76EE / \u6A21\u5757"), /* @__PURE__ */ React.createElement("th", { style: { width: 90 } }, "\u72B6\u6001"), /* @__PURE__ */ React.createElement("th", { style: { width: 90 } }, "\u622A\u6B62"))), /* @__PURE__ */ React.createElement("tbody", null, rows.map((r) => {
       const key = `${r.source}:${r.ref}`;
       return /* @__PURE__ */ React.createElement("tr", { key, className: `row ${key === selected ? "sel" : ""}`, onClick: () => setSelected(key) }, /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("span", { className: `wb-pri ${r.priority}` }, r.priority)), /* @__PURE__ */ React.createElement("td", null, r.title, r.issueId && /* @__PURE__ */ React.createElement("span", { className: "wb-pill", style: { marginLeft: 8 } }, state.issues.find((i) => i.id === r.issueId)?.key)), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("span", { className: "wb-src" }, /* @__PURE__ */ React.createElement("i", { className: r.source }), r.ref)), /* @__PURE__ */ React.createElement("td", { className: "wb-muted wb-ellipsis", style: { maxWidth: 190 } }, r.project), /* @__PURE__ */ React.createElement("td", null, r.issueStatus ? /* @__PURE__ */ React.createElement("span", { className: "wb-pill" }, STATUS_LABEL[r.issueStatus]) : /* @__PURE__ */ React.createElement("span", { className: "wb-muted" }, r.statusText)), /* @__PURE__ */ React.createElement("td", { className: "wb-muted" }, r.due ? r.due.slice(5) : "\u2014"));
-    }))), !rows.length && /* @__PURE__ */ React.createElement("div", { className: "wb-empty" }, "\u6CA1\u6709\u5F85\u529E\u3002")), sel && /* @__PURE__ */ React.createElement("aside", { className: "wb-detail" }, /* @__PURE__ */ React.createElement("div", { className: "wb-detail-body" }, /* @__PURE__ */ React.createElement("div", { className: "wb-sub" }, /* @__PURE__ */ React.createElement("span", { className: "wb-src" }, /* @__PURE__ */ React.createElement("i", { className: sel.source }), SOURCE_LABEL[sel.source], " \xB7 ", sel.ref), " \xB7 ", sel.project), /* @__PURE__ */ React.createElement("h3", { style: { marginTop: 6 } }, sel.title), /* @__PURE__ */ React.createElement("dl", { className: "wb-kv" }, /* @__PURE__ */ React.createElement("dt", null, "\u4F18\u5148\u7EA7"), /* @__PURE__ */ React.createElement("dd", null, /* @__PURE__ */ React.createElement("span", { className: `wb-pri ${sel.priority}` }, sel.priority)), /* @__PURE__ */ React.createElement("dt", null, "\u72B6\u6001"), /* @__PURE__ */ React.createElement("dd", null, sel.statusText), /* @__PURE__ */ React.createElement("dt", null, "\u622A\u6B62"), /* @__PURE__ */ React.createElement("dd", null, sel.due ?? "\u2014"), /* @__PURE__ */ React.createElement("dt", null, "\u5DE5\u4F5C\u76EE\u5F55"), /* @__PURE__ */ React.createElement("dd", { className: "wb-ellipsis", title: project?.cwd }, project ? project.cwd : /* @__PURE__ */ React.createElement("span", { style: { color: "var(--wb-red)" } }, sel.source === "manual" ? "\u672A\u9009\u62E9\u9879\u76EE\uFF0C\u8BF7\u5728\u770B\u677F\u5361\u7247\u91CC\u9009\u62E9" : "\u672A\u914D\u7F6E\uFF0C\u8BF7\u5230\u300C\u9879\u76EE\u300D\u9875\u6DFB\u52A0"))), /* @__PURE__ */ React.createElement("h4", null, "\u80CC\u666F"), /* @__PURE__ */ React.createElement("div", null, sel.description || "\uFF08\u65E0\uFF09"), /* @__PURE__ */ React.createElement("h4", null, "\u9A8C\u6536\u6807\u51C6"), sel.acceptance.length ? /* @__PURE__ */ React.createElement("ul", { className: "wb-ac" }, sel.acceptance.map((a, i) => /* @__PURE__ */ React.createElement("li", { key: i }, a))) : /* @__PURE__ */ React.createElement("div", { className: "wb-muted" }, "\u672A\u7ED9\u51FA\uFF0C\u5F00\u5DE5\u540E\u667A\u80FD\u4F53\u4F1A\u5148\u4E0E\u4F60\u786E\u8BA4\u3002"), sel.related.length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("h4", null, "\u5173\u8054\u4FE1\u606F"), sel.related.map((r, i) => /* @__PURE__ */ React.createElement("div", { className: "wb-rel", key: i }, r.label, r.detail && /* @__PURE__ */ React.createElement("span", { className: "wb-muted" }, " \xB7 ", r.detail))))), /* @__PURE__ */ React.createElement("div", { className: "wb-detail-foot" }, !startable ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "wb-pill" }, "\u5DF2\u5F00\u5361 ", issue.key, " \xB7 ", STATUS_LABEL[issue.status]), /* @__PURE__ */ React.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React.createElement("button", { className: "wb-btn", onClick: () => p.go("board", issue.id) }, "\u67E5\u770B\u5361\u7247")) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("select", { className: "wb-select", style: { width: 130 }, value: agentId ?? issueAgent ?? DEFAULT_AGENT[sel.source], onChange: (e) => setAgentId(e.target.value), "aria-label": "\u667A\u80FD\u4F53" }, state.agents.map((a) => /* @__PURE__ */ React.createElement("option", { key: a.id, value: a.id }, a.name))), /* @__PURE__ */ React.createElement("button", { className: "wb-btn primary wb-grow", disabled: busy || !project, title: project ? void 0 : "\u8BF7\u5148\u9009\u62E9\u9879\u76EE", onClick: () => {
+    }))), !rows.length && /* @__PURE__ */ React.createElement("div", { className: "wb-empty" }, "\u6CA1\u6709\u5F85\u529E\u3002")), sel && /* @__PURE__ */ React.createElement("aside", { className: "wb-detail" }, /* @__PURE__ */ React.createElement("div", { className: "wb-detail-body" }, /* @__PURE__ */ React.createElement("div", { className: "wb-sub" }, /* @__PURE__ */ React.createElement("span", { className: "wb-src" }, /* @__PURE__ */ React.createElement("i", { className: sel.source }), SOURCE_LABEL[sel.source], " \xB7 ", sel.ref), " \xB7 ", sel.project), /* @__PURE__ */ React.createElement("h3", { style: { marginTop: 6 } }, sel.title), /* @__PURE__ */ React.createElement("dl", { className: "wb-kv" }, /* @__PURE__ */ React.createElement("dt", null, "\u4F18\u5148\u7EA7"), /* @__PURE__ */ React.createElement("dd", null, /* @__PURE__ */ React.createElement("span", { className: `wb-pri ${sel.priority}` }, sel.priority)), /* @__PURE__ */ React.createElement("dt", null, "\u72B6\u6001"), /* @__PURE__ */ React.createElement("dd", null, sel.statusText), /* @__PURE__ */ React.createElement("dt", null, "\u622A\u6B62"), /* @__PURE__ */ React.createElement("dd", null, sel.due ?? "\u2014"), /* @__PURE__ */ React.createElement("dt", null, "\u5DE5\u4F5C\u76EE\u5F55"), /* @__PURE__ */ React.createElement("dd", { className: "wb-ellipsis", title: project?.cwd }, project ? project.cwd : /* @__PURE__ */ React.createElement("span", { style: { color: "var(--wb-red)" } }, sel.source === "manual" ? "\u672A\u9009\u62E9\u9879\u76EE\uFF0C\u8BF7\u5728\u770B\u677F\u5361\u7247\u91CC\u9009\u62E9" : "\u672A\u914D\u7F6E\uFF0C\u8BF7\u5230\u300C\u9879\u76EE\u300D\u9875\u6DFB\u52A0"))), /* @__PURE__ */ React.createElement("h4", null, "\u80CC\u666F"), /* @__PURE__ */ React.createElement("div", null, sel.description || "\uFF08\u65E0\uFF09"), /* @__PURE__ */ React.createElement("h4", null, "\u9A8C\u6536\u6807\u51C6"), sel.acceptance.length ? /* @__PURE__ */ React.createElement("ul", { className: "wb-ac" }, sel.acceptance.map((a, i) => /* @__PURE__ */ React.createElement("li", { key: i }, a))) : /* @__PURE__ */ React.createElement("div", { className: "wb-muted" }, "\u672A\u7ED9\u51FA\uFF0C\u5F00\u5DE5\u540E\u667A\u80FD\u4F53\u4F1A\u5148\u4E0E\u4F60\u786E\u8BA4\u3002"), issue?.command && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("h4", null, "\u6307\u4EE4"), /* @__PURE__ */ React.createElement("div", null, COMMANDS.find((c) => c.id === issue.command)?.label)), !!issue?.links?.length && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("h4", null, "\u94FE\u63A5"), issue.links.map((l) => /* @__PURE__ */ React.createElement("div", { className: "wb-rel", key: l }, /* @__PURE__ */ React.createElement("a", { href: l, target: "_blank", rel: "noreferrer noopener" }, l)))), !!issue?.attachments?.length && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("h4", null, "\u9644\u4EF6"), issue.attachments.map((a) => /* @__PURE__ */ React.createElement("div", { className: "wb-rel", key: a.id }, a.name, /* @__PURE__ */ React.createElement("span", { className: "wb-muted" }, " \xB7 ", fmtSize(a.size))))), sel.related.length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("h4", null, "\u5173\u8054\u4FE1\u606F"), sel.related.map((r, i) => /* @__PURE__ */ React.createElement("div", { className: "wb-rel", key: i }, r.label, r.detail && /* @__PURE__ */ React.createElement("span", { className: "wb-muted" }, " \xB7 ", r.detail))))), /* @__PURE__ */ React.createElement("div", { className: "wb-detail-foot" }, !startable ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "wb-pill" }, "\u5DF2\u5F00\u5361 ", issue.key, " \xB7 ", STATUS_LABEL[issue.status]), /* @__PURE__ */ React.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React.createElement("button", { className: "wb-btn", onClick: () => p.go("board", issue.id) }, "\u67E5\u770B\u5361\u7247")) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("select", { className: "wb-select", style: { width: 130 }, value: agentId ?? issueAgent ?? DEFAULT_AGENT[sel.source], onChange: (e) => setAgentId(e.target.value), "aria-label": "\u667A\u80FD\u4F53" }, state.agents.map((a) => /* @__PURE__ */ React.createElement("option", { key: a.id, value: a.id }, a.name))), /* @__PURE__ */ React.createElement("button", { className: "wb-btn primary wb-grow", disabled: busy || !project, title: project ? void 0 : "\u8BF7\u5148\u9009\u62E9\u9879\u76EE", onClick: () => {
       void start();
     } }, busy ? "\u6B63\u5728\u521B\u5EFA\u4F1A\u8BDD\u2026" : "\u5F00\u5DE5\uFF08\u521B\u5EFA\u4F1A\u8BDD\uFF09")))));
   }
 
   // ui/Board.tsx
   var React2 = __toESM(__require("react"), 1);
-  var { useState: useState2, useEffect: useEffect2 } = React2;
+  var { useState: useState2, useEffect: useEffect2, useRef } = React2;
   var COLUMNS = ["backlog", "todo", "in_progress", "in_review", "done", "blocked"];
   function Board(p) {
     const { state } = p;
@@ -274,7 +301,7 @@ var WB = (() => {
           },
           /* @__PURE__ */ React2.createElement("div", { className: "k" }, running.has(i.id) && /* @__PURE__ */ React2.createElement("span", { className: "wb-spin", title: "\u4F1A\u8BDD\u8FD0\u884C\u4E2D" }), /* @__PURE__ */ React2.createElement("span", null, i.key), i.sourceRef && /* @__PURE__ */ React2.createElement("span", null, "\xB7 ", i.sourceRef.ref)),
           /* @__PURE__ */ React2.createElement("div", { className: "t" }, i.title),
-          i.note && /* @__PURE__ */ React2.createElement("div", { className: "wb-ellipsis", style: { color: "var(--wb-red)", fontSize: 11, marginBottom: 4 }, title: i.note }, i.note),
+          i.note && /* @__PURE__ */ React2.createElement("div", { className: "wb-ellipsis", style: { color: i.status === "blocked" ? "var(--wb-red)" : "var(--wb-amber)", fontSize: 11, marginBottom: 4 }, title: i.note }, i.note),
           /* @__PURE__ */ React2.createElement("div", { className: "m" }, /* @__PURE__ */ React2.createElement("span", { className: "wb-pill" }, agentName2(i.agentId)), /* @__PURE__ */ React2.createElement("span", { style: { marginLeft: "auto" } }, ago(i.updatedAt)))
         )))
       );
@@ -291,14 +318,49 @@ var WB = (() => {
     const [projectId, setProjectId] = useState2(issue?.projectId ?? "");
     const [agentId, setAgentId] = useState2(issue?.agentId ?? "fullstack");
     const [status, setStatus] = useState2(issue?.status ?? initialStatus ?? "backlog");
+    const [command, setCommand] = useState2(issue?.command ?? "");
+    const [links, setLinks] = useState2(issue?.links ?? []);
+    const [linkInput, setLinkInput] = useState2("");
+    const [files, setFiles] = useState2(issue?.attachments ?? []);
+    const [uploading, setUploading] = useState2(0);
+    const [over, setOver] = useState2(false);
+    const previews = useRef(/* @__PURE__ */ new Map());
+    const picker = useRef(null);
     const [busy, setBusy] = useState2(false);
+    useEffect2(() => () => {
+      previews.current.forEach((u) => URL.revokeObjectURL(u));
+    }, []);
     useEffect2(() => {
       if (issue) setStatus(issue.status);
     }, [issue?.status]);
     const runs = issue ? state.runs.filter((r) => r.issueId === issue.id).reverse() : [];
     const canStart = !issue || STARTABLE2.includes(issue.status);
     const lines = acceptance.split("\n");
-    const fields = () => ({ title, description, acceptance: lines, priority, projectId, agentId });
+    async function addFiles(list) {
+      for (const f of Array.from(list)) {
+        setUploading((n) => n + 1);
+        try {
+          const a = await uploadFile(f);
+          if (f.type.startsWith("image/")) previews.current.set(a.id, URL.createObjectURL(f));
+          setFiles((cur) => [...cur, a]);
+        } catch (e) {
+          p.notify(`${f.name}\uFF1A${e.message}`);
+        } finally {
+          setUploading((n) => n - 1);
+        }
+      }
+    }
+    function addLink() {
+      const v = linkInput.trim();
+      if (!v) return;
+      if (!/^https?:\/\//i.test(v)) {
+        p.notify("\u94FE\u63A5\u5FC5\u987B\u4EE5 http:// \u6216 https:// \u5F00\u5934");
+        return;
+      }
+      if (!links.includes(v)) setLinks([...links, v]);
+      setLinkInput("");
+    }
+    const fields = () => ({ title, description, acceptance: lines, priority, projectId, agentId, command, links: linkInput.trim() && /^https?:\/\//i.test(linkInput.trim()) ? [...links, linkInput.trim()] : links, attachments: files });
     async function save(start) {
       if (!title.trim()) {
         p.notify("\u6807\u9898\u4E0D\u80FD\u4E3A\u7A7A");
@@ -338,13 +400,80 @@ var WB = (() => {
     }
     return /* @__PURE__ */ React2.createElement("div", { className: "wb-modal-mask", onMouseDown: (e) => {
       if (e.target === e.currentTarget) onClose();
-    } }, /* @__PURE__ */ React2.createElement("div", { className: "wb-modal", role: "dialog", "aria-label": issue?.key ?? "\u65B0\u5EFA\u4EFB\u52A1" }, /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("span", { className: "wb-sub" }, issue ? `${issue.key}${issue.sourceRef ? ` \xB7 ${issue.sourceRef.source} ${issue.sourceRef.ref}` : " \xB7 \u624B\u5DE5\u4EFB\u52A1"}` : "\u65B0\u5EFA\u4EFB\u52A1"), /* @__PURE__ */ React2.createElement("span", { className: "wb-grow" }), issue?.sessionId && /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", onClick: () => p.openSession(issue.sessionId) }, "\u6253\u5F00\u5173\u8054\u4F1A\u8BDD \u2197"), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", "aria-label": "\u5173\u95ED", onClick: onClose }, "\u2715")), /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u6807\u9898"), /* @__PURE__ */ React2.createElement("input", { className: "wb-input", autoFocus: !issue, value: title, onChange: (e) => setTitle(e.target.value), placeholder: "\u4F8B\u5982\uFF1A\u8865\u5145\u5BF9\u8D26\u811A\u672C\u7684\u5E42\u7B49\u6821\u9A8C" })), /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u63CF\u8FF0 / \u80CC\u666F"), /* @__PURE__ */ React2.createElement("textarea", { className: "wb-textarea", value: description, onChange: (e) => setDescription(e.target.value), placeholder: "\u4EFB\u52A1\u80CC\u666F\u3001\u73B0\u72B6\u3001\u76F8\u5173\u94FE\u63A5" })), /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u9A8C\u6536\u6807\u51C6\uFF08\u6BCF\u884C\u4E00\u6761\uFF0C\u5F00\u5DE5\u65F6\u4F1A\u5199\u8FDB\u9996\u6761\u6D88\u606F\uFF09"), /* @__PURE__ */ React2.createElement("textarea", { className: "wb-textarea", style: { minHeight: 70 }, value: acceptance, onChange: (e) => setAcceptance(e.target.value), placeholder: "\u91CD\u590D\u8BF7\u6C42\u4E0D\u91CD\u590D\u5165\u8D26\n\u8865\u5145\u5355\u6D4B\u5E76\u901A\u8FC7" })), /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React2.createElement("label", null, "\u9879\u76EE\uFF08\u5DE5\u4F5C\u76EE\u5F55\uFF09"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: projectId, onChange: (e) => setProjectId(e.target.value) }, /* @__PURE__ */ React2.createElement("option", { value: "" }, "\u672A\u9009\u62E9"), state.projects.map((x) => /* @__PURE__ */ React2.createElement("option", { key: x.id, value: x.id }, x.name)))), /* @__PURE__ */ React2.createElement("div", { className: "wb-field", style: { width: 90 } }, /* @__PURE__ */ React2.createElement("label", null, "\u4F18\u5148\u7EA7"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: priority, onChange: (e) => setPriority(e.target.value) }, PRIORITIES.map((x) => /* @__PURE__ */ React2.createElement("option", { key: x }, x))))), /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React2.createElement("label", null, "\u6307\u6D3E\u667A\u80FD\u4F53"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: agentId, onChange: (e) => setAgentId(e.target.value) }, state.agents.map((a) => /* @__PURE__ */ React2.createElement("option", { key: a.id, value: a.id }, a.name)))), /* @__PURE__ */ React2.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React2.createElement("label", null, "\u72B6\u6001\uFF08\u5DF2\u5B8C\u6210\u53EA\u80FD\u7531\u4F60\u8BBE\u7F6E\uFF09"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: status, onChange: (e) => setStatus(e.target.value) }, COLUMNS.map((s) => /* @__PURE__ */ React2.createElement("option", { key: s, value: s }, STATUS_LABEL[s]))))), issue?.note && /* @__PURE__ */ React2.createElement("div", { className: "wb-banner err", style: { margin: "4px 0" } }, issue.note), issue && /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u6267\u884C\u8BB0\u5F55"), runs.length ? runs.map((r) => /* @__PURE__ */ React2.createElement("div", { className: "wb-rel", key: r.id }, /* @__PURE__ */ React2.createElement("b", null, r.status === "running" ? "\u8FD0\u884C\u4E2D" : r.status === "completed" ? "\u5DF2\u7ED3\u675F" : r.status === "failed" ? "\u51FA\u9519" : "\u5DF2\u4E2D\u65AD"), /* @__PURE__ */ React2.createElement("span", { className: "wb-muted" }, " \xB7 ", agentName(state, r.agentId), " \xB7 ", ago(r.startedAt)), r.error && /* @__PURE__ */ React2.createElement("div", { style: { color: "var(--wb-red)" } }, r.error), r.finalText && /* @__PURE__ */ React2.createElement("div", { className: "wb-muted", style: { whiteSpace: "pre-wrap", maxHeight: 120, overflow: "auto", marginTop: 4 } }, r.finalText))) : /* @__PURE__ */ React2.createElement("div", { className: "wb-muted" }, "\u6682\u65E0\u6267\u884C\u8BB0\u5F55")), /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, issue && /* @__PURE__ */ React2.createElement("button", { className: "wb-btn danger", onClick: () => {
-      void remove();
-    } }, "\u5220\u9664"), /* @__PURE__ */ React2.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", onClick: onClose }, "\u53D6\u6D88"), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", disabled: busy, onClick: () => {
-      void save(false);
-    } }, issue ? "\u4FDD\u5B58" : "\u521B\u5EFA"), canStart && /* @__PURE__ */ React2.createElement("button", { className: "wb-btn primary", disabled: busy, onClick: () => {
-      void save(true);
-    } }, issue ? "\u4FDD\u5B58\u5E76\u5F00\u5DE5" : "\u521B\u5EFA\u5E76\u5F00\u5DE5"))));
+    } }, /* @__PURE__ */ React2.createElement(
+      "div",
+      {
+        className: `wb-modal ${over ? "drop" : ""}`,
+        role: "dialog",
+        "aria-label": issue?.key ?? "\u65B0\u5EFA\u4EFB\u52A1",
+        onDragOver: (e) => {
+          if (e.dataTransfer.types.includes("Files")) {
+            e.preventDefault();
+            setOver(true);
+          }
+        },
+        onDragLeave: (e) => {
+          if (e.currentTarget === e.target) setOver(false);
+        },
+        onDrop: (e) => {
+          if (e.dataTransfer.files.length) {
+            e.preventDefault();
+            setOver(false);
+            void addFiles(e.dataTransfer.files);
+          }
+        }
+      },
+      /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("span", { className: "wb-sub" }, issue ? `${issue.key}${issue.sourceRef ? ` \xB7 ${issue.sourceRef.source} ${issue.sourceRef.ref}` : " \xB7 \u624B\u5DE5\u4EFB\u52A1"}` : "\u65B0\u5EFA\u4EFB\u52A1"), /* @__PURE__ */ React2.createElement("span", { className: "wb-grow" }), issue?.sessionId && /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", onClick: () => p.openSession(issue.sessionId) }, "\u6253\u5F00\u5173\u8054\u4F1A\u8BDD \u2197"), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", "aria-label": "\u5173\u95ED", onClick: onClose }, "\u2715")),
+      /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u6807\u9898"), /* @__PURE__ */ React2.createElement("input", { className: "wb-input", autoFocus: !issue, value: title, onChange: (e) => setTitle(e.target.value), placeholder: "\u4F8B\u5982\uFF1A\u8865\u5145\u5BF9\u8D26\u811A\u672C\u7684\u5E42\u7B49\u6821\u9A8C" })),
+      /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u63CF\u8FF0 / \u80CC\u666F"), /* @__PURE__ */ React2.createElement(
+        "textarea",
+        {
+          className: "wb-textarea",
+          value: description,
+          onChange: (e) => setDescription(e.target.value),
+          placeholder: "\u4EFB\u52A1\u80CC\u666F\u3001\u73B0\u72B6\uFF1B\u53EF\u76F4\u63A5\u7C98\u8D34\u622A\u56FE",
+          onPaste: (e) => {
+            const imgs = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
+            if (imgs.length) {
+              e.preventDefault();
+              void addFiles(imgs);
+            }
+          }
+        }
+      )),
+      /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u9A8C\u6536\u6807\u51C6\uFF08\u6BCF\u884C\u4E00\u6761\uFF0C\u5F00\u5DE5\u65F6\u4F1A\u5199\u8FDB\u9996\u6761\u6D88\u606F\uFF09"), /* @__PURE__ */ React2.createElement("textarea", { className: "wb-textarea", style: { minHeight: 70 }, value: acceptance, onChange: (e) => setAcceptance(e.target.value), placeholder: "\u91CD\u590D\u8BF7\u6C42\u4E0D\u91CD\u590D\u5165\u8D26\n\u8865\u5145\u5355\u6D4B\u5E76\u901A\u8FC7" })),
+      /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u6307\u4EE4\uFF08\u76F8\u5F53\u4E8E\u5728 DSH \u8F93\u5165\u6846\u91CC\u4EE5 / \u5F00\u5934\u53D1\u9001\uFF09"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: command, onChange: (e) => setCommand(e.target.value) }, COMMANDS.map((c) => /* @__PURE__ */ React2.createElement("option", { key: c.id, value: c.id }, c.label))), /* @__PURE__ */ React2.createElement("div", { className: "wb-sub", style: { marginTop: 3 } }, COMMANDS.find((c) => c.id === command)?.hint)),
+      /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u94FE\u63A5"), links.length > 0 && /* @__PURE__ */ React2.createElement("div", { className: "wb-chips" }, links.map((l) => /* @__PURE__ */ React2.createElement("span", { className: "wb-chipx", key: l }, /* @__PURE__ */ React2.createElement("a", { href: l, target: "_blank", rel: "noreferrer noopener", title: l }, l.replace(/^https?:\/\//, "")), /* @__PURE__ */ React2.createElement("button", { "aria-label": "\u79FB\u9664\u94FE\u63A5", onClick: () => setLinks(links.filter((x) => x !== l)) }, "\u2715")))), /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement(
+        "input",
+        {
+          className: "wb-input",
+          value: linkInput,
+          placeholder: "\u7C98\u8D34\u94FE\u63A5\u540E\u56DE\u8F66\uFF0C\u5982\u9700\u6C42\u6587\u6863\u3001\u8BBE\u8BA1\u7A3F\u3001\u63A5\u53E3\u6587\u6863",
+          onChange: (e) => setLinkInput(e.target.value),
+          onKeyDown: (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addLink();
+            }
+          }
+        }
+      ), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", onClick: addLink }, "\u6DFB\u52A0"))),
+      /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u56FE\u7247 / \u6587\u6863\uFF08\u53EF\u62D6\u5165\u5F39\u7A97\uFF0C\u6216\u5728\u63CF\u8FF0\u91CC\u7C98\u8D34\u622A\u56FE\uFF09"), /* @__PURE__ */ React2.createElement("input", { ref: picker, type: "file", multiple: true, hidden: true, onChange: (e) => {
+        if (e.target.files) void addFiles(e.target.files);
+        e.target.value = "";
+      } }), /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", onClick: () => picker.current?.click() }, "\uFF0B \u6DFB\u52A0\u56FE\u7247 / \u6587\u6863"), uploading > 0 && /* @__PURE__ */ React2.createElement("span", { className: "wb-muted" }, "\u6B63\u5728\u4E0A\u4F20 ", uploading, " \u4E2A\u2026")), files.length > 0 && /* @__PURE__ */ React2.createElement("div", { className: "wb-files" }, files.map((a) => /* @__PURE__ */ React2.createElement("div", { className: "wb-file", key: a.id }, previews.current.get(a.id) ? /* @__PURE__ */ React2.createElement("img", { src: previews.current.get(a.id), alt: "" }) : /* @__PURE__ */ React2.createElement("span", { className: "ic" }, isImage(a) ? "\u{1F5BC}" : "\u{1F4C4}"), /* @__PURE__ */ React2.createElement("span", { className: "wb-ellipsis wb-grow", title: a.name }, a.name), /* @__PURE__ */ React2.createElement("span", { className: "wb-muted" }, fmtSize(a.size)), /* @__PURE__ */ React2.createElement("button", { "aria-label": "\u79FB\u9664\u9644\u4EF6", onClick: () => setFiles(files.filter((x) => x.id !== a.id)) }, "\u2715"))))),
+      /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React2.createElement("label", null, "\u9879\u76EE\uFF08\u5DE5\u4F5C\u76EE\u5F55\uFF09"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: projectId, onChange: (e) => setProjectId(e.target.value) }, /* @__PURE__ */ React2.createElement("option", { value: "" }, "\u672A\u9009\u62E9"), state.projects.map((x) => /* @__PURE__ */ React2.createElement("option", { key: x.id, value: x.id }, x.name)))), /* @__PURE__ */ React2.createElement("div", { className: "wb-field", style: { width: 90 } }, /* @__PURE__ */ React2.createElement("label", null, "\u4F18\u5148\u7EA7"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: priority, onChange: (e) => setPriority(e.target.value) }, PRIORITIES.map((x) => /* @__PURE__ */ React2.createElement("option", { key: x }, x))))),
+      /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React2.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React2.createElement("label", null, "\u6307\u6D3E\u667A\u80FD\u4F53"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: agentId, onChange: (e) => setAgentId(e.target.value) }, state.agents.map((a) => /* @__PURE__ */ React2.createElement("option", { key: a.id, value: a.id }, a.name)))), /* @__PURE__ */ React2.createElement("div", { className: "wb-field wb-grow" }, /* @__PURE__ */ React2.createElement("label", null, "\u72B6\u6001\uFF08\u5DF2\u5B8C\u6210\u53EA\u80FD\u7531\u4F60\u8BBE\u7F6E\uFF09"), /* @__PURE__ */ React2.createElement("select", { className: "wb-select", value: status, onChange: (e) => setStatus(e.target.value) }, COLUMNS.map((s) => /* @__PURE__ */ React2.createElement("option", { key: s, value: s }, STATUS_LABEL[s]))))),
+      issue?.note && /* @__PURE__ */ React2.createElement("div", { className: `wb-banner ${issue.status === "blocked" ? "err" : ""}`, style: { margin: "4px 0" } }, issue.note),
+      issue && /* @__PURE__ */ React2.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React2.createElement("label", null, "\u6267\u884C\u8BB0\u5F55"), runs.length ? runs.map((r) => /* @__PURE__ */ React2.createElement("div", { className: "wb-rel", key: r.id }, /* @__PURE__ */ React2.createElement("b", null, r.status === "running" ? "\u8FD0\u884C\u4E2D" : r.status === "completed" ? "\u5DF2\u7ED3\u675F" : r.status === "failed" ? "\u51FA\u9519" : "\u5DF2\u4E2D\u65AD"), /* @__PURE__ */ React2.createElement("span", { className: "wb-muted" }, " \xB7 ", agentName(state, r.agentId), " \xB7 ", ago(r.startedAt)), r.error && /* @__PURE__ */ React2.createElement("div", { style: { color: "var(--wb-red)" } }, r.error), r.finalText && /* @__PURE__ */ React2.createElement("div", { className: "wb-muted", style: { whiteSpace: "pre-wrap", maxHeight: 120, overflow: "auto", marginTop: 4 } }, r.finalText))) : /* @__PURE__ */ React2.createElement("div", { className: "wb-muted" }, "\u6682\u65E0\u6267\u884C\u8BB0\u5F55")),
+      /* @__PURE__ */ React2.createElement("div", { className: "wb-row" }, issue && /* @__PURE__ */ React2.createElement("button", { className: "wb-btn danger", onClick: () => {
+        void remove();
+      } }, "\u5220\u9664"), /* @__PURE__ */ React2.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", onClick: onClose }, "\u53D6\u6D88"), /* @__PURE__ */ React2.createElement("button", { className: "wb-btn", disabled: busy, onClick: () => {
+        void save(false);
+      } }, issue ? "\u4FDD\u5B58" : "\u521B\u5EFA"), canStart && /* @__PURE__ */ React2.createElement("button", { className: "wb-btn primary", disabled: busy, onClick: () => {
+        void save(true);
+      } }, issue ? "\u4FDD\u5B58\u5E76\u5F00\u5DE5" : "\u521B\u5EFA\u5E76\u5F00\u5DE5"))
+    ));
   }
   var agentName = (s, id) => s.agents.find((a) => a.id === id)?.name ?? id;
 
@@ -423,7 +552,7 @@ var WB = (() => {
   }
 
   // ui/App.tsx
-  var { useState: useState5, useEffect: useEffect4, useCallback, useRef } = React5;
+  var { useState: useState5, useEffect: useEffect4, useCallback, useRef: useRef2 } = React5;
   var TABS = [["todos", "\u6211\u7684\u5F85\u529E"], ["board", "\u770B\u677F"], ["agents", "\u667A\u80FD\u4F53"], ["projects", "\u9879\u76EE"]];
   function App({ openSession }) {
     const [tab, setTab] = useState5("todos");
@@ -432,7 +561,7 @@ var WB = (() => {
     const [error, setError] = useState5();
     const [toast, setToast] = useState5();
     const [focusIssue, setFocusIssue] = useState5();
-    const timer = useRef(void 0);
+    const timer = useRef2(void 0);
     const refresh = useCallback(async () => {
       try {
         setState(await rpc("state"));

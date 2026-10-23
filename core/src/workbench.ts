@@ -1,5 +1,6 @@
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { AgentDriver, DriverEvent } from './driver.ts'
 import { paymentCoreFiles } from '../fixtures/demo-repo.ts'
@@ -9,7 +10,7 @@ import { fetchJenkins } from './connectors/jenkins.ts'
 import type { ConnectorContext, Creds, FetchLike } from './connectors/http.ts'
 import { fetchZentao } from './connectors/zentao.ts'
 import { Store } from './store.ts'
-import type { AgentProfile, Issue, Priority, Project, Run, Source, Status, WorkItem } from './types.ts'
+import type { AgentProfile, Attachment, CommandName, Issue, Priority, Project, Run, Source, Status, WorkItem } from './types.ts'
 import { STATUSES } from './types.ts'
 import { builtinAgents } from './agents.ts'
 
@@ -31,6 +32,9 @@ export class WorkbenchError extends Error {
 
 const now = () => new Date().toISOString()
 const cleanLines = (l?: string[]) => (l ?? []).map((x) => x.trim()).filter(Boolean)
+const COMMANDS: CommandName[] = ['plan', 'goal']
+const MAX_UPLOAD = 25 * 1024 * 1024
+const safeUrl = (u: string) => { try { return ['http:', 'https:'].includes(new URL(u).protocol) } catch { return false } }
 const ACTIVE: Status[] = ['todo', 'in_progress', 'in_review', 'blocked', 'backlog']
 
 export interface WorkbenchOptions {
@@ -130,13 +134,15 @@ export class Workbench {
     )
   }
 
-  buildPrompt(i: Pick<Issue, 'title' | 'description' | 'acceptance' | 'sourceRef'>, w?: WorkItem): string {
+  buildPrompt(i: Pick<Issue, 'title' | 'description' | 'acceptance' | 'sourceRef' | 'links' | 'attachments'>, w?: WorkItem): string {
     const lines = [`# 任务：${i.title}`]
     if (i.sourceRef) lines.push(`来源：${i.sourceRef.source} ${i.sourceRef.ref}${w?.url ? `（${w.url}）` : ''}`)
     if (w) lines.push(`项目：${w.project}　优先级：${w.priority}${w.due ? `　截止：${w.due}` : ''}`)
     lines.push('', '## 背景', i.description || '（无）')
     lines.push('', '## 验收标准', ...(i.acceptance.length ? i.acceptance.map((a, n) => `${n + 1}. ${a}`) : ['（未给出，请先与我确认再动手）']))
     if (w?.related.length) lines.push('', '## 关联信息', ...w.related.map((r) => `- ${r.label}${r.detail ? `：${r.detail}` : ''}`))
+    if (i.links?.length) lines.push('', '## 参考链接', ...i.links.map((l) => `- ${l}`))
+    if (i.attachments?.length) lines.push('', '## 附件（已随本消息附上）', ...i.attachments.map((a) => `- ${a.name}`))
     lines.push('', '请先阅读相关代码、说明你的方案，再实施。完成后总结改动与自测结果；不要自行判定「已完成」，由我验收。')
     return lines.join('\n')
   }
@@ -193,6 +199,8 @@ export class Workbench {
       const { sessionId } = await this.driver.start({
         runId: run.id, cwd: project.cwd, title: `${issue.key} ${issue.title}`,
         prompt: this.buildPrompt(issue, item),
+        command: issue.command,
+        attachments: (issue.attachments ?? []).map((a) => ({ name: a.name, mediaType: a.mediaType, path: this.uploadPath(a) })),
         profile: { presetId: agent.id, model: agent.model, instructions: agent.instructions },
       })
       return this.store.update((d) => {
@@ -210,6 +218,13 @@ export class Workbench {
   onDriverEvent(e: DriverEvent) {
     if (e.type === 'turn.completed') {
       this.finishRun(e.runId, e.status, e.finalText, e.error)
+    } else if (e.type === 'awaiting.user') {
+      // The turn stays open until the human answers, so there is no turn/end to wait for: hand the card over now.
+      this.store.update((d) => {
+        const r = d.runs.find((x) => x.id === e.runId)
+        const issue = r && r.status === 'running' ? d.issues.find((i) => i.id === r.issueId) : undefined
+        if (issue?.status === 'in_progress') { issue.status = 'in_review'; issue.note = e.reason; issue.updatedAt = now() }
+      })
     } else if (e.type === 'turn.started') {
       this.store.update((d) => {
         const r = d.runs.find((x) => x.id === e.runId)
@@ -226,6 +241,7 @@ export class Workbench {
       const r = d.runs.find((x) => x.id === runId)!
       r.status = status; r.endedAt = now(); r.finalText = finalText; r.error = error
       const issue = d.issues.find((i) => i.id === r.issueId)
+      if (issue && issue.status === 'in_review' && status === 'completed') issue.note = undefined
       if (issue && issue.status === 'in_progress') {
         issue.status = status === 'completed' ? 'in_review' : 'blocked'
         issue.note = status === 'completed' ? undefined : error ?? (status === 'interrupted' ? '会话被中断' : '会话出错')
@@ -234,13 +250,41 @@ export class Workbench {
     })
   }
 
+  // ---------- attachments ----------
+  private get uploadsDir() { return join(dirname(this.store.path), 'uploads') }
+  uploadPath(a: Pick<Attachment, 'id'>) { return join(this.uploadsDir, a.id) }
+
+  saveUpload(input: { name: string; mediaType?: string; data: Uint8Array }): Attachment {
+    if (input.data.byteLength === 0) throw new WorkbenchError('invalid', '文件为空')
+    if (input.data.byteLength > MAX_UPLOAD) throw new WorkbenchError('invalid', `文件超过 ${MAX_UPLOAD / 1024 / 1024} MB 上限`)
+    const att: Attachment = {
+      id: randomUUID(), name: input.name.replace(/[\\/]/g, '_').slice(0, 200) || 'file',
+      mediaType: input.mediaType || 'application/octet-stream', size: input.data.byteLength,
+    }
+    mkdirSync(this.uploadsDir, { recursive: true })
+    writeFileSync(this.uploadPath(att), input.data)
+    return att
+  }
+
+  /** Keep only well-formed links and attachments whose bytes are still on disk (the page is untrusted input). */
+  private cleanExtras(x: { command?: string; links?: string[]; attachments?: Attachment[] }) {
+    if (x.command && !COMMANDS.includes(x.command as CommandName)) throw new WorkbenchError('invalid', `不支持的指令 /${x.command}`)
+    const links = cleanLines(x.links)
+    const bad = links.find((l) => !safeUrl(l))
+    if (bad) throw new WorkbenchError('invalid', `链接必须以 http:// 或 https:// 开头：${bad}`)
+    const attachments = (x.attachments ?? []).filter((a) => /^[0-9a-f-]{36}$/.test(a.id) && existsSync(this.uploadPath(a)))
+      .map(({ id, name, mediaType, size }) => ({ id, name, mediaType, size }))
+    return { command: (x.command || undefined) as CommandName | undefined, links, attachments }
+  }
+
   // ---------- issues ----------
   listIssues() { return this.store.data.issues }
   listRuns(issueId?: string) { return this.store.data.runs.filter((r) => !issueId || r.issueId === issueId) }
 
-  createIssue(input: { title: string; description?: string; acceptance?: string[]; priority?: Priority; agentId?: string; projectId?: string; status?: Status }): Issue {
+  createIssue(input: { title: string; description?: string; acceptance?: string[]; priority?: Priority; command?: string; links?: string[]; attachments?: Attachment[]; agentId?: string; projectId?: string; status?: Status }): Issue {
     if (!input.title.trim()) throw new WorkbenchError('invalid', '标题不能为空')
     if (input.status === 'done') throw new WorkbenchError('forbidden', '「已完成」只能由人在看板上设置')
+    const extras = this.cleanExtras(input)
     return this.store.update((d) => {
       d.seq += 1
       d.issueSeq = (d.issueSeq ?? 0) + 1
@@ -248,20 +292,26 @@ export class Workbench {
       const issue: Issue = {
         id: `iss_${d.seq}`, key: `WB-${d.issueSeq}`, title: input.title.trim(), description: input.description ?? '', acceptance: cleanLines(input.acceptance),
         status: input.status ?? 'backlog', agentId: input.agentId ?? 'fullstack', projectId: input.projectId || undefined,
-        priority: input.priority ?? 'P2', createdAt: t, updatedAt: t,
+        priority: input.priority ?? 'P2', ...extras, createdAt: t, updatedAt: t,
       }
       d.issues.push(issue)
       return issue
     })
   }
 
-  updateIssue(id: string, patch: Partial<Pick<Issue, 'title' | 'description' | 'acceptance' | 'priority' | 'agentId' | 'projectId'>>) {
+  updateIssue(id: string, patch: Partial<Pick<Issue, 'title' | 'description' | 'acceptance' | 'priority' | 'agentId' | 'projectId'>> & { command?: string; links?: string[]; attachments?: Attachment[] }) {
+    const extras = 'command' in patch || patch.links || patch.attachments ? this.cleanExtras(patch) : undefined
     return this.store.update((d) => {
       const i = d.issues.find((x) => x.id === id)
       if (!i) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
-      const { projectId, acceptance, ...rest } = patch
+      const { projectId, acceptance, command: _c, links: _l, attachments: _a, ...rest } = patch
       Object.assign(i, Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)), { updatedAt: now() })
       if (acceptance) i.acceptance = cleanLines(acceptance)
+      if (extras) {
+        if ('command' in patch) i.command = extras.command
+        if (patch.links) i.links = extras.links
+        if (patch.attachments) i.attachments = extras.attachments
+      }
       if (projectId !== undefined) i.projectId = projectId || undefined // '' clears the project
       return i
     })
@@ -281,6 +331,7 @@ export class Workbench {
   }
 
   deleteIssue(id: string) {
+    for (const a of this.store.data.issues.find((i) => i.id === id)?.attachments ?? []) rmSync(this.uploadPath(a), { force: true })
     this.store.update((d) => { d.issues = d.issues.filter((i) => i.id !== id); d.runs = d.runs.filter((r) => r.issueId !== id) })
   }
 

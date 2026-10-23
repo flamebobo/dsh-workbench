@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readdirSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -180,4 +180,51 @@ test('a blocked card can be started again; done cards cannot', async () => {
   assert.equal(wb.listIssues()[0]!.status, 'in_progress')
   wb.setStatus(issue.id, 'done', 'human')
   await assert.rejects(() => wb.startIssue(issue.id), /已完成/)
+})
+
+test('task extras: links, attachments and /plan reach the driver; bad input is refused', async () => {
+  const { wb, driver, dir } = setup()
+  const project = wb.listProjects().find((p) => p.name.endsWith('payment-core'))!
+  const att = wb.saveUpload({ name: '../设计稿.png', mediaType: 'image/png', data: Buffer.from('png-bytes') })
+  assert.equal(att.name, '.._设计稿.png') // never a path
+  assert.equal(readFileSync(wb.uploadPath(att), 'utf8'), 'png-bytes')
+  assert.throws(() => wb.saveUpload({ name: 'empty', data: new Uint8Array() }), /文件为空/)
+
+  assert.throws(() => wb.createIssue({ title: 'x', links: ['javascript:alert(1)'] }), /http/)
+  assert.throws(() => wb.createIssue({ title: 'x', command: 'rm' }), /不支持的指令/)
+
+  const issue = wb.createIssue({
+    title: '带附件的任务', projectId: project.id, command: 'plan', links: [' https://wiki.example.com/a '],
+    attachments: [att, { id: '00000000-0000-0000-0000-000000000000', name: 'ghost', mediaType: 'x', size: 1 }],
+  })
+  assert.deepEqual(issue.links, ['https://wiki.example.com/a'])
+  assert.deepEqual(issue.attachments!.map((a) => a.name), ['.._设计稿.png']) // the missing file is dropped
+
+  await wb.startIssue(issue.id)
+  const req = driver.started[0]!
+  assert.equal(req.command, 'plan')
+  assert.deepEqual(req.attachments, [{ name: '.._设计稿.png', mediaType: 'image/png', path: join(dir, 'uploads', att.id) }])
+  assert.match(req.prompt, /## 参考链接\n- https:\/\/wiki\.example\.com\/a/)
+  assert.match(req.prompt, /## 附件.*\n- \.\._设计稿\.png/)
+
+  wb.updateIssue(issue.id, { command: '' }) // clearing the command
+  assert.equal(wb.listIssues()[0]!.command, undefined)
+  wb.deleteIssue(issue.id)
+  assert.equal(existsSync(wb.uploadPath(att)), false)
+})
+
+test('awaiting.user hands the card to review while the turn is still open; a later turn end keeps it there', async () => {
+  const { wb, driver } = setup()
+  const { issue, run } = await wb.startWork({ item: bug })
+  driver.emit({ type: 'awaiting.user', runId: run.id, reason: '计划已提交' })
+  assert.equal(wb.listIssues()[0]!.status, 'in_review')
+  assert.equal(wb.listIssues()[0]!.note, '计划已提交')
+  assert.equal(wb.listRuns()[0]!.status, 'running')
+  driver.emit({ type: 'turn.completed', runId: run.id, status: 'completed' })
+  assert.equal(wb.listIssues()[0]!.status, 'in_review')
+  assert.equal(wb.listIssues()[0]!.note, undefined)
+  assert.equal(wb.listRuns()[0]!.status, 'completed')
+  wb.setStatus(issue.id, 'blocked') // a human moved it; a stray event must not change it
+  driver.emit({ type: 'awaiting.user', runId: run.id, reason: 'x' })
+  assert.equal(wb.listIssues()[0]!.status, 'blocked')
 })

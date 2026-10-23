@@ -45,6 +45,17 @@ export interface AgentProfile {
   builtin?: boolean
 }
 
+/** A file the user attached to a task. Bytes live in <data dir>/uploads/<id>; only this metadata is in the JSON. */
+export interface Attachment {
+  id: string
+  name: string
+  mediaType: string
+  size: number
+}
+
+/** DSH composer commands that make sense as the first message of a task. */
+export type CommandName = 'plan' | 'goal'
+
 export interface Issue {
   id: string
   /** Short key shown on cards, WB-1, WB-2 … */
@@ -54,6 +65,10 @@ export interface Issue {
   acceptance: string[]
   status: Status
   priority?: Priority
+  /** Run the first message through this command (`/plan <prompt>` ...) instead of sending it as plain text. */
+  command?: CommandName
+  links?: string[]
+  attachments?: Attachment[]
   agentId: string
   projectId?: string
   /** Set when the card was created from a work item; at most one card per (source, ref). */

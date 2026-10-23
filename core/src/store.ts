@@ -3,7 +3,9 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Data } from './types.ts'
 
-export const defaultDataPath = () => join(homedir(), '.workbench', 'workbench.json')
+/** `WORKBENCH_HOME` relocates the data dir (tests, a second DSH profile running side by side). */
+export const dataDir = () => process.env.WORKBENCH_HOME || join(homedir(), '.workbench')
+export const defaultDataPath = () => join(dataDir(), 'workbench.json')
 
 const empty = (): Data => ({ version: 1, seq: 0, projects: [], issues: [], agents: [], runs: [] })
 

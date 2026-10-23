@@ -1,6 +1,5 @@
-import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { Store, Workbench, WorkbenchError, defaultDataPath } from '../core/src/index.ts'
+import { Store, Workbench, WorkbenchError, dataDir, defaultDataPath } from '../core/src/index.ts'
 import type { Status, WorkItem } from '../core/src/index.ts'
 import { DshDriver } from './dsh-driver.ts'
 
@@ -20,7 +19,7 @@ export function apply(ctx: Ctx) {
     // Credentials are resolved per call and only ever used inside the connectors (never logged or sent to the page).
     creds: async (name) => (await ctx.credentials.resolve(name))?.value,
   })
-  wb.seedDemoProjects(join(homedir(), '.workbench', 'demo-repos'))
+  wb.seedDemoProjects(join(dataDir(), 'demo-repos'))
   void Promise.all(wb.listAgents().map((a) => driver.registerPreset(a)))
   ctx.effect(() => () => { wb.dispose(); return driver.disposePresets() })
 
@@ -49,6 +48,22 @@ export function apply(ctx: Ctx) {
       default: throw new WorkbenchError('invalid', `unknown endpoint ${endpoint}`)
     }
   }
+
+  // Raw-body upload (no JSON size cap): the page sends the file bytes, the name in a header; the card only keeps the returned reference.
+  ctx.connection.fetch.register({
+    path: '/api/workbench.upload', methods: ['POST'], requestBody: 'streaming',
+    fetch: async (request: Request) => {
+      try {
+        const name = decodeURIComponent(request.headers.get('x-wb-name') ?? 'file')
+        const data = new Uint8Array(await request.arrayBuffer())
+        const mediaType = request.headers.get('content-type') ?? undefined
+        return Response.json({ ok: true, value: wb.saveUpload({ name, mediaType, data }) })
+      } catch (e) {
+        if (!(e instanceof WorkbenchError)) ctx.logger.warn('workbench upload failed', e)
+        return Response.json({ ok: false, error: String((e as Error)?.message ?? e) })
+      }
+    },
+  })
 
   ctx.connection.fetch.register({
     path: '/api/workbench.rpc', methods: ['POST'], requestBody: 'buffered',

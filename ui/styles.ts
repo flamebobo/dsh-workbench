@@ -69,5 +69,14 @@ export const css = `
 .wb-li:hover { background: var(--wb-hover); } .wb-li[aria-selected=true] { background: var(--wb-l2); border-color: var(--wb-bd); }
 .wb-pane { flex: 1; overflow: auto; padding: 18px 24px; max-width: 760px; }
 .wb-toast { position: absolute; right: 20px; bottom: 20px; z-index: 30; padding: 9px 14px; border-radius: 9px; background: var(--wb-fg); color: var(--wb-bg); box-shadow: 0 6px 24px rgba(0,0,0,.25); max-width: 420px; }
+.wb-modal.drop { outline: 2px dashed var(--wb-blue); outline-offset: -6px; }
+.wb-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.wb-chipx { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 1px 4px 1px 9px; border-radius: 12px; background: var(--wb-l2); font-size: 12px; }
+.wb-chipx a { color: var(--dsw-alias-link, var(--wb-blue)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 380px; text-decoration: none; }
+.wb-chipx button, .wb-file button { border: 0; background: none; color: var(--wb-fg3); padding: 0 6px; }
+.wb-chipx button:hover, .wb-file button:hover { color: var(--wb-red); }
+.wb-files { margin-top: 6px; display: flex; flex-direction: column; gap: 5px; }
+.wb-file { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 8px; border: 1px solid var(--wb-bd1); border-radius: 7px; background: var(--wb-l1); }
+.wb-file img { width: 28px; height: 28px; object-fit: cover; border-radius: 4px; } .wb-file .ic { width: 28px; text-align: center; font-size: 18px; }
 .wb-empty { padding: 40px; text-align: center; color: var(--wb-fg3); }
 `
