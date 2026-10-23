@@ -10,14 +10,16 @@ window.__ModuleLoader__.load({
         h('path', { d: 'M8 8v8M12 8v5M16 8v10' }));
     }
     return {
-      inject: ['slots', 'connection'],
+      inject: ['slots'],
       apply(ctx) {
         function Page() {
           const [out, setOut] = React.useState('');
           const call = async (endpoint, payload) => {
             setOut('…');
-            try { setOut(JSON.stringify(await ctx.connection.rpc.call('/workbench', endpoint, payload ?? {}), null, 2)); }
-            catch (e) { setOut('ERR ' + (e && e.message)); }
+            try {
+              const res = await fetch('api/workbench.rpc', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint, payload: payload ?? {} }) });
+              setOut(res.ok ? JSON.stringify(await res.json(), null, 2) : 'HTTP ' + res.status);
+            } catch (e) { setOut('ERR ' + (e && e.message)); }
           };
           const btn = { padding: '6px 12px', marginRight: 8, background: 'var(--dsw-alias-surface-secondary, #eee)', color: 'inherit', border: '1px solid var(--dsw-alias-border-default, #ccc)', borderRadius: 6 };
           return h('div', { style: { padding: 24, color: 'var(--dsw-alias-text-primary, inherit)' } },

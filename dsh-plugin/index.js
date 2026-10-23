@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 
 export const inject = [
   'connection', 'agents', 'agentDefaultModel', 'agentPresets',
-  'permissionPresets', 'sessionTitle', 'workspaceRegistry',
+  'permissionPresets', 'sessionTitle', 'workspaceRegistry', 'webServer',
 ]
 
 export function apply(ctx) {
@@ -42,14 +42,23 @@ export function apply(ctx) {
     return { sessionId, reason }
   }
 
-  ctx.effect(() => ctx.connection.rpc.handle('/workbench', async (endpoint, payload) => {
-    try {
-      if (endpoint === 'ping') return { ok: true, value: { pong: true, at: Date.now() } }
-      if (endpoint === 'selftest') return { ok: true, value: await selfTest(String(payload?.cwd ?? process.cwd())) }
-      return { ok: false, error: { code: 'workbench/unknown', message: endpoint, details: {} } }
-    } catch (e) {
-      ctx.logger.warn('workbench rpc failed', e)
-      return { ok: false, error: { code: 'workbench/error', message: String(e?.stack ?? e), details: {} } }
-    }
-  }))
+  async function dispatch(endpoint, payload) {
+    if (endpoint === 'ping') return { pong: true, at: Date.now() }
+    if (endpoint === 'selftest') return await selfTest(String(payload?.cwd ?? process.cwd()))
+    throw new Error(`unknown endpoint ${endpoint}`)
+  }
+
+  // Page -> Host: one exact Fetch route below /api (owner-only); rpc.handle's /workbench prefix is not reachable from the page.
+  ctx.connection.fetch.register({
+    path: '/api/workbench.rpc', methods: ['POST'], requestBody: 'buffered',
+    fetch: async (request) => {
+      try {
+        const { endpoint, payload } = await request.json()
+        return Response.json({ ok: true, value: await dispatch(endpoint, payload) })
+      } catch (e) {
+        ctx.logger.warn('workbench rpc failed', e)
+        return Response.json({ ok: false, error: String(e?.message ?? e) })
+      }
+    },
+  })
 }
