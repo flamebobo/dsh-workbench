@@ -69,7 +69,7 @@ rm -rf ~/.workbench/workbench.json ~/.workbench/demo-repos
 | 5 | 智能体：编辑并注册为 DSH Preset | `08-agents-saved.jpg`、`09-presets-in-dsh.jpg` |
 | 6 | 项目：映射 + cwd | `10-projects.jpg`、`03-session-running.jpg`（会话在项目目录下） |
 
-自动化测试：`npm test`（node:test，22 条：状态流转、去重、done 仅人可设、重启对账、手工任务进待办并开工、三个连接器的响应解析与请求形状、演示数据与项目的对应）；`npm run typecheck`。
+自动化测试：`npm test`（node:test，21 条：状态流转、去重、done 仅人可设、重启对账、手工任务进待办并开工、三个连接器的响应解析与请求形状、演示数据与项目的对应）；`npm run typecheck`。
 
 ## 6. 已知限制
 
