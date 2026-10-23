@@ -22,6 +22,7 @@ test('开工 creates one in_progress card, starts a session in the project cwd w
   const { driver, wb, dir } = setup()
   const { issue, run } = await wb.startWork({ item: bug })
   assert.equal(issue.status, 'in_progress')
+  assert.equal(issue.key, 'WB-1') // card keys don't share the counter with project ids
   assert.equal(issue.sessionId, `sess-${run.id}`)
   const req = driver.started[0]!
   assert.equal(req.cwd, join(dir, 'repos', 'payment-core'))

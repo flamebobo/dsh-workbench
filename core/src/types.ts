@@ -80,6 +80,8 @@ export interface Run {
 export interface Data {
   version: 1
   seq: number
+  /** Counter for card keys WB-1, WB-2 … (seq is shared with ids). */
+  issueSeq?: number
   projects: Project[]
   issues: Issue[]
   agents: AgentProfile[]

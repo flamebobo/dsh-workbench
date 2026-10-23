@@ -1,6 +1,8 @@
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { join } from 'node:path'
 import type { AgentDriver, DriverEvent } from './driver.ts'
+import { paymentCoreFiles } from '../fixtures/demo-repo.ts'
 import { demoGitlab, demoJenkins, demoZentao } from '../fixtures/demo.ts'
 import { fetchGitlab } from './connectors/gitlab.ts'
 import { fetchJenkins } from './connectors/jenkins.ts'
@@ -142,9 +144,10 @@ export class Workbench {
     if (!project) throw new WorkbenchError('invalid', `「${item.project}」没有对应的项目工作目录，请先在「项目」页添加`)
     const { issue, run } = this.store.update((d) => {
       d.seq += 1
+      d.issueSeq = (d.issueSeq ?? 0) + 1
       const t = now()
       const issue: Issue = {
-        id: `iss_${d.seq}`, key: `WB-${d.seq}`, title: item.title, description: item.description,
+        id: `iss_${d.seq}`, key: `WB-${d.issueSeq}`, title: item.title, description: item.description,
         acceptance: item.acceptance, status: 'in_progress', agentId: agent.id, projectId: project.id,
         sourceRef: { source: item.source, ref: item.ref }, createdAt: t, updatedAt: t,
       }
@@ -206,9 +209,10 @@ export class Workbench {
     if (input.status === 'done') throw new WorkbenchError('forbidden', '「已完成」只能由人在看板上设置')
     return this.store.update((d) => {
       d.seq += 1
+      d.issueSeq = (d.issueSeq ?? 0) + 1
       const t = now()
       const issue: Issue = {
-        id: `iss_${d.seq}`, key: `WB-${d.seq}`, title: input.title.trim(), description: input.description ?? '', acceptance: [],
+        id: `iss_${d.seq}`, key: `WB-${d.issueSeq}`, title: input.title.trim(), description: input.description ?? '', acceptance: [],
         status: input.status ?? 'backlog', agentId: input.agentId ?? 'fullstack', projectId: input.projectId, createdAt: t, updatedAt: t,
       }
       d.issues.push(issue)
@@ -287,8 +291,15 @@ export class Workbench {
     ]
     for (const p of demo) {
       mkdirSync(p.cwd, { recursive: true })
-      const readme = join(p.cwd, 'README.md')
-      if (!existsSync(readme)) writeFileSync(readme, `# ${p.name}\n\n研发工作台演示用的空工作目录，请在「项目」页改成真实仓库路径。\n`)
+      const files = p.name.endsWith('payment-core')
+        ? paymentCoreFiles
+        : { 'README.md': `# ${p.name}\n\n研发工作台演示用的空工作目录，请在「项目」页改成真实仓库路径。\n` }
+      for (const [rel, text] of Object.entries(files)) {
+        const f = join(p.cwd, rel)
+        if (existsSync(f)) continue
+        mkdirSync(dirname(f), { recursive: true })
+        writeFileSync(f, text)
+      }
       this.saveProject(p)
     }
   }
