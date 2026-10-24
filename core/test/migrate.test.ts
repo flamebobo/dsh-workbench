@@ -53,3 +53,14 @@ test('F4 v2 -> v3: finished cards get doneAt from their last update (an approxim
   assert.deepEqual(by, { a: '2026-10-20T08:00:00.000Z', b: undefined, c: '2026-10-19T00:00:00.000Z' }) // an existing doneAt is never overwritten
   assert.equal(JSON.parse(readFileSync(`${path}.v2.bak`, 'utf8')).version, 2)
 })
+
+test('F3 autoDoneOnPass: off for a fresh install; an existing file keeps what it had (including "never touched" = the old default, on)', async () => {
+  const { Workbench } = await import('../src/index.ts')
+  const { FakeDriver } = await import('./fake.ts')
+  const open = (data: object) => { const path = tmp(); writeFileSync(path, JSON.stringify({ ...v1, version: 2, ...data })); return new Workbench({ store: new Store(path), driver: new FakeDriver(), creds: async () => undefined }).settings().autoDoneOnPass }
+  assert.equal(new Workbench({ store: new Store(tmp()), driver: new FakeDriver(), creds: async () => undefined }).settings().autoDoneOnPass, false) // fresh
+  assert.equal(open({}), true) // v2 file whose owner never saved settings: the old default (on) carries over
+  assert.equal(open({ settings: { branchPrefix: 'x/' } }), true) // saved other settings, never this one
+  assert.equal(open({ settings: { autoDoneOnPass: false } }), false) // an explicit choice is never changed
+  assert.equal(open({ settings: { autoDoneOnPass: true } }), true)
+})

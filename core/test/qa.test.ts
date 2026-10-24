@@ -188,6 +188,7 @@ test('Q10 a brief Jenkins hiccup while following a build does not end the tracki
 
 test('Q11 passing tests alone do not complete a card whose agent changed nothing (it may only have asked a question)', async () => {
   const { wb, driver } = setup()
+  wb.saveSettings({ autoDoneOnPass: true })
   const project = wb.listProjects().find((p) => p.name.endsWith('payment-core'))!
   wb.saveProject({ ...project, testCmd: 'true' })
   const i = wb.createIssue({ title: '需要澄清的缺陷', projectId: project.id, status: 'todo' })

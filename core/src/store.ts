@@ -24,6 +24,8 @@ const migrations: Record<number, (d: Data) => void> = {
   // inaccuracy doneAt exists to end for cards finished from now on.
   2: (d) => {
     for (const i of d.issues) if (i.status === 'done') i.doneAt ??= i.updatedAt
+    // autoDoneOnPass used to default to on and now defaults to off: whoever never chose keeps the behaviour they had
+    d.settings = { ...d.settings, autoDoneOnPass: d.settings?.autoDoneOnPass ?? true }
   },
 }
 

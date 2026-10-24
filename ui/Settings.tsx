@@ -162,7 +162,7 @@ function General({ p }: { p: PageProps }) {
         <div className="wb-sub" style={{ marginTop: 3 }}>例如 wb/ 得到 wb/wb-12-fix-callback；只能包含字母数字和 / _ . -</div></div>
       {check('autoTestOnReview', '智能体完成后自动运行项目的测试命令', '项目配置了测试命令时，会话结束进入「待审核」后自动在任务工作树里运行，结果显示在卡片上')}
       {n('testTimeoutSeconds', '测试超时（秒）', '超过后强制结束并记为失败', 10, 3600)}
-      {check('autoDoneOnPass', '测试通过后自动完成', '「待审核」的任务在测试通过后自动进入「已完成」；没有测试命令、测试未通过或你没开启时，仍由你验收后拖到「已完成」')}
+      {check('autoDoneOnPass', '测试通过后自动完成', '默认关闭。开启后，「待审核」的任务在测试通过、并且任务分支确有代码改动时自动进入「已完成」；没有测试命令、测试未通过、智能体没有改任何文件（比如只回复了一个问题）时，仍由你验收后拖到「已完成」。')}
       <div className="wb-field"><label>禅道 Bug 完成后回写</label>
         <select className="wb-select" value={f.zentaoWriteBack} onChange={(e) => set('zentaoWriteBack', e.target.value as PluginSettings['zentaoWriteBack'])}>
           <option value="confirm">确认后回写（推荐：显示评论草稿，你点了才发送）</option>

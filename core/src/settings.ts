@@ -23,7 +23,7 @@ export interface PluginSettings {
   /** Run the project's test command automatically when an agent finishes. */
   autoTestOnReview: boolean
   testTimeoutSeconds: number
-  /** A card waiting in 待审核 moves to 已完成 by itself once its tests pass (needs a test command; otherwise you accept it). */
+  /** A card waiting in 待审核 moves to 已完成 by itself once its tests pass AND its task branch has code changes (needs a test command). Off by default. */
   autoDoneOnPass: boolean
   /** Finished Zentao bugs: ask with a comment draft first, or resolve them in Zentao straight away. */
   zentaoWriteBack: 'confirm' | 'auto'
@@ -47,7 +47,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   permissionPreset: 'workspace-write',
   defaultAgents: { zentao: 'fullstack', gitlab: 'reviewer', jenkins: 'build-fixer', sparkin: 'fullstack', manual: 'fullstack' },
   isolateByDefault: true, branchPrefix: 'wb/', autoTestOnReview: true, testTimeoutSeconds: 600,
-  autoDoneOnPass: true, zentaoWriteBack: 'confirm', onboarded: false, syncTodosToBoard: true, skillRoots: [], desktopNotify: true,
+  autoDoneOnPass: false, zentaoWriteBack: 'confirm', onboarded: false, syncTodosToBoard: true, skillRoots: [], desktopNotify: true,
   statsReportEnabled: false, statsReportUrl: '', updateCheckUrl: '',
 }
 

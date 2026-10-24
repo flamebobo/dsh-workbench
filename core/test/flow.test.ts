@@ -73,6 +73,7 @@ test('status follows the session by itself: continuing it after review reopens t
 
 test('tests passing move 待审核 -> 已完成 on their own; failing, disabled or no test command leave it to the human', async () => {
   const { wb, driver } = setup()
+  wb.saveSettings({ autoDoneOnPass: true }) // off by default
   const project = wb.listProjects().find((p) => p.name.endsWith('payment-core'))!
   const run = async (testCmd: string | undefined) => {
     wb.saveProject({ ...project, testCmd })

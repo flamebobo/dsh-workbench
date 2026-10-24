@@ -29,6 +29,7 @@ var migrations = {
   // inaccuracy doneAt exists to end for cards finished from now on.
   2: (d) => {
     for (const i of d.issues) if (i.status === "done") i.doneAt ??= i.updatedAt;
+    d.settings = { ...d.settings, autoDoneOnPass: d.settings?.autoDoneOnPass ?? true };
   }
 };
 var DataVersionError = class extends Error {
@@ -1174,7 +1175,7 @@ var DEFAULT_SETTINGS = {
   branchPrefix: "wb/",
   autoTestOnReview: true,
   testTimeoutSeconds: 600,
-  autoDoneOnPass: true,
+  autoDoneOnPass: false,
   zentaoWriteBack: "confirm",
   onboarded: false,
   syncTodosToBoard: true,
