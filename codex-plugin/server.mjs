@@ -3233,7 +3233,9 @@ async function serve(o) {
       if (readServeInfo(o.dir)?.token === token) rmSync2(serveInfoPath(o.dir));
     } catch {
     }
-    await new Promise((resolve5) => server.close(() => resolve5()));
+    const closed = new Promise((resolve5) => server.close(() => resolve5()));
+    server.closeAllConnections();
+    await closed;
   };
   return { info, close };
 }

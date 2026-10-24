@@ -85,7 +85,10 @@ export async function serve(o: { dir: string; dispatch: Dispatch; version: strin
     clearInterval(watch)
     for (const w of waiters) w()
     try { if (readServeInfo(o.dir)?.token === token) rmSync(serveInfoPath(o.dir)) } catch { /* already gone */ }
-    await new Promise<void>((resolve) => server.close(() => resolve()))
+    // keep-alive sockets (the page polls every few seconds) would otherwise hold close() open forever
+    const closed = new Promise<void>((resolve) => server.close(() => resolve()))
+    server.closeAllConnections()
+    await closed
   }
   return { info, close }
 }

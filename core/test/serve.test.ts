@@ -56,3 +56,16 @@ test('serve: rpc runs the shared endpoints and reports errors the way the DSH ro
     assert.equal(up.value.size, 5)
   } finally { await s.close() }
 })
+
+test('serve: close() does not wait for a page that keeps long-polling on a keep-alive connection', { timeout: 5000 }, async () => {
+  const { s } = await start()
+  let polling = true
+  // like the Codex page: one change long-poll right after another on the same keep-alive socket
+  const poll = (async () => { while (polling) await callServe(s.info, '/events?after=1000&wait=3000').catch(() => new Promise((r) => setTimeout(r, 50))) })()
+  await new Promise((r) => setTimeout(r, 300))
+  const t0 = Date.now()
+  await s.close()
+  assert.ok(Date.now() - t0 < 1000, `close took ${Date.now() - t0} ms`)
+  polling = false
+  await poll
+})
