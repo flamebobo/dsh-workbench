@@ -43,7 +43,7 @@ var Store = class {
 
 // core/src/workbench.ts
 import { existsSync as existsSync2, mkdirSync as mkdirSync2, rmSync, writeFileSync as writeFileSync2 } from "node:fs";
-import { dirname as dirname2 } from "node:path";
+import { dirname as dirname2, isAbsolute } from "node:path";
 import { randomUUID } from "node:crypto";
 import { join as join3 } from "node:path";
 
@@ -1274,7 +1274,7 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
     return this.store.data.projects;
   }
   saveProject(p) {
-    if (!p.name.trim() || !p.cwd.startsWith("/")) throw new WorkbenchError("invalid", "\u9879\u76EE\u540D\u79F0\u5FC5\u586B\uFF0C\u5DE5\u4F5C\u76EE\u5F55\u5FC5\u987B\u662F\u7EDD\u5BF9\u8DEF\u5F84");
+    if (!p.name.trim() || !isAbsolute(p.cwd.trim())) throw new WorkbenchError("invalid", "\u9879\u76EE\u540D\u79F0\u5FC5\u586B\uFF0C\u5DE5\u4F5C\u76EE\u5F55\u5FC5\u987B\u662F\u7EDD\u5BF9\u8DEF\u5F84");
     return this.store.update((d) => {
       const clean = { ...p, name: p.name.trim(), cwd: p.cwd.trim() };
       const cur = p.id ? d.projects.find((x) => x.id === p.id) : void 0;

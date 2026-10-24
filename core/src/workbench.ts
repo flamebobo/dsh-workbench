@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, isAbsolute } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { AgentDriver, DriverEvent } from './driver.ts'
@@ -602,7 +602,7 @@ export class Workbench {
 
   listProjects() { return this.store.data.projects }
   saveProject(p: Omit<Project, 'id'> & { id?: string }): Project {
-    if (!p.name.trim() || !p.cwd.startsWith('/')) throw new WorkbenchError('invalid', '项目名称必填，工作目录必须是绝对路径')
+    if (!p.name.trim() || !isAbsolute(p.cwd.trim())) throw new WorkbenchError('invalid', '项目名称必填，工作目录必须是绝对路径')
     return this.store.update((d) => {
       const clean = { ...p, name: p.name.trim(), cwd: p.cwd.trim() }
       const cur = p.id ? d.projects.find((x) => x.id === p.id) : undefined

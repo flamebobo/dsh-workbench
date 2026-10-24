@@ -46,7 +46,7 @@ export function Projects(p: PageProps) {
           <div className="wb-modal" role="dialog" aria-label="项目">
             <h3 style={{ marginTop: 0 }}>{draft.id ? '编辑项目' : '添加项目'}</h3>
             {f('name', '名称', '云支付 / payment-core')}
-            {f('cwd', '工作目录（绝对路径）', '/Users/me/code/payment-core')}
+            {f('cwd', '工作目录（绝对路径）', '/Users/me/code/payment-core 或 D:\\code\\payment-core')}
             <div className="wb-row">{f('gitlabProjectId', 'GitLab 项目 ID', '101')}{f('zentaoProductId', '禅道产品 ID', '12')}{f('jenkinsJob', 'Jenkins Job 名', 'payment-core')}</div>
             <div className="wb-field"><label>Sparkin 项目（填报工时时对应到它的任务）</label>
               <select className="wb-select" value={draft.sparkinProjectId ?? ''} onChange={(e) => setDraft({ ...draft, sparkinProjectId: e.target.value || undefined })}>
