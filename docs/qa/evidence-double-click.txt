@@ -1,0 +1,13 @@
+== page-level result (two concurrent calls each):
+{
+ "writeback": [
+  "ok",
+  "回写禅道正在进行，请稍候"
+ ],
+ "timesheet": [
+  "ok",
+  "WB-8 已经填报过 1h"
+ ]
+}
+== what the mock Zentao actually received (GET :4100/__log):
+zentao.resolve bug 501 {"resolution": "fixed", "resolvedBuild": "trunk", "comment": "已修复（QA 重复点击测试）"}
