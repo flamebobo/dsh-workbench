@@ -12,12 +12,18 @@ export const defaultDataPath = () => join(dataDir(), 'workbench.json')
  * copied to `<file>.v<old>.bak` first, then upgraded in order. A file from a NEWER plugin is refused instead of being rewritten
  * in a shape this version does not understand.
  */
-export const DATA_VERSION = 2
+export const DATA_VERSION = 3
 const migrations: Record<number, (d: Data) => void> = {
   // 1 -> 2: the arrays and fields that later releases read without checking are always present
   1: (d) => {
     d.builds ??= []; d.hiddenTodos ??= []; d.issueSeq ??= d.issues.length
     for (const i of d.issues) { i.acceptance ??= []; i.attachments ??= [] }
+  },
+  // 2 -> 3: 完成时间. Nothing recorded when old cards were finished, so their last update stands in for it. That is an
+  // approximation: a finished card edited afterwards (or given an MR) is dated by that later change, which is the very
+  // inaccuracy doneAt exists to end for cards finished from now on.
+  2: (d) => {
+    for (const i of d.issues) if (i.status === 'done') i.doneAt ??= i.updatedAt
   },
 }
 

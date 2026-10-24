@@ -41,3 +41,15 @@ test('a file from a newer plugin is refused and never rewritten', () => {
   assert.throws(() => new Store(path), (e: Error) => e instanceof DataVersionError && /更新到最新版/.test(e.message))
   assert.equal(readFileSync(path, 'utf8'), newer)
 })
+
+test('F4 v2 -> v3: finished cards get doneAt from their last update (an approximation), others none; the file is backed up as .v2.bak', () => {
+  const path = tmp()
+  const issue = (id: string, status: string, updatedAt: string) => ({ id, key: id, title: id, description: '', acceptance: [], status, createdAt: '2026-10-01T00:00:00.000Z', updatedAt })
+  writeFileSync(path, JSON.stringify({ version: 2, seq: 3, issueSeq: 3, projects: [], agents: [], runs: [], builds: [], hiddenTodos: [],
+    issues: [issue('a', 'done', '2026-10-20T08:00:00.000Z'), issue('b', 'in_review', '2026-10-21T08:00:00.000Z'), { ...issue('c', 'done', '2026-10-22T08:00:00.000Z'), doneAt: '2026-10-19T00:00:00.000Z' }] }))
+  const s = new Store(path)
+  assert.equal(s.data.version, 3)
+  const by = Object.fromEntries(s.data.issues.map((i) => [i.id, i.doneAt]))
+  assert.deepEqual(by, { a: '2026-10-20T08:00:00.000Z', b: undefined, c: '2026-10-19T00:00:00.000Z' }) // an existing doneAt is never overwritten
+  assert.equal(JSON.parse(readFileSync(`${path}.v2.bak`, 'utf8')).version, 2)
+})

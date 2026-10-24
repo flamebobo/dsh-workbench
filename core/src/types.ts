@@ -118,6 +118,8 @@ export interface Issue {
   nextId?: string
   /** Hidden from the board by default; the card and its history are kept. */
   archivedAt?: string
+  /** When the card entered 已完成 (cleared when it leaves). Weekly trends and reports count from this, not from the last edit. */
+  doneAt?: string
   timesheet?: Timesheet
   /** Deadline, YYYY-MM-DD; '' = cleared on purpose (a card from a source system otherwise shows the source's date). */
   due?: string

@@ -314,3 +314,33 @@ test('F1 only a system that was never configured shows demo rows; a configured o
   const jobs = await wb.jenkinsJobs()
   assert.deepEqual([jobs.mode, jobs.jobs.length], ['error', 0])
 })
+
+test('F4 doneAt is written when a card enters 已完成, cleared when it leaves, and kept through later edits', async () => {
+  const { wb } = setup()
+  const i = wb.createIssue({ title: 'x' })
+  assert.equal(wb.listIssues().find((x) => x.id === i.id)!.doneAt, undefined)
+  wb.setStatus(i.id, 'done')
+  const at = wb.listIssues().find((x) => x.id === i.id)!.doneAt
+  assert.ok(at && !Number.isNaN(Date.parse(at)))
+  wb.updateIssue(i.id, { title: 'edited later' }) // editing a finished card does not move its finish time
+  wb.moveIssue(i.id, 'done') // nor does reordering inside the column
+  assert.equal(wb.listIssues().find((x) => x.id === i.id)!.doneAt, at)
+  wb.setStatus(i.id, 'in_review')
+  assert.equal(wb.listIssues().find((x) => x.id === i.id)!.doneAt, undefined)
+})
+
+test('F4 the weekly trend and the 周报 follow doneAt, not the last update', async () => {
+  const { computeStats } = await import('../src/stats.ts')
+  const now = Date.parse('2026-10-24T10:00:00') // a Saturday; its week starts 2026-10-19
+  const card = (id: string, over: object) => ({ id, key: id, title: id, description: '', acceptance: [], status: 'done', agentId: 'fullstack', createdAt: '2026-09-01T00:00:00', updatedAt: '2026-10-23T10:00:00', ...over })
+  const d = { issues: [card('a', { doneAt: '2026-10-08T10:00:00' }), card('b', { doneAt: '2026-10-22T10:00:00' }), card('c', {})], runs: [] } as never
+  const week = (s: ReturnType<typeof computeStats>, w: string) => s.byWeek.find((x) => x.week === w)!.done
+  const s = computeStats(d, now)
+  assert.deepEqual([week(s, '2026-10-05'), week(s, '2026-10-19')], [1, 2]) // a: finished the week of 10-05 although edited since; c has no doneAt: falls back to updatedAt
+  // the report
+  const { wb } = setup()
+  const k = wb.createIssue({ title: '上周完成、本周又被编辑' })
+  wb.setStatus(k.id, 'done')
+  wb.store.update((x) => { x.issues.find((y) => y.id === k.id)!.doneAt = new Date(Date.now() - 20 * 86400_000).toISOString() })
+  await assert.rejects(wb.buildReport('week'), /还没有可汇总/)
+})

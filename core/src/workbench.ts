@@ -49,7 +49,11 @@ const byOrder = (a: Issue, b: Issue) => (a.order ?? Infinity) - (b.order ?? Infi
 
 /** Put a card into `status` at the end, or just before `beforeId`, and renumber that column 1..n. */
 function place(d: Data, issue: Issue, status: Status, beforeId?: string) {
+  const was = issue.status
   issue.status = status
+  // 完成时间: set when the card enters 已完成, cleared when it leaves, untouched by edits or reordering inside the column
+  if (status === 'done' && was !== 'done') issue.doneAt = now()
+  else if (status !== 'done') issue.doneAt = undefined
   const col = d.issues.filter((x) => x.status === status && x.id !== issue.id).sort(byOrder)
   const at = beforeId ? col.findIndex((x) => x.id === beforeId) : -1
   col.splice(at < 0 ? col.length : at, 0, issue)
@@ -1078,7 +1082,7 @@ export class Workbench {
     const day = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     const all = this.store.data.issues.filter((i) => i.agentId !== 'weekly')
     const groups: [string, Issue[]][] = [
-      ['已完成', all.filter((i) => i.status === 'done' && new Date(i.updatedAt) >= from)],
+      ['已完成', all.filter((i) => i.status === 'done' && new Date(i.doneAt ?? i.updatedAt) >= from)],
       ['待审核', all.filter((i) => i.status === 'in_review' && !i.archivedAt)],
       ['进行中', all.filter((i) => i.status === 'in_progress')],
       ['已阻塞', all.filter((i) => i.status === 'blocked' && !i.archivedAt)],

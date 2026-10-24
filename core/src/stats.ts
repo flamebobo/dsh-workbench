@@ -50,8 +50,8 @@ export function computeStats(d: Pick<Data, 'issues' | 'runs'>, nowMs = Date.now(
   const weekOf = (iso: string) => day(mondayOf(Date.parse(iso)))
   const byWeek = weeks.map((week) => ({
     week, started: started.filter((i) => weekOf(firstRun(i)) === week).length,
-    // done cards are no longer edited, so their last update is when they were accepted
-    done: done.filter((i) => weekOf(i.updatedAt) === week).length,
+    // doneAt is when the card entered 已完成 (cards from before it existed carry their last update, see the v3 migration)
+    done: done.filter((i) => weekOf(i.doneAt ?? i.updatedAt) === week).length,
   }))
   const group = <K extends string>(key: (i: Issue) => K) => {
     const out = new Map<K, { started: number; done: number }>()
@@ -96,7 +96,7 @@ export function exportRows(d: Pick<Data, 'issues' | 'runs' | 'projects'>) {
     return {
       key: i.key, source: i.sourceRef?.source ?? 'manual', ref: i.sourceRef?.ref ?? '', title: i.title, status: i.status, agent: i.agentId,
       project: d.projects.find((p) => p.id === i.projectId)?.name ?? '', created: i.createdAt, firstRun: runs.map((r) => r.startedAt).sort()[0] ?? '',
-      updated: i.updatedAt, runs: runs.length, testsPassed: i.checks?.at(-1)?.state === 'passed' ? 'yes' : i.checks?.length ? 'no' : '',
+      updated: i.updatedAt, done: i.doneAt ?? '', runs: runs.length, testsPassed: i.checks?.at(-1)?.state === 'passed' ? 'yes' : i.checks?.length ? 'no' : '',
       mr: i.mr?.url ?? '', hours: i.timesheet?.hours ?? '',
     }
   })

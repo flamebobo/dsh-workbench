@@ -12,7 +12,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 var dataDir = () => process.env.WORKBENCH_HOME || join(homedir(), ".workbench");
 var defaultDataPath = () => join(dataDir(), "workbench.json");
-var DATA_VERSION = 2;
+var DATA_VERSION = 3;
 var migrations = {
   // 1 -> 2: the arrays and fields that later releases read without checking are always present
   1: (d) => {
@@ -23,6 +23,12 @@ var migrations = {
       i.acceptance ??= [];
       i.attachments ??= [];
     }
+  },
+  // 2 -> 3: 完成时间. Nothing recorded when old cards were finished, so their last update stands in for it. That is an
+  // approximation: a finished card edited afterwards (or given an MR) is dated by that later change, which is the very
+  // inaccuracy doneAt exists to end for cards finished from now on.
+  2: (d) => {
+    for (const i of d.issues) if (i.status === "done") i.doneAt ??= i.updatedAt;
   }
 };
 var DataVersionError = class extends Error {
@@ -904,8 +910,8 @@ function computeStats(d, nowMs = Date.now()) {
   const byWeek = weeks.map((week) => ({
     week,
     started: started.filter((i) => weekOf(firstRun(i)) === week).length,
-    // done cards are no longer edited, so their last update is when they were accepted
-    done: done.filter((i) => weekOf(i.updatedAt) === week).length
+    // doneAt is when the card entered 已完成 (cards from before it existed carry their last update, see the v3 migration)
+    done: done.filter((i) => weekOf(i.doneAt ?? i.updatedAt) === week).length
   }));
   const group = (key) => {
     const out = /* @__PURE__ */ new Map();
@@ -955,6 +961,7 @@ function exportRows(d) {
       created: i.createdAt,
       firstRun: runs.map((r) => r.startedAt).sort()[0] ?? "",
       updated: i.updatedAt,
+      done: i.doneAt ?? "",
       runs: runs.length,
       testsPassed: i.checks?.at(-1)?.state === "passed" ? "yes" : i.checks?.length ? "no" : "",
       mr: i.mr?.url ?? "",
@@ -1224,7 +1231,10 @@ var WorkbenchError = class extends Error {
 var now = () => (/* @__PURE__ */ new Date()).toISOString();
 var byOrder = (a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.createdAt.localeCompare(b.createdAt);
 function place(d, issue, status, beforeId) {
+  const was = issue.status;
   issue.status = status;
+  if (status === "done" && was !== "done") issue.doneAt = now();
+  else if (status !== "done") issue.doneAt = void 0;
   const col = d.issues.filter((x) => x.status === status && x.id !== issue.id).sort(byOrder);
   const at = beforeId ? col.findIndex((x) => x.id === beforeId) : -1;
   col.splice(at < 0 ? col.length : at, 0, issue);
@@ -2338,7 +2348,7 @@ ${summary.slice(0, 4e3)}`,
     const day3 = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const all = this.store.data.issues.filter((i) => i.agentId !== "weekly");
     const groups = [
-      ["\u5DF2\u5B8C\u6210", all.filter((i) => i.status === "done" && new Date(i.updatedAt) >= from)],
+      ["\u5DF2\u5B8C\u6210", all.filter((i) => i.status === "done" && new Date(i.doneAt ?? i.updatedAt) >= from)],
       ["\u5F85\u5BA1\u6838", all.filter((i) => i.status === "in_review" && !i.archivedAt)],
       ["\u8FDB\u884C\u4E2D", all.filter((i) => i.status === "in_progress")],
       ["\u5DF2\u963B\u585E", all.filter((i) => i.status === "blocked" && !i.archivedAt)]
