@@ -552,7 +552,10 @@ async function testConnection(id, c) {
 
 // core/src/connectors/zentao.ts
 var PRI = ["P0", "P1", "P2", "P3"];
-var priority = (n) => PRI[Math.min(3, Math.max(0, Number(n) - 1 || 0))];
+var priority = (n) => {
+  const v = Number(n);
+  return Number.isFinite(v) && v >= 1 ? PRI[Math.min(3, Math.ceil(v) - 1)] : "P2";
+};
 var account = (a) => typeof a === "string" ? a : a?.account ?? "";
 var MAX_DISCOVERED = 20;
 var BUG_STATUS = { active: "\u5DF2\u6FC0\u6D3B", resolved: "\u5DF2\u89E3\u51B3", closed: "\u5DF2\u5173\u95ED" };
@@ -1231,10 +1234,12 @@ var cleanLines = (l) => (l ?? []).map((x) => x.trim()).filter(Boolean);
 function cleanDue(v) {
   const s = v.trim();
   if (!s) return "";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s))) throw new WorkbenchError("invalid", `\u622A\u6B62\u65E5\u671F\u8981\u5199\u6210 YYYY-MM-DD\uFF1A${v}`);
+  const day3 = /* @__PURE__ */ new Date(`${s}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(day3.getTime()) || day3.toISOString().slice(0, 10) !== s) throw new WorkbenchError("invalid", `\u622A\u6B62\u65E5\u671F\u8981\u5199\u6210 YYYY-MM-DD\uFF1A${v}`);
   return s;
 }
 var cleanRelated = (l) => (l ?? []).map((r) => ({ label: String(r.label ?? "").trim().slice(0, 200), detail: String(r.detail ?? "").trim().slice(0, 500) || void 0 })).filter((r) => r.label).slice(0, 20);
+var POLL_GIVE_UP = 10;
 var COMMANDS = ["plan", "goal"];
 var Workbench = class {
   store;
@@ -1299,8 +1304,13 @@ var Workbench = class {
   /** Host restarted while a run was in flight: the event stream is gone, so don't leave the card spinning. */
   reconcileOrphans() {
     const running = this.store.data.runs.filter((r) => r.status === "running");
-    if (!running.length) return;
+    const testing = this.store.data.issues.filter((i) => i.checks?.some((c) => c.state === "running"));
+    if (!running.length && !testing.length) return;
     this.store.update((d) => {
+      for (const i of d.issues) for (const c of i.checks ?? []) if (c.state === "running") {
+        c.state = "failed";
+        c.output = "\u5BBF\u4E3B\u91CD\u542F\uFF0C\u8FD9\u6B21\u6D4B\u8BD5\u88AB\u4E2D\u65AD\uFF0C\u8BF7\u91CD\u65B0\u8FD0\u884C";
+      }
       for (const r of d.runs.filter((x) => x.status === "running")) {
         r.status = "interrupted";
         r.endedAt = now();
@@ -1481,6 +1491,7 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
     if (!issue) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
     if (issue.status === "in_progress") throw new WorkbenchError("invalid", `${issue.key} \u6B63\u5728\u8FDB\u884C\u4E2D`);
     if (issue.status === "done") throw new WorkbenchError("invalid", `${issue.key} \u5DF2\u5B8C\u6210\uFF0C\u4E0D\u80FD\u518D\u5F00\u5DE5`);
+    if (this.store.data.runs.some((r) => r.issueId === id && r.status === "running")) throw new WorkbenchError("invalid", `${issue.key} \u7684\u4F1A\u8BDD\u8FD8\u5728\u8FD0\u884C\uFF0C\u4E0D\u80FD\u91CD\u590D\u5F00\u5DE5\uFF1B\u7B49\u5B83\u7ED3\u675F\uFF0C\u6216\u5148\u5728 DSH \u4F1A\u8BDD\u91CC\u4E2D\u65AD`);
     if (agentId && agentId !== issue.agentId) this.updateIssue(id, { agentId });
     return this.launch(id);
   }
@@ -1774,6 +1785,7 @@ ${summary.slice(0, 1500)}`,
   listBuilds() {
     return this.store.data.builds ?? [];
   }
+  pollFails = /* @__PURE__ */ new Map();
   /** Build one job once to verify a batch of cards; each card remembers the build. */
   async triggerBuild(input) {
     const job = input.job.trim();
@@ -1831,8 +1843,11 @@ ${summary.slice(0, 1500)}`,
           const s = await jenkinsBuildState(this.connectorCtx(), b);
           next.set(b.id, { state: s.state, number: s.number, buildUrl: s.buildUrl });
         }
+        this.pollFails.delete(b.id);
       } catch (e) {
-        next.set(b.id, { state: "error", error: String(e.message ?? e) });
+        const n = (this.pollFails.get(b.id) ?? 0) + 1;
+        this.pollFails.set(b.id, n);
+        if (n >= POLL_GIVE_UP) next.set(b.id, { state: "error", error: `\u8FDE\u7EED ${n} \u6B21\u67E5\u8BE2\u6784\u5EFA\u72B6\u6001\u5931\u8D25\uFF1A${String(e.message ?? e)}` });
       }
     }
     this.store.update((d) => {
@@ -1955,6 +1970,7 @@ ${summary.slice(0, 1500)}`,
       if (!i) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
       const before = i.status;
       if (beforeId === id && before === status) return i;
+      if (status === "in_progress" && before !== status) throw new WorkbenchError("invalid", "\u300C\u8FDB\u884C\u4E2D\u300D\u7531\u5F00\u5DE5\u81EA\u52A8\u8BBE\u7F6E\uFF0C\u4E0D\u80FD\u624B\u52A8\u62D6\u5165\uFF1B\u8BF7\u70B9\u300C\u5F00\u5DE5\u300D");
       place(d, i, status, beforeId === id ? void 0 : beforeId);
       if (before !== status) i.updatedAt = now();
       if (status !== "blocked") i.note = void 0;
@@ -2189,6 +2205,7 @@ ${summary.slice(0, 4e3)}`,
       if (!i) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
       if (archived && i.status === "in_progress") throw new WorkbenchError("invalid", `${i.key} \u6B63\u5728\u8FDB\u884C\u4E2D\uFF0C\u4E0D\u80FD\u5F52\u6863`);
       i.archivedAt = archived ? now() : void 0;
+      if (!archived && i.sourceRef) d.hiddenTodos = (d.hiddenTodos ?? []).filter((h) => !(h.source === i.sourceRef.source && h.ref === i.sourceRef.ref));
       if (archived) void this.releaseWorktree(i);
       return i;
     });
