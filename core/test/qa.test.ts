@@ -18,6 +18,7 @@ function setup(creds: Record<string, string> = {}, fetchImpl?: typeof fetch) {
   return { dir, driver, wb }
 }
 const bug = demoZentao[0]!
+const realBug = { ...bug, title: '线上缺陷', description: '来自真实禅道' } // the demo bug's number, a real bug's content
 const zentaoCreds = { WORKBENCH_ZENTAO_URL: 'http://z.test', WORKBENCH_ZENTAO_ACCOUNT: 'a', WORKBENCH_ZENTAO_PASSWORD: 'p' }
 
 test('Q3 a double click on 回写禅道 resolves the bug once, not twice', async () => {
@@ -28,7 +29,7 @@ test('Q3 a double click on 回写禅道 resolves the bug once, not twice', async
     return Response.json({})
   }) as typeof fetch
   const { wb } = setup(zentaoCreds, f)
-  const { issue } = await wb.startWork({ item: bug })
+  const { issue } = await wb.startWork({ item: realBug })
   wb.setStatus(issue.id, 'done')
   const r = await Promise.allSettled([wb.writeBackZentao(issue.id, 'x'), wb.writeBackZentao(issue.id, 'x')])
   assert.equal(posts, 1)
@@ -256,4 +257,22 @@ test('Q14b a new card does not adopt an old branch of the same name left in the 
   driver.emit({ type: 'turn.completed', runId: wb.listRuns().at(-1)!.id, status: 'failed', error: 'x' })
   await wb.startIssue(i.id)
   assert.equal(wb.listIssues().find((x) => x.id === i.id)!.branch, 'wb/wb-1-2')
+})
+
+test('Q15 a card made from demo data is never written back to a real Zentao bug that happens to share its number', async () => {
+  const posts: string[] = []
+  const f = (async (u: string, init?: RequestInit) => {
+    if (u.endsWith('/tokens')) return Response.json({ token: 't' })
+    if (init?.method === 'POST') posts.push(u)
+    return Response.json({})
+  }) as typeof fetch
+  // the card was made while Zentao was still in demo mode (BUG-4821 is a demo to-do) ...
+  const { wb, dir } = setup({}, f)
+  const { issue } = await wb.startWork({ item: bug })
+  wb.setStatus(issue.id, 'done')
+  // ... and Zentao has been connected since (same data file, now with credentials)
+  const live = new Workbench({ store: new Store(join(dir, 'workbench.json')), driver: new FakeDriver(), fetch: f,
+    creds: async (n) => ({ ...zentaoCreds } as Record<string, string>)[n] })
+  await assert.rejects(live.writeBackZentao(issue.id, 'x'), /演示数据/)
+  assert.deepEqual(posts, []) // nothing reached the real system
 })

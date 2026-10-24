@@ -68,6 +68,7 @@ function cleanDue(v: string): string {
 const cleanRelated = (l?: { label?: string; detail?: string }[]) =>
   (l ?? []).map((r) => ({ label: String(r.label ?? '').trim().slice(0, 200), detail: String(r.detail ?? '').trim().slice(0, 500) || undefined })).filter((r) => r.label).slice(0, 20)
 const POLL_GIVE_UP = 10
+const DEMO_ITEMS: WorkItem[] = [...demoZentao, ...demoGitlab, ...demoJenkins, ...demoSparkin]
 const COMMANDS: CommandName[] = ['plan', 'goal']
 const ACTIVE: Status[] = ['todo', 'in_progress', 'in_review', 'blocked', 'backlog']
 
@@ -505,6 +506,12 @@ export class Workbench {
     return !!i && i.status === 'done' && !i.writeBack && i.sourceRef?.source === 'zentao' && /^BUG-\d+$/.test(i.sourceRef.ref)
   }
 
+  /** The card was made from one of the built-in demo to-dos (same source, number and text), not from the user's real system. */
+  private fromDemo(i: Issue): boolean {
+    const r = i.sourceRef
+    return !!r && DEMO_ITEMS.some((d) => d.source === r.source && d.ref === r.ref && (d.title === i.title || d.description === i.description))
+  }
+
   /** The comment that will be posted: what was done, how it was verified, where the change is. The human can edit it first. */
   async writeBackDraft(id: string): Promise<{ comment: string; mode: 'live' | 'demo' }> {
     const i = this.store.data.issues.find((x) => x.id === id)
@@ -534,6 +541,8 @@ export class Workbench {
     if (!issue) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
     if (issue.writeBack) throw new WorkbenchError('invalid', `${issue.key} 已经回写过禅道`)
     if (!this.canWriteBack(id)) throw new WorkbenchError('invalid', '只有已完成、来自禅道 Bug 的任务才能回写禅道')
+    // demo cards keep a made-up number like BUG-4821; once Zentao is connected that number may be a different, real bug
+    if (this.fromDemo(issue) && (await this.creds('WORKBENCH_ZENTAO_URL'))) throw new WorkbenchError('invalid', `${issue.key} 来自演示数据，不是你禅道里的 Bug，不会回写到真实禅道（可以删除这张卡片）`)
     const text = (comment ?? (await this.writeBackDraft(id)).comment).trim()
     if (!text) throw new WorkbenchError('invalid', '回写的评论不能为空')
     const bugId = Number(/^BUG-(\d+)$/.exec(issue.sourceRef!.ref)![1])

@@ -118,7 +118,7 @@ test('zentao write-back: only finished bugs, once; demo records nothing external
 
   // live: token, then POST /bugs/4821/resolve
   const live = setup({ WORKBENCH_ZENTAO_URL: 'https://z.test/', WORKBENCH_ZENTAO_ACCOUNT: 'me', WORKBENCH_ZENTAO_PASSWORD: 'pw' }, f)
-  const l = await live.wb.startWork({ item: bug })
+  const l = await live.wb.startWork({ item: { ...bug, title: '线上缺陷', description: '来自真实禅道' } }) // same number as the demo bug, real content
   live.driver.emit({ type: 'turn.completed', runId: l.run.id, status: 'completed' })
   live.wb.setStatus(l.issue.id, 'done')
   const r = await live.wb.writeBackZentao(l.issue.id, '修好了')
