@@ -83,6 +83,7 @@ export function apply(ctx: Ctx) {
       case 'issue.move': return wb.moveIssue(p.id, p.status as Status, p.beforeId, 'human') // only the UI (a human) calls this
       case 'autorun.set': return wb.setAutoRun(!!p.enabled)
       case 'issue.status': return wb.setStatus(p.id, p.status as Status, 'human') // only the UI (a human) calls this
+      case 'issue.stop': return await wb.stopIssue(p.id)
       case 'issue.delete': return wb.deleteIssue(p.id)
       case 'agent.save': {
         const a = wb.saveAgent(p)

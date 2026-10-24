@@ -1258,6 +1258,7 @@ function cleanDue(v) {
 }
 var cleanRelated = (l) => (l ?? []).map((r) => ({ label: String(r.label ?? "").trim().slice(0, 200), detail: String(r.detail ?? "").trim().slice(0, 500) || void 0 })).filter((r) => r.label).slice(0, 20);
 var POLL_GIVE_UP = 10;
+var STOPPED = "\u5DF2\u624B\u52A8\u505C\u6B62";
 var COMMANDS = ["plan", "goal"];
 var Workbench = class {
   store;
@@ -2107,7 +2108,8 @@ ${summary.slice(0, 1500)}`,
   async runTick() {
     for (let n = 0; n < 50 && this.autoRun && this.workingCount() < this.settings().autoRunConcurrency; n++) {
       const d = this.store.data;
-      const queue = d.issues.filter((i) => i.status === "todo" && !i.archivedAt).sort(byOrder);
+      const live = (id) => this.busy.has(`stop:${id}`) || d.runs.some((r) => r.issueId === id && r.status === "running");
+      const queue = d.issues.filter((i) => i.status === "todo" && !i.archivedAt && !live(i.id)).sort(byOrder);
       const ready = queue.find((i) => d.projects.some((p) => p.id === i.projectId));
       for (const i of queue.filter((x) => x !== ready && !d.projects.some((p) => p.id === x.projectId) && !x.note)) {
         this.store.update((x) => {
@@ -2129,6 +2131,37 @@ ${summary.slice(0, 1500)}`,
         });
       }
     }
+  }
+  /** 停止: interrupt the card's running session and park the card as 已阻塞 ("已手动停止"); 重试 starts it again. */
+  stopIssue(id) {
+    return this.once(`stop:${id}`, "\u505C\u6B62", () => this.doStop(id));
+  }
+  async doStop(id) {
+    const issue = this.store.data.issues.find((i) => i.id === id);
+    if (!issue) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
+    const run = this.store.data.runs.filter((r) => r.issueId === id && r.status === "running").at(-1);
+    if (issue.status !== "in_progress" || !run) throw new WorkbenchError("invalid", `${issue.key} \u6CA1\u6709\u6B63\u5728\u8FD0\u884C\u7684\u4F1A\u8BDD`);
+    this.store.update((d) => {
+      const r = d.runs.find((x) => x.id === run.id);
+      r.status = "interrupted";
+      r.endedAt = now();
+      r.error = STOPPED;
+      const i = d.issues.find((x) => x.id === id);
+      place(d, i, "blocked");
+      i.note = STOPPED;
+      i.updatedAt = now();
+    });
+    if (run.sessionId) {
+      try {
+        await this.driver.interrupt(run.sessionId);
+      } catch (e) {
+        this.store.update((d) => {
+          const i = d.issues.find((x) => x.id === id);
+          if (i) i.note = `${STOPPED}\uFF08\u4F46\u6CA1\u80FD\u901A\u77E5\u4F1A\u8BDD\uFF1A${String(e.message ?? e)}\uFF0C\u8BF7\u5230 DSH \u91CC\u786E\u8BA4\u5B83\u5DF2\u7ED3\u675F\uFF09`;
+        });
+      }
+    }
+    return this.store.data.issues.find((i) => i.id === id);
   }
   deleteIssue(id) {
     const gone = this.store.data.issues.find((i) => i.id === id);
@@ -2533,7 +2566,7 @@ ${summary.slice(0, 4e3)}`,
       const prev = was.get(i.id);
       if (!prev) continue;
       if (prev.status !== i.status && i.status === "in_review") push2("review", i, i.note ?? "\u667A\u80FD\u4F53\u5DF2\u5B8C\u6210\uFF0C\u7B49\u4F60\u5BA1\u6838");
-      else if (prev.status !== i.status && i.status === "blocked") push2("blocked", i, i.note ?? "\u4EFB\u52A1\u5DF2\u963B\u585E");
+      else if (prev.status !== i.status && i.status === "blocked" && i.note !== STOPPED) push2("blocked", i, i.note ?? "\u4EFB\u52A1\u5DF2\u963B\u585E");
       if (!prev.writeBack && i.writeBack) push2("writeback", i, `\u5DF2\u56DE\u5199\u7985\u9053 ${i.sourceRef?.ref ?? ""}\uFF0C\u72B6\u6001\u6539\u4E3A\u5DF2\u89E3\u51B3${i.writeBack.demo ? "\uFF08\u6F14\u793A\uFF09" : ""}`);
     }
   }
@@ -3144,6 +3177,8 @@ function apply(ctx) {
       case "issue.status":
         return wb.setStatus(p.id, p.status, "human");
       // only the UI (a human) calls this
+      case "issue.stop":
+        return await wb.stopIssue(p.id);
       case "issue.delete":
         return wb.deleteIssue(p.id);
       case "agent.save": {

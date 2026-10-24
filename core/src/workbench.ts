@@ -74,6 +74,7 @@ function cleanDue(v: string): string {
 const cleanRelated = (l?: { label?: string; detail?: string }[]) =>
   (l ?? []).map((r) => ({ label: String(r.label ?? '').trim().slice(0, 200), detail: String(r.detail ?? '').trim().slice(0, 500) || undefined })).filter((r) => r.label).slice(0, 20)
 const POLL_GIVE_UP = 10
+const STOPPED = '已手动停止'
 const COMMANDS: CommandName[] = ['plan', 'goal']
 const ACTIVE: Status[] = ['todo', 'in_progress', 'in_review', 'blocked', 'backlog']
 
@@ -871,7 +872,9 @@ export class Workbench {
   private async runTick() {
     for (let n = 0; n < 50 && this.autoRun && this.workingCount() < this.settings().autoRunConcurrency; n++) {
       const d = this.store.data
-      const queue = d.issues.filter((i) => i.status === 'todo' && !i.archivedAt).sort(byOrder)
+      // a card whose session is still alive (dragged back from 进行中) or being stopped can't start: skip it, don't park it
+      const live = (id: string) => this.busy.has(`stop:${id}`) || d.runs.some((r) => r.issueId === id && r.status === 'running')
+      const queue = d.issues.filter((i) => i.status === 'todo' && !i.archivedAt && !live(i.id)).sort(byOrder)
       // a card with no (or a deleted) project can't run; say so on the card and move on to the next one
       const ready = queue.find((i) => d.projects.some((p) => p.id === i.projectId))
       for (const i of queue.filter((x) => x !== ready && !d.projects.some((p) => p.id === x.projectId) && !x.note)) {
@@ -886,6 +889,32 @@ export class Workbench {
         })
       }
     }
+  }
+
+  /** 停止: interrupt the card's running session and park the card as 已阻塞 ("已手动停止"); 重试 starts it again. */
+  stopIssue(id: string): Promise<Issue> {
+    return this.once(`stop:${id}`, '停止', () => this.doStop(id))
+  }
+
+  private async doStop(id: string): Promise<Issue> {
+    const issue = this.store.data.issues.find((i) => i.id === id)
+    if (!issue) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
+    const run = this.store.data.runs.filter((r) => r.issueId === id && r.status === 'running').at(-1)
+    if (issue.status !== 'in_progress' || !run) throw new WorkbenchError('invalid', `${issue.key} 没有正在运行的会话`)
+    // record the stop first: the session reports its own end right after the interrupt, and that must not rewrite the reason
+    this.store.update((d) => {
+      const r = d.runs.find((x) => x.id === run.id)!
+      r.status = 'interrupted'; r.endedAt = now(); r.error = STOPPED
+      const i = d.issues.find((x) => x.id === id)!
+      place(d, i, 'blocked'); i.note = STOPPED; i.updatedAt = now()
+    })
+    if (run.sessionId) {
+      try { await this.driver.interrupt(run.sessionId) } catch (e) {
+        // the card is parked either way; say that the session could not be reached so the user checks it in DSH
+        this.store.update((d) => { const i = d.issues.find((x) => x.id === id); if (i) i.note = `${STOPPED}（但没能通知会话：${String((e as Error).message ?? e)}，请到 DSH 里确认它已结束）` })
+      }
+    }
+    return this.store.data.issues.find((i) => i.id === id)!
   }
 
   deleteIssue(id: string) {
@@ -1246,7 +1275,7 @@ export class Workbench {
       const prev = was.get(i.id)
       if (!prev) continue // a brand new card in 待审核 / 已阻塞 was put there by hand
       if (prev.status !== i.status && i.status === 'in_review') push('review', i, i.note ?? '智能体已完成，等你审核')
-      else if (prev.status !== i.status && i.status === 'blocked') push('blocked', i, i.note ?? '任务已阻塞')
+      else if (prev.status !== i.status && i.status === 'blocked' && i.note !== STOPPED) push('blocked', i, i.note ?? '任务已阻塞')
       if (!prev.writeBack && i.writeBack) push('writeback', i, `已回写禅道 ${i.sourceRef?.ref ?? ''}，状态改为已解决${i.writeBack.demo ? '（演示）' : ''}`)
     }
   }

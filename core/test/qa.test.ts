@@ -400,3 +400,51 @@ test('F2b 清理演示卡片 removes the leftovers of sources that are live, but
   assert.equal(wb.listIssues().filter((i) => i.sourceRef?.source === 'gitlab').length, gitlab) // GitLab is still demo
   assert.equal(wb.cleanDemoCards(), 0)
 })
+
+test('F5 stopping a running card interrupts its session, parks the card as 已阻塞 with the reason, and it can be retried', async () => {
+  const { wb, driver } = setup()
+  const { issue, run } = await wb.startWork({ item: bug })
+  const stopped = await wb.stopIssue(issue.id)
+  assert.deepEqual([stopped.status, stopped.note], ['blocked', '已手动停止'])
+  assert.deepEqual(driver.interrupted, [`sess-${run.id}`])
+  assert.deepEqual([wb.listRuns().find((r) => r.id === run.id)!.status, wb.listRuns().find((r) => r.id === run.id)!.error], ['interrupted', '已手动停止'])
+  assert.equal(wb.workingCount(), 0)
+  // the session reports its own end a moment later: the reason stays "stopped by hand"
+  driver.emit({ type: 'turn.completed', runId: run.id, status: 'interrupted' })
+  assert.equal(wb.listIssues().find((i) => i.id === issue.id)!.note, '已手动停止')
+  await wb.startIssue(issue.id) // 重试
+  assert.equal(wb.listIssues().find((i) => i.id === issue.id)!.status, 'in_progress')
+})
+
+test('F5b stop only applies to a card that is 进行中 with a session running, and a double click stops once', async () => {
+  const { wb, driver } = setup()
+  const idle = wb.createIssue({ title: 'x', projectId: wb.listProjects()[0]!.id, status: 'todo' })
+  await assert.rejects(wb.stopIssue(idle.id), /没有正在运行的会话/)
+  await assert.rejects(wb.stopIssue('iss_nope'), /不存在/)
+  const { issue } = await wb.startWork({ item: bug })
+  driver.interruptDelayMs = 40
+  const r = await Promise.allSettled([wb.stopIssue(issue.id), wb.stopIssue(issue.id)])
+  assert.deepEqual(r.map((x) => x.status).sort(), ['fulfilled', 'rejected'])
+  assert.equal(driver.interrupted.length, 1)
+  driver.failInterrupt = new Error('session gone')
+  const b = await wb.startIssue(issue.id) // retry, then stop a session the host can no longer reach
+  const s = await wb.stopIssue(b.issue.id)
+  assert.equal(s.status, 'blocked') // the card is parked anyway
+  assert.match(s.note!, /已手动停止.*session gone/)
+})
+
+test('F5c auto-run skips a card whose session is still running (or being stopped) and carries on with the next one', async () => {
+  const { wb, driver } = setup()
+  const project = wb.listProjects()[0]!
+  const a = wb.createIssue({ title: 'A', projectId: project.id, status: 'todo' })
+  await wb.startIssue(a.id)
+  wb.moveIssue(a.id, 'todo') // dragged back while its session is alive: first in line, but it cannot start again
+  const b = wb.createIssue({ title: 'B', projectId: project.id, status: 'todo' })
+  wb.setAutoRun(true)
+  await wb.tick()
+  const get = (id: string) => wb.listIssues().find((i) => i.id === id)!
+  assert.equal(get(a.id).status, 'todo') // left alone, not parked as blocked
+  assert.equal(get(a.id).note, undefined)
+  assert.equal(get(b.id).status, 'in_progress')
+  assert.equal(driver.started.length, 2)
+})
