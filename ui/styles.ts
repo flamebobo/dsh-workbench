@@ -44,7 +44,7 @@ export const css = `
 .wb-key { display: inline-block; width: 9px; height: 9px; border-radius: 2px; vertical-align: baseline; }
 .wb-pre { background: var(--wb-l1); border-radius: 10px; padding: 10px 12px; font-size: 11px; max-height: 260px; overflow: auto; margin-top: 8px; }
 .wb-badge { margin-left: 5px; min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--wb-red); color: #fff; font-size: 10px; line-height: 16px; display: inline-block; text-align: center; }
-.wb-table td { padding: 9px 10px; border-bottom: 1px solid var(--wb-bd1); vertical-align: middle; }
+.wb-table td { padding: 9px 10px; border-bottom: 1px solid var(--wb-bd1); vertical-align: middle; overflow-wrap: anywhere; }
 .wb-table td .wb-btn { white-space: nowrap; }
 .wb-table tr.arch td { opacity: .55; }
 .wb-table tr.row { cursor: pointer; } .wb-table tr.row:hover td { background: var(--wb-hover); } .wb-table tr.sel td { background: color-mix(in srgb, var(--wb-blue) 9%, transparent); }

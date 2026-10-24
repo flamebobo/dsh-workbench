@@ -1640,13 +1640,34 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
       });
     }
   }
-  /** 待审核 -> 已完成 once the task's tests pass, if that is switched on. A failed or absent test leaves it for the human. */
-  autoComplete(id, checkId) {
+  /** The task's work differs from where it started (or, in a plain directory where that can't be told, assume it does). */
+  async hasChanges(issue) {
+    const project = this.store.data.projects.find((p) => p.id === issue.projectId);
+    try {
+      if (issue.worktree && existsSync5(issue.worktree) && issue.baseSha) return (await changes(issue.worktree, issue.baseSha)).files.length > 0;
+      if (project && await isGitRepo(project.cwd)) return (await changes(project.cwd, "HEAD")).files.length > 0;
+    } catch {
+    }
+    return true;
+  }
+  /**
+   * 待审核 -> 已完成 once the task's tests pass, if that is switched on. A failed or absent test leaves it for the human, and so does a
+   * run that changed nothing: the agent may only have asked a question, and the existing tests pass anyway.
+   */
+  async autoComplete(id, checkId) {
     if (!this.settings().autoDoneOnPass) return;
     const issue = this.store.data.issues.find((i) => i.id === id);
     if (!issue || issue.status !== "in_review") return;
     if (issue.checks?.at(-1)?.id !== checkId || issue.checks.at(-1).state !== "passed") return;
     if (this.store.data.runs.some((r) => r.issueId === id && r.status === "running")) return;
+    if (!await this.hasChanges(issue)) {
+      this.store.update((d) => {
+        const i = d.issues.find((x) => x.id === id);
+        if (i && i.status === "in_review") i.note = "\u6D4B\u8BD5\u901A\u8FC7\uFF0C\u4F46\u6CA1\u6709\u68C0\u6D4B\u5230\u4EE3\u7801\u6539\u52A8\uFF0C\u8BF7\u4F60\u786E\u8BA4\u540E\u9A8C\u6536";
+      });
+      return;
+    }
+    if (this.store.data.issues.find((i) => i.id === id)?.status !== "in_review") return;
     this.store.update((d) => {
       const i = d.issues.find((x) => x.id === id);
       place(d, i, "done");
@@ -2101,7 +2122,8 @@ ${r.output}` : r.output;
         if (c.state === "failed") i.note = r.timedOut ? "\u6D4B\u8BD5\u8D85\u65F6" : `\u6D4B\u8BD5\u672A\u901A\u8FC7\uFF08\u9000\u51FA\u7801 ${r.code}\uFF09`;
         else if (i.note?.startsWith("\u6D4B\u8BD5")) i.note = void 0;
       });
-      this.autoComplete(id, check.id);
+      void this.autoComplete(id, check.id).catch(() => {
+      });
     });
     return check;
   }
