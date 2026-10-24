@@ -127,4 +127,11 @@ dsh plugin --profile web add "$PWD/dsh-plugin"   # 只需一次
 scripts/dev-web.sh                               # http://127.0.0.1:3080，终端会打印带 token 的地址
 ```
 
-web profile 与桌面端共用 `~/.workbench/workbench.json`，**不要同时运行两个**。
+`dev-web.sh` 与桌面端共用 `~/.workbench/workbench.json` 和 `~/.dsh` 的凭据，**不要同时运行两个**。
+
+要做功能测试而不碰真实数据和真实系统，用隔离版：
+
+```bash
+node scripts/qa/mock.mjs     # 本地 mock：禅道 / GitLab / Jenkins / 更新 / 上报，所有写操作只记在 http://127.0.0.1:4100/__log
+scripts/qa-web.sh            # http://127.0.0.1:3090；数据在 ~/.workbench-qa/data，DSH_HOME 在 ~/.workbench-qa/dsh-home，WORKBENCH_* 指向 mock
+```
