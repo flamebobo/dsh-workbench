@@ -173,7 +173,7 @@ codex plugin add workbench@workbench-local       # 把 codex-plugin/ 装进 Code
 - 第一次被调用时它拉起常驻的本地服务 `server.mjs serve`：只监听 127.0.0.1、每次启动随机令牌，端口和令牌写在 `~/.workbench-codex/serve.json`（0600）；数据目录有单写者锁。日志在 `~/.workbench-codex/serve.log`，`node codex-plugin/server.mjs stop` 停掉它。
 - 页面是 MCP App（`ui://workbench/board.html`），`board` 工具带 `global` 入口所以出现在侧栏；页面通过 postMessage 调 `runtime_read` / `runtime_command` / `runtime_events` 三个仅页面可见的工具，凭据只在本地服务里。
 - 模型能用三个只读工具：`todos_list`（我的待办）、`issues_list`（看板卡片）、`issue_get`（卡片详情和最近的运行结果）。
-- 「开工」：每张运行中的卡片起一个 `codex app-server` 子进程，`thread/start` 传任务 worktree 作为 `cwd`、`sandbox: workspace-write`、`approvalPolicy: never`（无人值守，不会卡在审批上；沙箱拒绝的操作作为失败回给模型）、智能体的模型和角色指令（`developerInstructions`），推理强度随 `turn/start`。不改 `~/.codex/config.toml`。`turn/completed` → 待审核 / 已阻塞；「停止」→ `turn/interrupt`。模型列表来自 `model/list`。
+- 「开工」：每张运行中的卡片起一个 `codex app-server` 子进程，`thread/start` 传任务 worktree 作为 `cwd`、`sandbox`（设置里的「新会话的权限预设」，默认 `workspace-write`）、`approvalPolicy: never`（无人值守，不会卡在审批上；沙箱拒绝的操作作为失败回给模型）、智能体的模型和角色指令（`developerInstructions`），推理强度随 `turn/start`。不改 `~/.codex/config.toml`。`turn/completed` → 待审核 / 已阻塞；「停止」→ `turn/interrupt`。模型列表来自 `model/list`。
 
 ### 和 DSH 版的差别
 | 功能 | DSH 版 | Codex 版 |
@@ -185,9 +185,25 @@ codex plugin add workbench@workbench-local       # 把 codex-plugin/ 装进 Code
 | `/plan` `/goal` 指令 | 有 | 隐藏（Codex 没有对应的命令通道） |
 | 打开关联会话 | 跳到 DSH 会话 | 卡片上只显示 Codex 线程 ID |
 | 确认框 / 外链 | 浏览器 `confirm()` / 新窗口 | 页内确认弹层 / 经 Codex 打开链接（沙箱 iframe 里 `confirm()` 被禁用） |
+| 新会话的权限预设 | DSH 权限预设，越界操作等你批准 | 直接作为 Codex 线程的 sandbox，越界操作失败、不等审批 |
 | 桌面通知、更新检查 | 有 | 隐藏；更新 = 重新运行安装脚本 |
 
+### 截图（真实 Codex 桌面端，10/24）
+| 截图 | 内容 |
+| --- | --- |
+| `docs/demo/codex-01-sidebar.jpg` | 左侧栏的「研发工作台」入口，打开是整页 |
+| `docs/demo/codex-02-todos.jpg` | 我的待办（演示数据），深色主题跟随 Codex |
+| `docs/demo/codex-03-board-blocked.jpg` | 看板：WB-1 开过工，真实 Codex 回合失败（模型满载），卡片转「已阻塞」并带 Codex 的原因 |
+| `docs/demo/codex-04-card-thread.jpg` | 卡片详情：Codex 线程 ID、`~/.workbench-codex/worktrees` 下的任务分支、执行记录 |
+| `docs/demo/codex-05-agents-skills.jpg` | 智能体：模型跟随 Codex 默认，技能列表来自 Codex 的 `skills/list`（含插件技能） |
+| `docs/demo/codex-06-settings.jpg` | 设置：连接、插件设置 |
+
+### 验证情况
+- 真实验证：在 Codex 桌面端（ChatGPT 应用，codex-cli 0.164.0-alpha.11.1）里装好插件，左侧栏出现「研发工作台」，整页可用（待办、看板、智能体、设置）。对演示待办 WB-1 点过一次「开工」：工作台建了任务分支和工作树，起了真实 Codex 线程，`turn/start` 之后 Codex 返回回合失败（Selected model is at capacity，用的是 config.toml 里的默认模型），卡片自动转「已阻塞」并显示原因——也就是失败分支走通了。
+- 没有在真实 Codex 上验证：回合**成功**结束进入「待审核」、以及「停止」打断真实回合（为了不消耗额度没有再跑）。这两条由单测（假 app-server）和模拟宿主里的端到端测试覆盖。
+
 ### 已知限制
+- 同时开着几个 Codex 会话时，各自的 MCP 进程可能同时尝试拉起本地服务；只有一个能拿到数据目录锁，其余的立刻退出，`serve.log` 里会留下几行「数据目录正被另一个进程使用」，属正常现象。
 - 两边共用一块看板是后续一步：需要把 DSH 插件也改成连接这个本地服务，而不是自己打开数据文件。在那之前两边是两块独立的看板。
 - Codex 线程跑完后 app-server 子进程就结束；卡片进入「待审核」后不能在工作台里接着和这个线程对话（要继续就「重试」开新的一轮）。
 - `approvalPolicy: never` + `workspace-write`：需要联网或写工作树以外目录的命令会失败，不会弹审批。
