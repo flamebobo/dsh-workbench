@@ -13,7 +13,13 @@ const { useState, useEffect } = React
 const COLUMNS: Status[] = ['backlog', 'todo', 'in_progress', 'in_review', 'done', 'blocked']
 
 /** 停止: confirm, then interrupt the card's session. `busy` keeps a second click from sending it twice. */
+const stopping = new Set<string>() // synchronous, so a double click is caught before React has re-rendered the disabled button
 async function stopCard(issue: Issue, p: PageProps, busy: (b: boolean) => void) {
+  if (stopping.has(issue.id)) return
+  stopping.add(issue.id)
+  try { await stopConfirmed(issue, p, busy) } finally { stopping.delete(issue.id) }
+}
+async function stopConfirmed(issue: Issue, p: PageProps, busy: (b: boolean) => void) {
   if (!confirm(`停止 ${issue.key} 的智能体？当前这一轮会被中断，卡片进入「已阻塞」（已手动停止），之后可以点「重试」重新开工。已经做出的改动会保留在任务分支里。`)) return
   busy(true)
   try { await rpc('issue.stop', { id: issue.id }); p.notify(`已停止 ${issue.key}，可以重试`) } catch (e) { p.notify((e as Error).message) } finally { busy(false); await p.refresh() }
@@ -29,7 +35,7 @@ export function Board(p: PageProps) {
   const [reporting, setReporting] = useState(false)
   const [report, setReport] = useState(false)
   const [dropAt, setDropAt] = useState<{ id: string; after: boolean }>()
-  const [stopping, setStopping] = useState<string>()
+  const [stoppingId, setStopping] = useState<string>()
   const [q, setQ] = useState('')
   const [showArchived, setShowArchived] = useState(false)
   useEffect(() => { if (p.focusIssue) setOpenId(p.focusIssue) }, [p.focusIssue])
@@ -121,7 +127,7 @@ export function Board(p: PageProps) {
                     {i.timesheet && <div className="wb-bld" style={{ color: 'var(--wb-green)' }}>已填报工时 {i.timesheet.hours}h · {i.timesheet.sparkinTaskName}</div>}
                     <div className="m"><span className="wb-pill">{agentName(i.agentId)}</span>
                       {i.status === 'blocked' && i.projectId && !i.archivedAt && <button className="wb-btn" style={{ padding: '0 8px' }} title="用同一个智能体重新开工，沿用原来的分支和工作树" onClick={(e) => { e.stopPropagation(); void retry(i) }}>重试</button>}
-                      {i.status === 'in_progress' && running.has(i.id) && <button className="wb-btn" style={{ padding: '0 8px' }} disabled={stopping === i.id} title="中断这张卡片的智能体，卡片进入已阻塞（已手动停止）" onClick={(e) => { e.stopPropagation(); void stopCard(i, p, (b) => setStopping(b ? i.id : undefined)) }}>{stopping === i.id ? '停止中…' : '停止'}</button>}
+                      {i.status === 'in_progress' && running.has(i.id) && <button className="wb-btn" style={{ padding: '0 8px' }} disabled={stoppingId === i.id} title="中断这张卡片的智能体，卡片进入已阻塞（已手动停止）" onClick={(e) => { e.stopPropagation(); void stopCard(i, p, (b) => setStopping(b ? i.id : undefined)) }}>{stoppingId === i.id ? '停止中…' : '停止'}</button>}
                       {i.status === 'in_review' && !i.archivedAt && <button className="wb-btn" style={{ padding: '0 8px' }} title="验收通过，移到已完成" onClick={(e) => { e.stopPropagation(); void move(i.id, 'done') }}>验收通过</button>}
                       <span style={{ marginLeft: 'auto' }}>{ago(i.updatedAt)}</span></div>
                   </article>
@@ -164,7 +170,7 @@ export function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue
   const [status, setStatus] = useState<Status>(issue?.status ?? initialStatus ?? 'backlog')
   const [files, setFiles] = useState<Attachment[]>(issue?.attachments ?? [])
   const [busy, setBusy] = useState(false)
-  const [stopping, setStopping] = useState(false)
+  const [stoppingNow, setStoppingNow] = useState(false)
   const [reporting, setReporting] = useState(false)
   const [viewing, setViewing] = useState(false)
   const [writingBack, setWritingBack] = useState(false)
@@ -216,7 +222,7 @@ export function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue
       {viewing && issue && <ChangesModal issue={issue} notify={p.notify} onClose={() => setViewing(false)} />}
       <div className="wb-modal" role="dialog" aria-label={issue?.key ?? '新建任务'}>
         <div className="wb-row"><span className="wb-sub">{issue ? `${issue.key}${issue.sourceRef ? ` · ${issue.sourceRef.source} ${issue.sourceRef.ref}` : ' · 手工任务'}` : '新建任务'}</span><span className="wb-grow" />
-          {issue && issue.status === 'in_progress' && state.runs.some((r) => r.issueId === issue.id && r.status === 'running') && <button className="wb-btn danger" disabled={stopping} onClick={() => { void stopCard(issue, p, setStopping) }}>{stopping ? '停止中…' : '停止'}</button>}
+          {issue && issue.status === 'in_progress' && state.runs.some((r) => r.issueId === issue.id && r.status === 'running') && <button className="wb-btn danger" disabled={stoppingNow} onClick={() => { void stopCard(issue, p, setStoppingNow) }}>{stoppingNow ? '停止中…' : '停止'}</button>}
           {issue?.sessionId && <button className="wb-btn" onClick={() => p.openSession(issue.sessionId!)}>打开关联会话 ↗</button>}
           <button className="wb-btn" aria-label="关闭" onClick={onClose}>✕</button></div>
         <div className="wb-field"><label>标题</label><input className="wb-input" autoFocus={!issue} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例如：补充对账脚本的幂等校验" /></div>
