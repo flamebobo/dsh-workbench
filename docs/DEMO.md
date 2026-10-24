@@ -138,7 +138,7 @@ dsh plugin --profile web add "$PWD/dsh-plugin"   # 只需一次
 scripts/dev-web.sh                               # http://127.0.0.1:3080，终端会打印带 token 的地址
 ```
 
-`dev-web.sh` 与桌面端共用 `~/.workbench/workbench.json` 和 `~/.dsh` 的凭据，**不要同时运行两个**。
+`dev-web.sh` 与桌面端共用 `~/.workbench/workbench.json` 和 `~/.dsh` 的凭据，**不要同时运行两个**：数据目录有单写者锁，后启动的那个页面会提示「数据目录正被另一个进程使用（PID …）」，不会再互相覆盖。
 
 要做功能测试而不碰真实数据和真实系统，用隔离版：
 
@@ -146,3 +146,55 @@ scripts/dev-web.sh                               # http://127.0.0.1:3080，终�
 node scripts/qa/mock.mjs     # 本地 mock：禅道 / GitLab / Jenkins / 更新 / 上报，所有写操作只记在 http://127.0.0.1:4100/__log
 scripts/qa-web.sh            # http://127.0.0.1:3090；数据在 ~/.workbench-qa/data，DSH_HOME 在 ~/.workbench-qa/dsh-home，WORKBENCH_* 指向 mock
 ```
+
+## 8. Codex 版
+
+同一套 `core/` 和 `ui/`，作为 Codex 插件在 Codex 桌面端（ChatGPT 应用里的 Codex）使用，开工用 Codex 自己的 Agent（`codex app-server`）代替 DSH 会话。
+
+### 安装
+需要 Codex 桌面端、Node.js 20+。在仓库里（或解压后的安装包目录里）：
+
+```bash
+npm run build:codex                 # 仓库里需要；安装包里已经构建好
+scripts/install/install-codex.sh    # 安装包里是 ./install-codex.sh；Windows 用 install-codex.ps1
+```
+
+脚本做的就是两条命令，并且可以重复运行（= 更新）：
+
+```bash
+codex plugin marketplace add <本仓库路径>          # 登记本地插件市场 workbench-local（.agents/plugins/marketplace.json）
+codex plugin add workbench@workbench-local       # 把 codex-plugin/ 装进 Codex 的插件缓存
+```
+
+然后重启 Codex 桌面端，左侧栏出现「研发工作台」。这个目录是插件市场的来源，不要删除或移动。
+
+### 怎么跑起来的
+- `codex-plugin/mcp.json` 让 Codex 启动 `node ./server.mjs mcp`（stdio MCP 服务，随 Codex 会话启停，不存业务数据）。
+- 第一次被调用时它拉起常驻的本地服务 `server.mjs serve`：只监听 127.0.0.1、每次启动随机令牌，端口和令牌写在 `~/.workbench-codex/serve.json`（0600）；数据目录有单写者锁。日志在 `~/.workbench-codex/serve.log`，`node codex-plugin/server.mjs stop` 停掉它。
+- 页面是 MCP App（`ui://workbench/board.html`），`board` 工具带 `global` 入口所以出现在侧栏；页面通过 postMessage 调 `runtime_read` / `runtime_command` / `runtime_events` 三个仅页面可见的工具，凭据只在本地服务里。
+- 模型能用三个只读工具：`todos_list`（我的待办）、`issues_list`（看板卡片）、`issue_get`（卡片详情和最近的运行结果）。
+- 「开工」：每张运行中的卡片起一个 `codex app-server` 子进程，`thread/start` 传任务 worktree 作为 `cwd`、`sandbox: workspace-write`、`approvalPolicy: never`（无人值守，不会卡在审批上；沙箱拒绝的操作作为失败回给模型）、智能体的模型和角色指令（`developerInstructions`），推理强度随 `turn/start`。不改 `~/.codex/config.toml`。`turn/completed` → 待审核 / 已阻塞；「停止」→ `turn/interrupt`。模型列表来自 `model/list`。
+
+### 和 DSH 版的差别
+| 功能 | DSH 版 | Codex 版 |
+| --- | --- | --- |
+| 数据目录 | `~/.workbench`（`WORKBENCH_HOME`） | `~/.workbench-codex`（`WORKBENCH_CODEX_HOME`），两边**不共用看板** |
+| 凭据 | DSH 凭据库 `~/.dsh/.credentials.yaml` | `~/.workbench-codex/credentials.json`（0600），缺的读 `WORKBENCH_*` 环境变量 |
+| 智能体 | 注册为 DSH 智能体预设 | 不注册；模型、强度、指令随线程传入 |
+| 技能 | DSH 技能注册表；技能包目录注册给 DSH | 列表来自 Codex 的 `skills/list`；智能体 / 项目选的技能和技能包里的技能作为 `skill` 输入随首条消息传入 |
+| `/plan` `/goal` 指令 | 有 | 隐藏（Codex 没有对应的命令通道） |
+| 打开关联会话 | 跳到 DSH 会话 | 卡片上只显示 Codex 线程 ID |
+| 确认框 / 外链 | 浏览器 `confirm()` / 新窗口 | 页内确认弹层 / 经 Codex 打开链接（沙箱 iframe 里 `confirm()` 被禁用） |
+| 桌面通知、更新检查 | 有 | 隐藏；更新 = 重新运行安装脚本 |
+
+### 已知限制
+- 两边共用一块看板是后续一步：需要把 DSH 插件也改成连接这个本地服务，而不是自己打开数据文件。在那之前两边是两块独立的看板。
+- Codex 线程跑完后 app-server 子进程就结束；卡片进入「待审核」后不能在工作台里接着和这个线程对话（要继续就「重试」开新的一轮）。
+- `approvalPolicy: never` + `workspace-write`：需要联网或写工作树以外目录的命令会失败，不会弹审批。
+- 本地服务在插件版本变化后第一次打开工作台时自动替换；替换时还在运行的卡片会转「已阻塞」（工作台服务已退出）。
+- MCP 服务用 `node` 启动，依赖 Codex 能找到 Node.js 20+。
+
+### 开发与测试
+- `npm test` 里 `codex/test/` 覆盖：Codex 驱动（`codex/test/fake-app-server.mjs` 模拟 JSON-RPC，不调用真实 Codex）、本地服务拉起 / 复用 / 锁 / 停止、MCP 工具与页面传输层、manifest 校验。
+- `npm run validate:codex`：按 Agent Plugins 1.0.0 公开 schema 校验 `plugin.json` / `mcp.json`。
+- 在临时目录里试装，不碰自己的 Codex 配置：`CODEX_HOME=$(mktemp -d) scripts/install/install-codex.sh`。
