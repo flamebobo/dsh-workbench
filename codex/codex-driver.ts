@@ -5,7 +5,7 @@ const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 const MODEL_CACHE_MS = 5 * 60_000
 
 interface Session { runId: string; conn: AppServer; turnId?: string; lastText?: string; error?: string; done: boolean }
-type Skill = { name: string; description: string; path: string; scope: string; enabled: boolean }
+export type Skill = { name: string; description: string; path: string; scope: string; enabled: boolean }
 
 /**
  * AgentDriver on Codex: one `codex app-server` child per running card, one thread per run. The agent's model goes into
@@ -15,6 +15,8 @@ type Skill = { name: string; description: string; path: string; scope: string; e
  */
 export class CodexDriver implements AgentDriver {
   id = 'codex' as const
+  /** The workbench's own skill packs (设置 → 技能包目录), offered next to the skills Codex finds itself. */
+  packSkills: () => Skill[] = () => []
   private cmd: AppServerCommand
   private version: string
   private cbs = new Set<(e: DriverEvent) => void>()
@@ -56,7 +58,7 @@ export class CodexDriver implements AgentDriver {
 
   private async skills(s: AppServer, cwds: string[]): Promise<Skill[]> {
     const r = await s.request('skills/list', { cwds })
-    return (r.data ?? []).flatMap((d: { skills?: Skill[] }) => d.skills ?? []).filter((k: Skill) => k.enabled !== false)
+    return [...(r.data ?? []).flatMap((d: { skills?: Skill[] }) => d.skills ?? []), ...this.packSkills()].filter((k: Skill) => k.enabled !== false)
   }
 
   /** Skills Codex itself knows for these directories (~/.codex/skills, the projects' .agents/skills, plugins'). */
