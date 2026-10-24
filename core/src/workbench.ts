@@ -67,6 +67,7 @@ function cleanDue(v: string): string {
 }
 const cleanRelated = (l?: { label?: string; detail?: string }[]) =>
   (l ?? []).map((r) => ({ label: String(r.label ?? '').trim().slice(0, 200), detail: String(r.detail ?? '').trim().slice(0, 500) || undefined })).filter((r) => r.label).slice(0, 20)
+const POLL_GIVE_UP = 10
 const COMMANDS: CommandName[] = ['plan', 'goal']
 const ACTIVE: Status[] = ['todo', 'in_progress', 'in_review', 'blocked', 'backlog']
 
@@ -588,6 +589,7 @@ export class Workbench {
   }
 
   listBuilds() { return this.store.data.builds ?? [] }
+  private pollFails = new Map<string, number>()
 
   /** Build one job once to verify a batch of cards; each card remembers the build. */
   async triggerBuild(input: { job: string; params?: Record<string, string>; issueIds: string[] }): Promise<Build> {
@@ -634,7 +636,13 @@ export class Workbench {
           const s = await jenkinsBuildState(this.connectorCtx(), b)
           next.set(b.id, { state: s.state, number: s.number, buildUrl: s.buildUrl })
         }
-      } catch (e) { next.set(b.id, { state: 'error', error: String((e as Error).message ?? e) }) }
+        this.pollFails.delete(b.id)
+      } catch (e) {
+        // a network blip is not the end of the build: only give up after several polls in a row failed
+        const n = (this.pollFails.get(b.id) ?? 0) + 1
+        this.pollFails.set(b.id, n)
+        if (n >= POLL_GIVE_UP) next.set(b.id, { state: 'error', error: `连续 ${n} 次查询构建状态失败：${String((e as Error).message ?? e)}` })
+      }
     }
     this.store.update((d) => {
       for (const b of d.builds ?? []) {

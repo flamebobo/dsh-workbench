@@ -159,3 +159,28 @@ test('Q5 a due date that is not a real calendar day is refused', () => {
   for (const bad of ['2026-02-31', '2026-13-01', '2026-00-10', '2026-04-31']) assert.throws(() => wb.createIssue({ title: 't', due: bad }), /截止日期/, bad)
   assert.equal(wb.createIssue({ title: 't', due: '2028-02-29' }).due, '2028-02-29') // a leap day is real
 })
+
+test('Q10 a brief Jenkins hiccup while following a build does not end the tracking for good', async () => {
+  let down = false
+  let clock = Date.parse('2026-10-24T10:00:00Z')
+  const f = (async (url: string, init?: RequestInit) => {
+    if (down) throw new Error('fetch failed')
+    if (url.endsWith('/crumb-issuer/api/json')) return new Response('', { status: 404 })
+    if (init?.method === 'POST') return new Response(null, { status: 201, headers: { location: 'https://j/queue/item/7' } })
+    if (url.endsWith('/queue/item/7/api/json')) return Response.json({ executable: { number: 8, url: 'https://j/job/x/8/' } })
+    return Response.json({ building: false, result: 'SUCCESS', number: 8 })
+  }) as typeof fetch
+  const dir = mkdtempSync(join(tmpdir(), 'wb-qa-'))
+  const wb = new Workbench({ store: new Store(join(dir, 'workbench.json')), driver: new FakeDriver(), now: () => clock, fetch: f,
+    creds: async (n) => ({ WORKBENCH_JENKINS_URL: 'https://j', WORKBENCH_JENKINS_USER: 'u', WORKBENCH_JENKINS_TOKEN: 't' } as Record<string, string>)[n] })
+  const a = wb.createIssue({ title: 'a' })
+  await wb.triggerBuild({ job: 'x', issueIds: [a.id] })
+  down = true
+  for (let n = 0; n < 3; n++) { clock += 5000; assert.equal((await wb.refreshBuilds())[0]!.state, 'queued') } // still following it
+  down = false
+  clock += 5000
+  assert.equal((await wb.refreshBuilds())[0]!.state, 'success')
+  down = true
+  const b = await wb.triggerBuild({ job: 'x', issueIds: [a.id] }).catch(() => undefined) // the trigger itself failing is reported at once, as before
+  assert.equal(b?.state, 'error')
+})
