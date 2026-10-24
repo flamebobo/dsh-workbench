@@ -146,6 +146,261 @@ var init_lock = __esm({
   }
 });
 
+// core/src/git.ts
+import { execFile, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+function git(cwd, args, o = {}) {
+  return new Promise((resolve6, reject) => {
+    execFile("git", args, {
+      cwd,
+      timeout: o.timeoutMs ?? 6e4,
+      maxBuffer: 32 * 1024 * 1024,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes", LC_ALL: "C" }
+    }, (err, stdout, stderr) => {
+      if (!err) return resolve6(stdout);
+      const msg = String(stderr || stdout || err.message).trim().split("\n").slice(-6).join("\n");
+      reject(new Error(msg || String(err.message)));
+    });
+  });
+}
+async function isGitRepo(cwd) {
+  if (!existsSync(cwd)) return false;
+  try {
+    return (await git(cwd, ["rev-parse", "--is-inside-work-tree"])).trim() === "true";
+  } catch {
+    return false;
+  }
+}
+async function branchExists(cwd, branch) {
+  try {
+    await git(cwd, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function defaultBase(cwd) {
+  try {
+    return (await git(cwd, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])).trim().replace(/^origin\//, "");
+  } catch {
+  }
+  return (await git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+}
+async function remoteUrl(cwd) {
+  try {
+    return (await git(cwd, ["remote", "get-url", "origin"])).trim() || void 0;
+  } catch {
+    return void 0;
+  }
+}
+async function addWorktree(repo, branch, path, base) {
+  if (await branchExists(repo, branch)) await git(repo, ["worktree", "add", path, branch]);
+  else await git(repo, ["worktree", "add", "-b", branch, path, base]);
+}
+async function removeWorktree(repo, path) {
+  try {
+    await git(repo, ["worktree", "remove", path]);
+  } catch {
+  }
+}
+async function changes(cwd, base) {
+  await git(cwd, ["add", "-N", "."]).catch(() => {
+  });
+  const [names, nums, patch] = await Promise.all([
+    git(cwd, ["diff", "--name-status", base]),
+    git(cwd, ["diff", "--numstat", base]),
+    git(cwd, ["diff", "--no-color", base])
+  ]);
+  const stat = new Map(nums.trim().split("\n").filter(Boolean).map((l) => {
+    const [a, d2, ...p2] = l.split("	");
+    return [p2.join("	"), [Number(a) || 0, Number(d2) || 0]];
+  }));
+  const patches = /* @__PURE__ */ new Map();
+  let truncated = false;
+  let used = 0;
+  for (const chunk of patch.split(/^diff --git /m).slice(1)) {
+    const path = /^a\/(.+?) b\/(.+)$/m.exec(chunk.split("\n")[0])?.[2] ?? "";
+    const text2 = `diff --git ${chunk}`;
+    if (used + text2.length > MAX_PATCH) {
+      truncated = true;
+      patches.set(path, "\uFF08\u6539\u52A8\u592A\u5927\uFF0C\u5DF2\u7701\u7565\uFF1B\u8BF7\u5728\u7EC8\u7AEF\u7528 git diff \u67E5\u770B\uFF09");
+      continue;
+    }
+    used += text2.length;
+    patches.set(path, text2);
+  }
+  const files = names.trim().split("\n").filter(Boolean).map((l) => {
+    const [st, ...p2] = l.split("	");
+    const path = p2.at(-1);
+    const [additions, deletions] = stat.get(path) ?? [0, 0];
+    return { path, status: st[0] ?? "?", additions, deletions, patch: patches.get(path) ?? "" };
+  });
+  return { files, truncated };
+}
+async function commitAll(cwd, message) {
+  await git(cwd, ["add", "-A"]);
+  try {
+    await git(cwd, ["diff", "--cached", "--quiet"]);
+    return false;
+  } catch {
+  }
+  const hasId = await git(cwd, ["config", "user.email"]).then((s) => !!s.trim()).catch(() => false);
+  await git(cwd, [...hasId ? [] : ["-c", "user.name=\u7814\u53D1\u5DE5\u4F5C\u53F0", "-c", "user.email=workbench@localhost"], "commit", "-m", message]);
+  return true;
+}
+async function commitsAhead(cwd, base) {
+  return Number((await git(cwd, ["rev-list", "--count", `${base}..HEAD`])).trim()) || 0;
+}
+function runShell(cmd2, cwd, timeoutMs) {
+  return new Promise((resolve6) => {
+    const t0 = Date.now();
+    const child = spawn(cmd2, { cwd, shell: true, env: { ...process.env, CI: "1", FORCE_COLOR: "0" } });
+    let out = "";
+    const add = (b) => {
+      out = (out + b.toString()).slice(-2e4);
+    };
+    child.stdout.on("data", add);
+    child.stderr.on("data", add);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, timeoutMs);
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      resolve6({ code: null, output: `${out}
+${e.message}`.trim(), timedOut, ms: Date.now() - t0 });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve6({ code, output: out.trim(), timedOut, ms: Date.now() - t0 });
+    });
+  });
+}
+var branchName, MAX_PATCH, push;
+var init_git = __esm({
+  "core/src/git.ts"() {
+    "use strict";
+    branchName = (prefix, key, title) => {
+      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30).replace(/-+$/g, "");
+      return `${prefix}${key.toLowerCase()}${slug ? `-${slug}` : ""}`;
+    };
+    MAX_PATCH = 2e5;
+    push = (cwd, branch) => git(cwd, ["push", "-u", "origin", branch], { timeoutMs: 18e4 });
+  }
+});
+
+// core/src/onboarding.ts
+import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
+import { readdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, join as join2, resolve } from "node:path";
+function parseRemote(url2) {
+  const scp = /^[\w.-]+@([\w.-]+):(?!\/\/)(.+?)(?:\.git)?\/?$/.exec(url2);
+  if (scp) return { host: scp[1], path: scp[2] };
+  try {
+    const u2 = new URL(url2);
+    return { host: u2.hostname, path: u2.pathname.replace(/^\/+|\/+$/g, "").replace(/\.git$/, "") };
+  } catch {
+    return void 0;
+  }
+}
+function guessTestCmd(dir2) {
+  try {
+    const pkg = JSON.parse(readFileSync2(join2(dir2, "package.json"), "utf8"));
+    const t = pkg.scripts?.test;
+    if (t && !/no test specified/.test(t)) return "npm test";
+  } catch {
+  }
+  if (existsSync2(join2(dir2, "go.mod"))) return "go test ./...";
+  if (existsSync2(join2(dir2, "Cargo.toml"))) return "cargo test";
+  return void 0;
+}
+async function findRepos(roots, depth = 2, max = 80) {
+  const found = [];
+  const walk = async (dir2, level) => {
+    if (found.length >= max) return;
+    if (existsSync2(join2(dir2, ".git"))) {
+      found.push(dir2);
+      return;
+    }
+    if (level >= depth) return;
+    let entries;
+    try {
+      entries = await readdir(dir2, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.isDirectory() && !e.name.startsWith(".") && !SKIP.has(e.name)) await walk(join2(dir2, e.name), level + 1);
+    }
+  };
+  for (const r2 of roots) await walk(resolve(expandHome(r2.trim())), 0);
+  return [...new Set(found)];
+}
+async function describeRepo(dir2, known) {
+  const remote = await remoteUrl(dir2);
+  return { path: dir2, name: basename(dir2), remote, testCmd: guessTestCmd(dir2), known: known.has(dir2) };
+}
+var SKIP, suggestRoots, expandHome;
+var init_onboarding = __esm({
+  "core/src/onboarding.ts"() {
+    "use strict";
+    init_git();
+    SKIP = /* @__PURE__ */ new Set(["node_modules", "dist", "build", "target", "vendor", "Library", "Applications", "AppData"]);
+    suggestRoots = (home = homedir()) => ["code", "work", "projects", "dev", "src", "git", "workspace", "IdeaProjects", "WebstormProjects", "Documents", "Documents/code"].map((d2) => join2(home, d2)).filter(existsSync2);
+    expandHome = (p2, home = homedir()) => p2 === "~" ? home : p2.startsWith("~/") ? join2(home, p2.slice(2)) : p2;
+  }
+});
+
+// core/src/dirs.ts
+import { existsSync as existsSync3, statSync } from "node:fs";
+import { readdir as readdir2 } from "node:fs/promises";
+import { homedir as homedir2 } from "node:os";
+import { dirname, join as join3, resolve as resolve2 } from "node:path";
+async function listDirs(path, o = {}) {
+  const home = homedir2();
+  let dir2 = resolve2(expandHome(path?.trim() || home));
+  while (!(existsSync3(dir2) && statSync(dir2).isDirectory())) {
+    const up2 = dirname(dir2);
+    if (up2 === dir2) {
+      dir2 = home;
+      break;
+    }
+    dir2 = up2;
+  }
+  let names = [];
+  try {
+    names = (await readdir2(dir2, { withFileTypes: true })).filter((e) => (e.isDirectory() || e.isSymbolicLink() && isDir(join3(dir2, e.name))) && (o.hidden || !e.name.startsWith("."))).map((e) => e.name);
+  } catch {
+  }
+  names.sort((a, b) => a.localeCompare(b));
+  const up = dirname(dir2);
+  const places = [{ label: "\u4E3B\u76EE\u5F55", path: home }, ...(o.hints ?? []).filter(isDir).slice(0, MAX_PLACES).map((p2) => ({ label: p2.split(/[\\/]/).filter(Boolean).at(-1) ?? p2, path: p2 }))];
+  return {
+    path: dir2,
+    parent: up === dir2 ? void 0 : up,
+    home,
+    places,
+    entries: names.map((name) => ({ name, path: join3(dir2, name), isGit: existsSync3(join3(dir2, name, ".git")) }))
+  };
+}
+function isDir(p2) {
+  try {
+    return statSync(p2).isDirectory();
+  } catch {
+    return false;
+  }
+}
+var MAX_PLACES;
+var init_dirs = __esm({
+  "core/src/dirs.ts"() {
+    "use strict";
+    init_onboarding();
+    MAX_PLACES = 12;
+  }
+});
+
 // core/fixtures/demo-repo.ts
 var paymentCoreFiles;
 var init_demo_repo = __esm({
@@ -756,8 +1011,8 @@ var init_zentao = __esm({
 });
 
 // core/src/files.ts
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { join as join2, resolve, sep } from "node:path";
+import { existsSync as existsSync4, readdirSync, statSync as statSync2 } from "node:fs";
+import { join as join4, resolve as resolve3, sep } from "node:path";
 function listFiles(root) {
   const out = [];
   const walk = (dir2, rel, depth) => {
@@ -773,7 +1028,7 @@ function listFiles(root) {
       if (e.name.startsWith(".") || e.isSymbolicLink()) continue;
       const r2 = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory()) {
-        if (!SKIP.has(e.name)) walk(join2(dir2, e.name), r2, depth + 1);
+        if (!SKIP2.has(e.name)) walk(join4(dir2, e.name), r2, depth + 1);
       } else if (e.isFile()) out.push(r2);
     }
   };
@@ -801,166 +1056,22 @@ function fuzzy(files, query, limit = 30) {
   return files.map((f2) => [f2, score(f2, q)]).filter(([, s]) => s >= 0).sort((a, b) => b[1] - a[1]).slice(0, limit).map(([f2]) => f2);
 }
 function mentionedFiles(root, text2) {
-  const base = resolve(root);
+  const base = resolve3(root);
   const found = /* @__PURE__ */ new Set();
   for (const m2 of text2.matchAll(/(?:^|\s)@([^\s@，。、；：！？（）【】《》“”‘’,;:!?()<>"'`]+)/gu)) {
     const rel = m2[1].replace(/\.+$/, "");
-    const abs = resolve(base, rel);
-    if (abs.startsWith(base + sep) && existsSync(abs) && statSync(abs).isFile()) found.add(abs.slice(base.length + 1).split(sep).join("/"));
+    const abs = resolve3(base, rel);
+    if (abs.startsWith(base + sep) && existsSync4(abs) && statSync2(abs).isFile()) found.add(abs.slice(base.length + 1).split(sep).join("/"));
   }
   return [...found];
 }
-var SKIP, MAX_FILES, MAX_DEPTH;
+var SKIP2, MAX_FILES, MAX_DEPTH;
 var init_files = __esm({
   "core/src/files.ts"() {
     "use strict";
-    SKIP = /* @__PURE__ */ new Set(["node_modules", "dist", "build", "target", "out", "coverage", "__pycache__", "vendor"]);
+    SKIP2 = /* @__PURE__ */ new Set(["node_modules", "dist", "build", "target", "out", "coverage", "__pycache__", "vendor"]);
     MAX_FILES = 2e4;
     MAX_DEPTH = 10;
-  }
-});
-
-// core/src/git.ts
-import { execFile, spawn } from "node:child_process";
-import { existsSync as existsSync2 } from "node:fs";
-function git(cwd, args, o = {}) {
-  return new Promise((resolve5, reject) => {
-    execFile("git", args, {
-      cwd,
-      timeout: o.timeoutMs ?? 6e4,
-      maxBuffer: 32 * 1024 * 1024,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes", LC_ALL: "C" }
-    }, (err, stdout, stderr) => {
-      if (!err) return resolve5(stdout);
-      const msg = String(stderr || stdout || err.message).trim().split("\n").slice(-6).join("\n");
-      reject(new Error(msg || String(err.message)));
-    });
-  });
-}
-async function isGitRepo(cwd) {
-  if (!existsSync2(cwd)) return false;
-  try {
-    return (await git(cwd, ["rev-parse", "--is-inside-work-tree"])).trim() === "true";
-  } catch {
-    return false;
-  }
-}
-async function branchExists(cwd, branch) {
-  try {
-    await git(cwd, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function defaultBase(cwd) {
-  try {
-    return (await git(cwd, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])).trim().replace(/^origin\//, "");
-  } catch {
-  }
-  return (await git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
-}
-async function remoteUrl(cwd) {
-  try {
-    return (await git(cwd, ["remote", "get-url", "origin"])).trim() || void 0;
-  } catch {
-    return void 0;
-  }
-}
-async function addWorktree(repo, branch, path, base) {
-  if (await branchExists(repo, branch)) await git(repo, ["worktree", "add", path, branch]);
-  else await git(repo, ["worktree", "add", "-b", branch, path, base]);
-}
-async function removeWorktree(repo, path) {
-  try {
-    await git(repo, ["worktree", "remove", path]);
-  } catch {
-  }
-}
-async function changes(cwd, base) {
-  await git(cwd, ["add", "-N", "."]).catch(() => {
-  });
-  const [names, nums, patch] = await Promise.all([
-    git(cwd, ["diff", "--name-status", base]),
-    git(cwd, ["diff", "--numstat", base]),
-    git(cwd, ["diff", "--no-color", base])
-  ]);
-  const stat = new Map(nums.trim().split("\n").filter(Boolean).map((l) => {
-    const [a, d2, ...p2] = l.split("	");
-    return [p2.join("	"), [Number(a) || 0, Number(d2) || 0]];
-  }));
-  const patches = /* @__PURE__ */ new Map();
-  let truncated = false;
-  let used = 0;
-  for (const chunk of patch.split(/^diff --git /m).slice(1)) {
-    const path = /^a\/(.+?) b\/(.+)$/m.exec(chunk.split("\n")[0])?.[2] ?? "";
-    const text2 = `diff --git ${chunk}`;
-    if (used + text2.length > MAX_PATCH) {
-      truncated = true;
-      patches.set(path, "\uFF08\u6539\u52A8\u592A\u5927\uFF0C\u5DF2\u7701\u7565\uFF1B\u8BF7\u5728\u7EC8\u7AEF\u7528 git diff \u67E5\u770B\uFF09");
-      continue;
-    }
-    used += text2.length;
-    patches.set(path, text2);
-  }
-  const files = names.trim().split("\n").filter(Boolean).map((l) => {
-    const [st, ...p2] = l.split("	");
-    const path = p2.at(-1);
-    const [additions, deletions] = stat.get(path) ?? [0, 0];
-    return { path, status: st[0] ?? "?", additions, deletions, patch: patches.get(path) ?? "" };
-  });
-  return { files, truncated };
-}
-async function commitAll(cwd, message) {
-  await git(cwd, ["add", "-A"]);
-  try {
-    await git(cwd, ["diff", "--cached", "--quiet"]);
-    return false;
-  } catch {
-  }
-  const hasId = await git(cwd, ["config", "user.email"]).then((s) => !!s.trim()).catch(() => false);
-  await git(cwd, [...hasId ? [] : ["-c", "user.name=\u7814\u53D1\u5DE5\u4F5C\u53F0", "-c", "user.email=workbench@localhost"], "commit", "-m", message]);
-  return true;
-}
-async function commitsAhead(cwd, base) {
-  return Number((await git(cwd, ["rev-list", "--count", `${base}..HEAD`])).trim()) || 0;
-}
-function runShell(cmd2, cwd, timeoutMs) {
-  return new Promise((resolve5) => {
-    const t0 = Date.now();
-    const child = spawn(cmd2, { cwd, shell: true, env: { ...process.env, CI: "1", FORCE_COLOR: "0" } });
-    let out = "";
-    const add = (b) => {
-      out = (out + b.toString()).slice(-2e4);
-    };
-    child.stdout.on("data", add);
-    child.stderr.on("data", add);
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-    }, timeoutMs);
-    child.on("error", (e) => {
-      clearTimeout(timer);
-      resolve5({ code: null, output: `${out}
-${e.message}`.trim(), timedOut, ms: Date.now() - t0 });
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve5({ code, output: out.trim(), timedOut, ms: Date.now() - t0 });
-    });
-  });
-}
-var branchName, MAX_PATCH, push;
-var init_git = __esm({
-  "core/src/git.ts"() {
-    "use strict";
-    branchName = (prefix, key, title) => {
-      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30).replace(/-+$/g, "");
-      return `${prefix}${key.toLowerCase()}${slug ? `-${slug}` : ""}`;
-    };
-    MAX_PATCH = 2e5;
-    push = (cwd, branch) => git(cwd, ["push", "-u", "origin", branch], { timeoutMs: 18e4 });
   }
 });
 
@@ -1101,72 +1212,9 @@ var init_stats = __esm({
   }
 });
 
-// core/src/onboarding.ts
-import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
-import { readdir } from "node:fs/promises";
-import { homedir } from "node:os";
-import { basename, join as join3, resolve as resolve2 } from "node:path";
-function parseRemote(url2) {
-  const scp = /^[\w.-]+@([\w.-]+):(?!\/\/)(.+?)(?:\.git)?\/?$/.exec(url2);
-  if (scp) return { host: scp[1], path: scp[2] };
-  try {
-    const u2 = new URL(url2);
-    return { host: u2.hostname, path: u2.pathname.replace(/^\/+|\/+$/g, "").replace(/\.git$/, "") };
-  } catch {
-    return void 0;
-  }
-}
-function guessTestCmd(dir2) {
-  try {
-    const pkg = JSON.parse(readFileSync2(join3(dir2, "package.json"), "utf8"));
-    const t = pkg.scripts?.test;
-    if (t && !/no test specified/.test(t)) return "npm test";
-  } catch {
-  }
-  if (existsSync3(join3(dir2, "go.mod"))) return "go test ./...";
-  if (existsSync3(join3(dir2, "Cargo.toml"))) return "cargo test";
-  return void 0;
-}
-async function findRepos(roots, depth = 2, max = 80) {
-  const found = [];
-  const walk = async (dir2, level) => {
-    if (found.length >= max) return;
-    if (existsSync3(join3(dir2, ".git"))) {
-      found.push(dir2);
-      return;
-    }
-    if (level >= depth) return;
-    let entries;
-    try {
-      entries = await readdir(dir2, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      if (e.isDirectory() && !e.name.startsWith(".") && !SKIP2.has(e.name)) await walk(join3(dir2, e.name), level + 1);
-    }
-  };
-  for (const r2 of roots) await walk(resolve2(expandHome(r2.trim())), 0);
-  return [...new Set(found)];
-}
-async function describeRepo(dir2, known) {
-  const remote = await remoteUrl(dir2);
-  return { path: dir2, name: basename(dir2), remote, testCmd: guessTestCmd(dir2), known: known.has(dir2) };
-}
-var SKIP2, suggestRoots, expandHome;
-var init_onboarding = __esm({
-  "core/src/onboarding.ts"() {
-    "use strict";
-    init_git();
-    SKIP2 = /* @__PURE__ */ new Set(["node_modules", "dist", "build", "target", "vendor", "Library", "Applications", "AppData"]);
-    suggestRoots = (home = homedir()) => ["code", "work", "projects", "dev", "src", "git", "workspace", "IdeaProjects", "WebstormProjects", "Documents", "Documents/code"].map((d2) => join3(home, d2)).filter(existsSync3);
-    expandHome = (p2, home = homedir()) => p2 === "~" ? home : p2.startsWith("~/") ? join3(home, p2.slice(2)) : p2;
-  }
-});
-
 // core/src/skillpack.ts
-import { existsSync as existsSync4, readdirSync as readdirSync2, readFileSync as readFileSync3, statSync as statSync2 } from "node:fs";
-import { join as join4, resolve as resolve3 } from "node:path";
+import { existsSync as existsSync5, readdirSync as readdirSync2, readFileSync as readFileSync3, statSync as statSync3 } from "node:fs";
+import { join as join5, resolve as resolve4 } from "node:path";
 function parseSkillFile(text2) {
   const m2 = /^﻿?---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text2);
   if (!m2) return void 0;
@@ -1181,7 +1229,7 @@ function discoverSkills(roots) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const raw of roots) {
-    const root = resolve3(expandHome(raw.trim()));
+    const root = resolve4(expandHome(raw.trim()));
     let entries;
     try {
       entries = readdirSync2(root).sort();
@@ -1189,17 +1237,17 @@ function discoverSkills(roots) {
       continue;
     }
     for (const e of entries) {
-      const full = join4(root, e);
+      const full = join5(root, e);
       let file2, directory = root;
       try {
-        if (statSync2(full).isDirectory()) {
-          file2 = join4(full, "SKILL.md");
+        if (statSync3(full).isDirectory()) {
+          file2 = join5(full, "SKILL.md");
           directory = full;
         } else if (e.endsWith(".md")) file2 = full;
       } catch {
         continue;
       }
-      if (!file2 || !existsSync4(file2)) continue;
+      if (!file2 || !existsSync5(file2)) continue;
       const parsed = parseSkillFile(readFileSync3(file2, "utf8"));
       const { name, description } = parsed?.meta ?? {};
       if (!name || !description || !SKILL_NAME.test(name) || seen.has(name)) continue;
@@ -1377,10 +1425,10 @@ var init_settings = __esm({
 
 // core/src/workbench.ts
 import { execFileSync as execFileSync2 } from "node:child_process";
-import { existsSync as existsSync5, mkdirSync as mkdirSync2, rmSync, writeFileSync as writeFileSync2 } from "node:fs";
-import { dirname, isAbsolute, resolve as resolve4 } from "node:path";
+import { existsSync as existsSync6, mkdirSync as mkdirSync2, rmSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { dirname as dirname2, isAbsolute, resolve as resolve5 } from "node:path";
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { join as join5 } from "node:path";
+import { join as join6 } from "node:path";
 function place(d2, issue2, status, beforeId) {
   const was = issue2.status;
   issue2.status = status;
@@ -1401,7 +1449,7 @@ function cleanDue(v2) {
   return s;
 }
 function initDemoRepo(cwd) {
-  if (existsSync5(join5(cwd, ".git"))) return;
+  if (existsSync6(join6(cwd, ".git"))) return;
   try {
     const run = (...a) => execFileSync2("git", a, { cwd, stdio: "ignore" });
     run("init", "-q", "-b", "main");
@@ -1756,7 +1804,7 @@ ${p2.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\u
        */
       async workDir(issueId, project) {
         const issue2 = this.store.data.issues.find((i) => i.id === issueId);
-        if (issue2.worktree && existsSync5(issue2.worktree)) return issue2.worktree;
+        if (issue2.worktree && existsSync6(issue2.worktree)) return issue2.worktree;
         const s = this.settings();
         if (!(project.isolate ?? s.isolateByDefault) || !await isGitRepo(project.cwd)) return project.cwd;
         const base = project.baseBranch?.trim() || await defaultBase(project.cwd);
@@ -1764,10 +1812,10 @@ ${p2.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\u
         const wanted = branchName(s.branchPrefix, issue2.key, issue2.title);
         let branch = issue2.branch ?? wanted;
         if (!issue2.branch) for (let n = 2; await branchExists(project.cwd, branch); n++) branch = `${wanted}-${n}`;
-        const root = join5(dirname(this.store.path), "worktrees", project.id, issue2.key);
+        const root = join6(dirname2(this.store.path), "worktrees", project.id, issue2.key);
         let path = root;
-        for (let n = 2; existsSync5(path); n++) path = `${root}-${n}`;
-        mkdirSync2(dirname(path), { recursive: true });
+        for (let n = 2; existsSync6(path); n++) path = `${root}-${n}`;
+        mkdirSync2(dirname2(path), { recursive: true });
         try {
           await addWorktree(project.cwd, branch, path, baseRef);
         } catch (e) {
@@ -1782,7 +1830,7 @@ ${p2.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\u
       /** Remove the task's checkout when nothing uncommitted would be lost; the branch stays. */
       async releaseWorktree(issue2) {
         const project = this.store.data.projects.find((p2) => p2.id === issue2.projectId);
-        if (issue2.worktree && project && existsSync5(issue2.worktree)) await removeWorktree(project.cwd, issue2.worktree);
+        if (issue2.worktree && project && existsSync6(issue2.worktree)) await removeWorktree(project.cwd, issue2.worktree);
       }
       async launch(issueId, item) {
         const before = this.store.data.issues.find((i) => i.id === issueId);
@@ -1896,7 +1944,7 @@ ${p2.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\u
       async hasChanges(issue2) {
         const project = this.store.data.projects.find((p2) => p2.id === issue2.projectId);
         try {
-          if (issue2.worktree && existsSync5(issue2.worktree) && issue2.baseSha) return (await changes(issue2.worktree, issue2.baseSha)).files.length > 0;
+          if (issue2.worktree && existsSync6(issue2.worktree) && issue2.baseSha) return (await changes(issue2.worktree, issue2.baseSha)).files.length > 0;
           if (project && await isGitRepo(project.cwd)) return (await changes(project.cwd, "HEAD")).files.length > 0;
         } catch {
         }
@@ -2145,7 +2193,7 @@ ${summary.slice(0, 1500)}`,
       searchFiles(projectId, query) {
         const project = this.store.data.projects.find((p2) => p2.id === projectId);
         if (!project) throw new WorkbenchError("invalid", "\u8BF7\u5148\u9009\u62E9\u9879\u76EE");
-        if (!existsSync5(project.cwd)) throw new WorkbenchError("invalid", `\u5DE5\u4F5C\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${project.cwd}`);
+        if (!existsSync6(project.cwd)) throw new WorkbenchError("invalid", `\u5DE5\u4F5C\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${project.cwd}`);
         let idx = this.fileIndex.get(projectId);
         if (!idx || Date.now() - idx.at > 3e4) {
           idx = { at: Date.now(), files: listFiles(project.cwd) };
@@ -2155,10 +2203,10 @@ ${summary.slice(0, 1500)}`,
       }
       // ---------- attachments ----------
       get uploadsDir() {
-        return join5(dirname(this.store.path), "uploads");
+        return join6(dirname2(this.store.path), "uploads");
       }
       uploadPath(a) {
-        return join5(this.uploadsDir, a.id);
+        return join6(this.uploadsDir, a.id);
       }
       saveUpload(input2) {
         if (input2.data.byteLength === 0) throw new WorkbenchError("invalid", "\u6587\u4EF6\u4E3A\u7A7A");
@@ -2177,7 +2225,7 @@ ${summary.slice(0, 1500)}`,
       /** Keep only a known command and attachments whose bytes are still on disk (the page is untrusted input). */
       cleanExtras(x) {
         if (x.command && !COMMANDS.includes(x.command)) throw new WorkbenchError("invalid", `\u4E0D\u652F\u6301\u7684\u6307\u4EE4 /${x.command}`);
-        const attachments = (x.attachments ?? []).filter((a) => /^[0-9a-f-]{36}$/.test(a.id) && existsSync5(this.uploadPath(a))).map(({ id, name, mediaType, size }) => ({ id, name, mediaType, size }));
+        const attachments = (x.attachments ?? []).filter((a) => /^[0-9a-f-]{36}$/.test(a.id) && existsSync6(this.uploadPath(a))).map(({ id, name, mediaType, size }) => ({ id, name, mediaType, size }));
         return { command: x.command || void 0, attachments };
       }
       // ---------- issues ----------
@@ -2367,7 +2415,7 @@ ${summary.slice(0, 1500)}`,
       }
       // ---------- review: changes, tests, merge request ----------
       workspaceOf(issue2, project) {
-        return issue2.worktree && existsSync5(issue2.worktree) ? issue2.worktree : project.cwd;
+        return issue2.worktree && existsSync6(issue2.worktree) ? issue2.worktree : project.cwd;
       }
       ctxOf(id) {
         const issue2 = this.store.data.issues.find((i) => i.id === id);
@@ -2379,7 +2427,7 @@ ${summary.slice(0, 1500)}`,
       /** What the agent changed: against the task branch's base when it has one, else the project's uncommitted changes. */
       async issueChanges(id) {
         const { issue: issue2, project } = this.ctxOf(id);
-        if (issue2.worktree && existsSync5(issue2.worktree) && issue2.baseSha) {
+        if (issue2.worktree && existsSync6(issue2.worktree) && issue2.baseSha) {
           return { ...await changes(issue2.worktree, issue2.baseSha), branch: issue2.branch, base: issue2.baseBranch, isolated: true };
         }
         if (await isGitRepo(project.cwd)) {
@@ -2430,7 +2478,7 @@ ${r2.output}` : r2.output;
       async doSubmitMergeRequest(id) {
         const { issue: issue2, project } = this.ctxOf(id);
         if (issue2.mr) throw new WorkbenchError("invalid", `${issue2.key} \u5DF2\u7ECF\u63D0\u4EA4\u8FC7\u5408\u5E76\u8BF7\u6C42\uFF1A${issue2.mr.url}`);
-        if (!issue2.branch || !issue2.worktree || !existsSync5(issue2.worktree) || !issue2.baseSha) {
+        if (!issue2.branch || !issue2.worktree || !existsSync6(issue2.worktree) || !issue2.baseSha) {
           throw new WorkbenchError("invalid", "\u53EA\u6709\u5728\u72EC\u7ACB\u4EFB\u52A1\u5206\u652F\u4E0A\u5B8C\u6210\u7684\u4EFB\u52A1\u624D\u80FD\u63D0\u4EA4\u5408\u5E76\u8BF7\u6C42\uFF08\u9879\u76EE\u9700\u8981\u662F git \u4ED3\u5E93\u5E76\u5F00\u542F\u5206\u652F\u9694\u79BB\uFF09");
         }
         if (issue2.status === "in_progress") throw new WorkbenchError("invalid", `${issue2.key} \u6B63\u5728\u8FDB\u884C\u4E2D`);
@@ -2714,13 +2762,13 @@ ${summary.slice(0, 4e3)}`,
       seedDemoProjects(baseDir) {
         if (this.store.data.projects.length) return;
         const demo = [
-          { name: "\u4E91\u652F\u4ED8 / payment-core", cwd: join5(baseDir, "payment-core"), zentaoProductId: 12, sparkinProjectId: "SP-PAY", testCmd: "node --test" },
-          { name: "\u8BA2\u5355\u670D\u52A1 / teleone-order", cwd: join5(baseDir, "teleone-order"), gitlabProjectId: 101, zentaoProductId: 5, sparkinProjectId: "SP-ORDER" },
-          { name: "\u8BA2\u5355\u670D\u52A1 / order-service", cwd: join5(baseDir, "order-service"), jenkinsJob: "order-service", sparkinProjectId: "SP-ORDER" },
-          { name: "\u524D\u7AEF / teleone-web", cwd: join5(baseDir, "teleone-web"), jenkinsJob: "teleone-web", sparkinProjectId: "SP-WEB" },
-          { name: "\u8BA4\u8BC1\u4E2D\u5FC3 / auth", cwd: join5(baseDir, "auth-center"), zentaoProductId: 8, sparkinProjectId: "SP-AUTH" },
-          { name: "\u6570\u636E\u4E2D\u5FC3 / report", cwd: join5(baseDir, "data-center"), zentaoProductId: 9, sparkinProjectId: "SP-DATA" },
-          { name: "\u57FA\u7840\u8BBE\u65BD / infrastructure", cwd: join5(baseDir, "infrastructure"), gitlabProjectId: 77, sparkinProjectId: "SP-INFRA" }
+          { name: "\u4E91\u652F\u4ED8 / payment-core", cwd: join6(baseDir, "payment-core"), zentaoProductId: 12, sparkinProjectId: "SP-PAY", testCmd: "node --test" },
+          { name: "\u8BA2\u5355\u670D\u52A1 / teleone-order", cwd: join6(baseDir, "teleone-order"), gitlabProjectId: 101, zentaoProductId: 5, sparkinProjectId: "SP-ORDER" },
+          { name: "\u8BA2\u5355\u670D\u52A1 / order-service", cwd: join6(baseDir, "order-service"), jenkinsJob: "order-service", sparkinProjectId: "SP-ORDER" },
+          { name: "\u524D\u7AEF / teleone-web", cwd: join6(baseDir, "teleone-web"), jenkinsJob: "teleone-web", sparkinProjectId: "SP-WEB" },
+          { name: "\u8BA4\u8BC1\u4E2D\u5FC3 / auth", cwd: join6(baseDir, "auth-center"), zentaoProductId: 8, sparkinProjectId: "SP-AUTH" },
+          { name: "\u6570\u636E\u4E2D\u5FC3 / report", cwd: join6(baseDir, "data-center"), zentaoProductId: 9, sparkinProjectId: "SP-DATA" },
+          { name: "\u57FA\u7840\u8BBE\u65BD / infrastructure", cwd: join6(baseDir, "infrastructure"), gitlabProjectId: 77, sparkinProjectId: "SP-INFRA" }
         ];
         for (const p2 of demo) {
           mkdirSync2(p2.cwd, { recursive: true });
@@ -2729,9 +2777,9 @@ ${summary.slice(0, 4e3)}`,
 \u7814\u53D1\u5DE5\u4F5C\u53F0\u6F14\u793A\u7528\u7684\u7A7A\u5DE5\u4F5C\u76EE\u5F55\uFF0C\u8BF7\u5728\u300C\u9879\u76EE\u300D\u9875\u6539\u6210\u771F\u5B9E\u4ED3\u5E93\u8DEF\u5F84\u3002
 ` };
           for (const [rel, text2] of Object.entries(files)) {
-            const f2 = join5(p2.cwd, rel);
-            if (existsSync5(f2)) continue;
-            mkdirSync2(dirname(f2), { recursive: true });
+            const f2 = join6(p2.cwd, rel);
+            if (existsSync6(f2)) continue;
+            mkdirSync2(dirname2(f2), { recursive: true });
             writeFileSync2(f2, text2);
           }
           initDemoRepo(p2.cwd);
@@ -2741,7 +2789,7 @@ ${summary.slice(0, 4e3)}`,
       /** Demo data from before git support: make the seeded directories git repos and give payment-core its test command. */
       upgradeDemoRepos(baseDir) {
         for (const p2 of this.store.data.projects) {
-          if (!p2.cwd.startsWith(baseDir) || !existsSync5(p2.cwd)) continue;
+          if (!p2.cwd.startsWith(baseDir) || !existsSync6(p2.cwd)) continue;
           initDemoRepo(p2.cwd);
           if (p2.name.endsWith("payment-core") && p2.testCmd === void 0) this.saveProject({ ...p2, testCmd: "node --test" });
         }
@@ -2774,7 +2822,7 @@ ${summary.slice(0, 4e3)}`,
       packSkillReport() {
         const roots = this.settings().skillRoots;
         const skills = discoverSkills(roots);
-        return { roots: roots.map((r2) => ({ root: r2, exists: existsSync5(resolve4(expandHome(r2))), count: skills.filter((s) => s.root === resolve4(expandHome(r2.trim()))).length })), skills: skills.map(({ name, description, root }) => ({ name, description, root })) };
+        return { roots: roots.map((r2) => ({ root: r2, exists: existsSync6(resolve5(expandHome(r2))), count: skills.filter((s) => s.root === resolve5(expandHome(r2.trim()))).length })), skills: skills.map(({ name, description, root }) => ({ name, description, root })) };
       }
       // ---------- updates ----------
       /** Look at the update address now (the 检查更新 button). The result is kept so the banner survives a restart. */
@@ -3012,6 +3060,8 @@ function createDispatch(wb, h2) {
         return await wb.jenkinsJobs();
       case "builds.trigger":
         return await wb.triggerBuild({ job: p2.job, params: p2.params, issueIds: p2.issueIds ?? [] });
+      case "dirs.list":
+        return await listDirs(typeof p2.path === "string" ? p2.path : void 0, { hidden: !!p2.hidden, hints: await h2.projectHints?.() });
       case "files.search":
         return wb.searchFiles(p2.projectId, p2.q ?? "");
       case "models.list":
@@ -3044,21 +3094,22 @@ function createDispatch(wb, h2) {
 var init_rpc = __esm({
   "core/src/rpc.ts"() {
     "use strict";
+    init_dirs();
     init_workbench();
   }
 });
 
 // core/src/store.ts
 import { copyFileSync, mkdirSync as mkdirSync3, readFileSync as readFileSync4, renameSync, writeFileSync as writeFileSync3 } from "node:fs";
-import { homedir as homedir2 } from "node:os";
-import { dirname as dirname2, join as join6 } from "node:path";
+import { homedir as homedir3 } from "node:os";
+import { dirname as dirname3, join as join7 } from "node:path";
 var dataDir, defaultDataPath, DATA_VERSION, migrations, DataVersionError, empty, Store;
 var init_store = __esm({
   "core/src/store.ts"() {
     "use strict";
     init_demo();
-    dataDir = () => process.env.WORKBENCH_HOME || join6(homedir2(), ".workbench");
-    defaultDataPath = () => join6(dataDir(), "workbench.json");
+    dataDir = () => process.env.WORKBENCH_HOME || join7(homedir3(), ".workbench");
+    defaultDataPath = () => join7(dataDir(), "workbench.json");
     DATA_VERSION = 3;
     migrations = {
       // 1 -> 2: the arrays and fields that later releases read without checking are always present
@@ -3125,7 +3176,7 @@ var init_store = __esm({
         return result;
       }
       write(d2) {
-        mkdirSync3(dirname2(this.path), { recursive: true });
+        mkdirSync3(dirname3(this.path), { recursive: true });
         const tmp = `${this.path}.${process.pid}.tmp`;
         writeFileSync3(tmp, JSON.stringify(d2, null, 2));
         renameSync(tmp, this.path);
@@ -3145,6 +3196,7 @@ var init_src = __esm({
     init_store();
     init_workbench();
     init_agents();
+    init_dirs();
     init_files();
     init_connections();
     init_skillpack();
@@ -3160,7 +3212,7 @@ var init_src = __esm({
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFileSync as readFileSync5, rmSync as rmSync2, writeFileSync as writeFileSync4 } from "node:fs";
 import { createServer } from "node:http";
-import { join as join7 } from "node:path";
+import { join as join8 } from "node:path";
 async function serve(o) {
   const token = randomBytes(24).toString("hex");
   const expected = Buffer.from(`Bearer ${token}`);
@@ -3192,11 +3244,11 @@ async function serve(o) {
         const after = Number(url2.searchParams.get("after") ?? -1);
         const wait = Math.min(MAX_WAIT, Math.max(0, Number(url2.searchParams.get("wait")) || 0));
         if (seq <= after && wait > 0) {
-          await new Promise((resolve5) => {
+          await new Promise((resolve6) => {
             const done = () => {
               clearTimeout(t);
               waiters.delete(done);
-              resolve5();
+              resolve6();
             };
             const t = setTimeout(done, wait);
             waiters.add(done);
@@ -3220,9 +3272,9 @@ async function serve(o) {
       send(400, { ok: false, error: String(e?.message ?? e) });
     }
   });
-  await new Promise((resolve5, reject) => {
+  await new Promise((resolve6, reject) => {
     server.once("error", reject);
-    server.listen(o.port ?? 0, "127.0.0.1", resolve5);
+    server.listen(o.port ?? 0, "127.0.0.1", resolve6);
   });
   const info = { pid: process.pid, port: server.address().port, token, startedAt: (/* @__PURE__ */ new Date()).toISOString(), version: o.version };
   writeFileSync4(serveInfoPath(o.dir), JSON.stringify(info), { mode: 384 });
@@ -3233,7 +3285,7 @@ async function serve(o) {
       if (readServeInfo(o.dir)?.token === token) rmSync2(serveInfoPath(o.dir));
     } catch {
     }
-    const closed = new Promise((resolve5) => server.close(() => resolve5()));
+    const closed = new Promise((resolve6) => server.close(() => resolve6()));
     server.closeAllConnections();
     await closed;
   };
@@ -3261,10 +3313,10 @@ var serveInfoPath, MAX_BODY, MAX_WAIT, readBody;
 var init_serve = __esm({
   "core/src/serve.ts"() {
     "use strict";
-    serveInfoPath = (dir2) => join7(dir2, "serve.json");
+    serveInfoPath = (dir2) => join8(dir2, "serve.json");
     MAX_BODY = 64 * 1024 * 1024;
     MAX_WAIT = 25e3;
-    readBody = (req) => new Promise((resolve5, reject) => {
+    readBody = (req) => new Promise((resolve6, reject) => {
       const chunks = [];
       let size = 0;
       req.on("data", (c) => {
@@ -3274,7 +3326,7 @@ var init_serve = __esm({
           req.destroy();
         } else chunks.push(c);
       });
-      req.on("end", () => resolve5(Buffer.concat(chunks).toString("utf8")));
+      req.on("end", () => resolve6(Buffer.concat(chunks).toString("utf8")));
       req.on("error", reject);
     });
   }
@@ -3282,13 +3334,13 @@ var init_serve = __esm({
 
 // codex/app-server.ts
 import { spawn as spawn2 } from "node:child_process";
-import { existsSync as existsSync6 } from "node:fs";
+import { existsSync as existsSync7 } from "node:fs";
 import { createInterface } from "node:readline";
 function codexCommand(env = process.env) {
   if (env.WORKBENCH_CODEX_BIN) return { bin: env.WORKBENCH_CODEX_BIN, args: ["app-server"] };
   const bundled = ["/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex", "/Applications/Codex.app/Contents/Resources/codex"];
-  const onPath = (env.PATH ?? "").split(process.platform === "win32" ? ";" : ":").some((d2) => d2 && existsSync6(`${d2}/codex${process.platform === "win32" ? ".exe" : ""}`));
-  return { bin: onPath ? "codex" : bundled.find((p2) => existsSync6(p2)) ?? "codex", args: ["app-server"] };
+  const onPath = (env.PATH ?? "").split(process.platform === "win32" ? ";" : ":").some((d2) => d2 && existsSync7(`${d2}/codex${process.platform === "win32" ? ".exe" : ""}`));
+  return { bin: onPath ? "codex" : bundled.find((p2) => existsSync7(p2)) ?? "codex", args: ["app-server"] };
 }
 var DECLINE, AppServer;
 var init_app_server = __esm({
@@ -3338,14 +3390,14 @@ var init_app_server = __esm({
       request(method, params, timeoutMs = 6e4) {
         if (this.exited) return Promise.reject(new Error(`Codex app-server \u5DF2\u9000\u51FA\uFF08${this.exited}\uFF09`));
         const id = ++this.seq;
-        return new Promise((resolve5, reject) => {
+        return new Promise((resolve6, reject) => {
           const t = setTimeout(() => {
             this.pending.delete(id);
             reject(new Error(`Codex app-server \u6CA1\u6709\u54CD\u5E94 ${method}`));
           }, timeoutMs);
           this.pending.set(id, { resolve: (v2) => {
             clearTimeout(t);
-            resolve5(v2);
+            resolve6(v2);
           }, reject: (e) => {
             clearTimeout(t);
             reject(e);
@@ -3558,16 +3610,42 @@ ${others.map((f2) => `- ${f2.name}\uFF1A${f2.path}`).join("\n")}` : req.prompt;
   }
 });
 
+// codex/projects.ts
+import { existsSync as existsSync8, readFileSync as readFileSync6 } from "node:fs";
+import { homedir as homedir4 } from "node:os";
+import { join as join9 } from "node:path";
+function codexProjects(o = {}) {
+  const file2 = join9(o.codexHome ?? process.env.CODEX_HOME ?? join9(homedir4(), ".codex"), "config.toml");
+  let text2;
+  try {
+    text2 = readFileSync6(file2, "utf8");
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const m2 of text2.matchAll(/^\[projects\.(?:"((?:[^"\\]|\\.)*)"|'([^']*)')\]\s*$/gm)) {
+    const path = m2[1] !== void 0 ? m2[1].replace(/\\(["\\])/g, "$1") : m2[2];
+    if (o.exclude && (path === o.exclude || path.startsWith(o.exclude + "/"))) continue;
+    if (existsSync8(join9(path, ".git")) && !out.includes(path)) out.push(path);
+  }
+  return out;
+}
+var init_projects = __esm({
+  "codex/projects.ts"() {
+    "use strict";
+  }
+});
+
 // codex/runtime.ts
 import { spawn as spawn3 } from "node:child_process";
-import { existsSync as existsSync7, mkdirSync as mkdirSync4, openSync, readFileSync as readFileSync6, writeFileSync as writeFileSync5 } from "node:fs";
-import { homedir as homedir3 } from "node:os";
-import { join as join8 } from "node:path";
+import { existsSync as existsSync9, mkdirSync as mkdirSync4, openSync, readFileSync as readFileSync7, writeFileSync as writeFileSync5 } from "node:fs";
+import { homedir as homedir5 } from "node:os";
+import { join as join10 } from "node:path";
 function credentialFile(dir2) {
-  const path = join8(dir2, "credentials.json");
+  const path = join10(dir2, "credentials.json");
   const read = () => {
     try {
-      return JSON.parse(readFileSync6(path, "utf8"));
+      return JSON.parse(readFileSync7(path, "utf8"));
     } catch {
       return {};
     }
@@ -3586,11 +3664,11 @@ async function runServe(o) {
   const release = acquireLock(o.dir);
   const driver = new CodexDriver({ version: o.version });
   const creds = credentialFile(o.dir);
-  const wb = new Workbench({ store: new Store(join8(o.dir, "workbench.json")), driver, version: o.version, creds: creds.get, setCred: creds.set });
+  const wb = new Workbench({ store: new Store(join10(o.dir, "workbench.json")), driver, version: o.version, creds: creds.get, setCred: creds.set });
   driver.permission = () => wb.settings().permissionPreset;
   driver.packSkills = () => wb.packSkills().map((k2) => ({ name: k2.name, description: k2.description, path: k2.path, scope: "workbench", enabled: true }));
-  wb.seedDemoProjects(join8(o.dir, "demo-repos"));
-  wb.upgradeDemoRepos(join8(o.dir, "demo-repos"));
+  wb.seedDemoProjects(join10(o.dir, "demo-repos"));
+  wb.upgradeDemoRepos(join10(o.dir, "demo-repos"));
   let timer;
   const loop = () => {
     void wb.maybeReportStats();
@@ -3602,7 +3680,8 @@ async function runServe(o) {
   const dispatch = createDispatch(wb, {
     driver,
     defaultModel: driver.defaultModel,
-    exampleSkillRoot: () => o.exampleSkillRoot && existsSync7(o.exampleSkillRoot) ? o.exampleSkillRoot : void 0
+    projectHints: () => codexProjects({ exclude: o.dir }),
+    exampleSkillRoot: () => o.exampleSkillRoot && existsSync9(o.exampleSkillRoot) ? o.exampleSkillRoot : void 0
   });
   const s = await serve({ dir: o.dir, dispatch, version: o.version, revision: () => wb.store.data, log: (m2, e) => console.warn(`workbench: ${m2}`, e) });
   console.log(`workbench: serving ${o.dir} on 127.0.0.1:${s.info.port} (pid ${process.pid})`);
@@ -3650,7 +3729,7 @@ async function ensureServe(o) {
     cur = void 0;
   }
   if (cur) return cur.info;
-  const log = join8(o.dir, "serve.log");
+  const log = join10(o.dir, "serve.log");
   mkdirSync4(o.dir, { recursive: true });
   const out = openSync(log, "a");
   const [bin, ...args] = o.entry;
@@ -3663,7 +3742,7 @@ async function ensureServe(o) {
   }
   const tail = (() => {
     try {
-      return readFileSync6(log, "utf8").trim().split("\n").slice(-3).join(" / ");
+      return readFileSync7(log, "utf8").trim().split("\n").slice(-3).join(" / ");
     } catch {
       return "";
     }
@@ -3683,7 +3762,8 @@ var init_runtime = __esm({
     init_src();
     init_serve();
     init_codex_driver();
-    codexDataDir = (env = process.env) => env.WORKBENCH_CODEX_HOME || join8(homedir3(), ".workbench-codex");
+    init_projects();
+    codexDataDir = (env = process.env) => env.WORKBENCH_CODEX_HOME || join10(homedir5(), ".workbench-codex");
     sleep = (ms) => new Promise((r2) => setTimeout(r2, ms));
   }
 });
@@ -12186,7 +12266,7 @@ function isRef(value) {
 function cloneIssues(issues) {
   return issues.map((iss) => iss.path ? { ...iss, path: iss.path.slice() } : { ...iss });
 }
-function isRecursive(inst, stack, resolve5) {
+function isRecursive(inst, stack, resolve6) {
   const cached2 = recursive.get(inst);
   if (cached2 !== void 0)
     return cached2 ? PROVEN : NONE;
@@ -12196,7 +12276,7 @@ function isRecursive(inst, stack, resolve5) {
   let result = NONE;
   const check2 = (child) => {
     if (result !== PROVEN && child?._zod) {
-      const answer = isRecursive(child, stack, resolve5);
+      const answer = isRecursive(child, stack, resolve6);
       if (answer > result)
         result = answer;
     }
@@ -12207,7 +12287,7 @@ function isRecursive(inst, stack, resolve5) {
       const desc = Object.getOwnPropertyDescriptor(sh, key);
       if (spread && !desc.enumerable)
         continue;
-      const child = desc.get ? ASSUMED : desc.value?._zod ? isRecursive(desc.value, stack, resolve5) : NONE;
+      const child = desc.get ? ASSUMED : desc.value?._zod ? isRecursive(desc.value, stack, resolve6) : NONE;
       if (child > answer)
         answer = child;
     }
@@ -12271,7 +12351,7 @@ function isRecursive(inst, stack, resolve5) {
       break;
     // `$ZodLazy` caches its inner on the def, so a resolved edge is followed exactly
     case "lazy": {
-      const inner = def._cachedInner ?? (resolve5 ? inst._zod.innerType : void 0);
+      const inner = def._cachedInner ?? (resolve6 ? inst._zod.innerType : void 0);
       merge2(inner ? isRecursive(inner, stack, false) : ASSUMED);
       break;
     }
@@ -32065,7 +32145,7 @@ var init_protocol = __esm({
               return;
             }
             const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-            await new Promise((resolve5) => setTimeout(resolve5, pollInterval));
+            await new Promise((resolve6) => setTimeout(resolve6, pollInterval));
             options?.signal?.throwIfAborted();
           }
         } catch (error62) {
@@ -32082,7 +32162,7 @@ var init_protocol = __esm({
        */
       request(request, resultSchema, options) {
         const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-        return new Promise((resolve5, reject) => {
+        return new Promise((resolve6, reject) => {
           const earlyReject = (error62) => {
             reject(error62);
           };
@@ -32160,7 +32240,7 @@ var init_protocol = __esm({
               if (!parseResult.success) {
                 reject(parseResult.error);
               } else {
-                resolve5(parseResult.data);
+                resolve6(parseResult.data);
               }
             } catch (error62) {
               reject(error62);
@@ -32422,12 +32502,12 @@ var init_protocol = __esm({
           }
         } catch {
         }
-        return new Promise((resolve5, reject) => {
+        return new Promise((resolve6, reject) => {
           if (signal.aborted) {
             reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
             return;
           }
-          const timeoutId = setTimeout(resolve5, interval);
+          const timeoutId = setTimeout(resolve6, interval);
           signal.addEventListener("abort", () => {
             clearTimeout(timeoutId);
             reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -35454,7 +35534,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve5.call(this, root, ref);
+      let _sch = resolve6.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a3 = root.localRefs) === null || _a3 === void 0 ? void 0 : _a3[ref];
         const { schemaId } = this.opts;
@@ -35481,7 +35561,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve5(root, ref) {
+    function resolve6(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -36345,7 +36425,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve5(baseURI, relativeURI, options) {
+    function resolve6(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const {
         parsed: baseParsed,
@@ -36736,7 +36816,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve5,
+      resolve: resolve6,
       resolveComponent,
       equal,
       serialize,
@@ -40903,7 +40983,7 @@ var init_mcp = __esm({
         let task = createTaskResult.task;
         const pollInterval = task.pollInterval ?? 5e3;
         while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-          await new Promise((resolve5) => setTimeout(resolve5, pollInterval));
+          await new Promise((resolve6) => setTimeout(resolve6, pollInterval));
           const updatedTask = await extra.taskStore.getTask(taskId);
           if (!updatedTask) {
             throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -41512,12 +41592,12 @@ var init_stdio2 = __esm({
         this.onclose?.();
       }
       send(message) {
-        return new Promise((resolve5) => {
+        return new Promise((resolve6) => {
           const json2 = serializeMessage(message);
           if (this._stdout.write(json2)) {
-            resolve5();
+            resolve6();
           } else {
-            this._stdout.once("drain", resolve5);
+            this._stdout.once("drain", resolve6);
           }
         });
       }
@@ -41651,6 +41731,7 @@ var init_endpoints = __esm({
       "files.search",
       "models.list",
       "skills.list",
+      "dirs.list",
       "issue.writeback.draft",
       "report.draft",
       "settings.get"
@@ -41795,9 +41876,9 @@ async function runMcp(o) {
   };
   const server = createMcpServer({ backend, boardHtml: o.boardHtml, version: o.version });
   await server.connect(new StdioServerTransport());
-  await new Promise((resolve5) => {
-    process.stdin.once("end", resolve5);
-    process.stdin.once("close", resolve5);
+  await new Promise((resolve6) => {
+    process.stdin.once("end", resolve6);
+    process.stdin.once("close", resolve6);
   });
   await server.close().catch(() => {
   });
@@ -41829,7 +41910,7 @@ var init_mcp2 = __esm({
 // codex/main.ts
 init_src();
 init_runtime();
-import { readFileSync as readFileSync7 } from "node:fs";
+import { readFileSync as readFileSync8 } from "node:fs";
 import { fileURLToPath } from "node:url";
 var version2 = true ? "0.2.0" : "dev";
 var dir = codexDataDir();
@@ -41839,7 +41920,7 @@ try {
     await runServe({ dir, version: version2, exampleSkillRoot: fileURLToPath(new URL("./examples/skills", import.meta.url)) });
   } else if (cmd === "mcp") {
     const { runMcp: runMcp2 } = await Promise.resolve().then(() => (init_mcp2(), mcp_exports));
-    await runMcp2({ dir, version: version2, entry: [process.execPath, process.argv[1]], boardHtml: () => readFileSync7(new URL("./board.html", import.meta.url), "utf8") });
+    await runMcp2({ dir, version: version2, entry: [process.execPath, process.argv[1]], boardHtml: () => readFileSync8(new URL("./board.html", import.meta.url), "utf8") });
   } else if (cmd === "stop") {
     console.log(await stopServe(dir) ? "\u5DE5\u4F5C\u53F0\u672C\u5730\u670D\u52A1\u5DF2\u505C\u6B62" : "\u5DE5\u4F5C\u53F0\u672C\u5730\u670D\u52A1\u6CA1\u6709\u5728\u8FD0\u884C");
   } else {

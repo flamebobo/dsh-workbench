@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { Store, Workbench, acquireLock, createDispatch } from '../core/src/index.ts'
 import { callServe, readServeInfo, serve, type ServeInfo } from '../core/src/serve.ts'
 import { CodexDriver } from './codex-driver.ts'
+import { codexProjects } from './projects.ts'
 
 /**
  * The Codex version's own data dir, never DSH's ~/.workbench: both products open the same whole-file store, and sharing one board
@@ -47,6 +48,7 @@ export async function runServe(o: { dir: string; version: string; exampleSkillRo
   const dispatch = createDispatch(wb, {
     driver,
     defaultModel: driver.defaultModel,
+    projectHints: () => codexProjects({ exclude: o.dir }),
     exampleSkillRoot: () => (o.exampleSkillRoot && existsSync(o.exampleSkillRoot) ? o.exampleSkillRoot : undefined),
   })
   const s = await serve({ dir: o.dir, dispatch, version: o.version, revision: () => wb.store.data, log: (m, e) => console.warn(`workbench: ${m}`, e) })

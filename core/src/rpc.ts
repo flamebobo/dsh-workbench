@@ -1,4 +1,5 @@
 import type { AgentDriver } from './driver.ts'
+import { listDirs } from './dirs.ts'
 import type { AgentProfile, Status, WorkItem } from './types.ts'
 import { WorkbenchError, type Workbench } from './workbench.ts'
 
@@ -11,6 +12,8 @@ export interface DispatchHost {
   defaultModel?: () => string | undefined | Promise<string | undefined>
   /** After an agent is saved (DSH re-registers it as a preset). */
   agentSaved?: (a: AgentProfile) => Promise<unknown>
+  /** Directories the host knows as the user's own projects (Codex: the ones in its config), offered in the folder picker. */
+  projectHints?: () => string[] | Promise<string[]>
   /** The skill roots may have changed: tell the host's skill registry to look again. */
   refreshSkills?: () => void
 }
@@ -74,6 +77,7 @@ export function createDispatch(wb: Workbench, h: DispatchHost): Dispatch {
       case 'connections.test': return await wb.testConnection(p.id)
       case 'jenkins.jobs': return await wb.jenkinsJobs()
       case 'builds.trigger': return await wb.triggerBuild({ job: p.job, params: p.params, issueIds: p.issueIds ?? [] })
+      case 'dirs.list': return await listDirs(typeof p.path === 'string' ? p.path : undefined, { hidden: !!p.hidden, hints: await h.projectHints?.() })
       case 'files.search': return wb.searchFiles(p.projectId, p.q ?? '')
       case 'models.list': return { models: await driver.listModels(), defaultModel: await h.defaultModel?.() }
       case 'skills.list': refreshSkills(); return await driver.listSkills(wb.listProjects().map((x) => x.cwd))

@@ -5,7 +5,7 @@
  */
 export const READ_ENDPOINTS: readonly string[] = [
   'state', 'todos.list', 'notices.since', 'stats.get', 'stats.payload', 'stats.export', 'skills.packs', 'sparkin.info',
-  'onboarding.roots', 'onboarding.scan', 'connections.list', 'jenkins.jobs', 'files.search', 'models.list', 'skills.list',
+  'onboarding.roots', 'onboarding.scan', 'connections.list', 'jenkins.jobs', 'files.search', 'models.list', 'skills.list', 'dirs.list',
   'issue.writeback.draft', 'report.draft', 'settings.get',
 ]
 

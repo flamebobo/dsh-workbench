@@ -8,6 +8,8 @@ export { Store, DATA_VERSION, DataVersionError, dataDir, defaultDataPath } from 
 export { Workbench, WorkbenchError, defaultAgentFor } from './workbench.ts'
 export type { TodoResult, WorkbenchOptions } from './workbench.ts'
 export { agentPersona, builtinAgents } from './agents.ts'
+export { listDirs } from './dirs.ts'
+export type { DirListing } from './dirs.ts'
 export { fuzzy, listFiles, mentionedFiles } from './files.ts'
 export { CONNECTIONS } from './connectors/connections.ts'
 export type { SystemId } from './connectors/connections.ts'

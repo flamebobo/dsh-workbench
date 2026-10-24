@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { ask, ago, BUILD_LABEL, HOST_NAME, buildColor, rpc, STATUS_LABEL, type Issue, type Project, type Status } from './api.ts'
 import { SkillPicker } from './SkillPicker.tsx'
+import { DirPicker } from './DirPicker.tsx'
 import type { PageProps } from './App.tsx'
 
 const { useState, useEffect } = React
@@ -19,6 +20,7 @@ const attention = (s: ReturnType<typeof statsOf>) => (s.blocked ? { text: '需�
 export function Projects(p: PageProps) {
   const [openId, setOpenId] = useState<string>()
   const [draft, setDraft] = useState<Draft | undefined>()
+  const [picking, setPicking] = useState(false)
   const [sparkin, setSparkin] = useState<{ id: string; name: string }[]>([])
   useEffect(() => { void rpc<{ projects: { id: string; name: string }[] }>('sparkin.info').then((i) => setSparkin(i.projects)).catch(() => {}) }, [])
   const open = p.state.projects.find((x) => x.id === openId)
@@ -47,7 +49,12 @@ export function Projects(p: PageProps) {
           <div className="wb-modal" role="dialog" aria-label="项目">
             <h3 style={{ marginTop: 0 }}>{draft.id ? '编辑项目' : '添加项目'}</h3>
             {f('name', '名称', '云支付 / payment-core')}
-            {f('cwd', '工作目录（绝对路径）', '/Users/me/code/payment-core 或 D:\\code\\payment-core')}
+            <div className="wb-field"><label>工作目录</label>
+              <div className="wb-row">
+                <input className="wb-input wb-grow" readOnly placeholder="点右边的「选择目录」" value={draft.cwd} onClick={() => setPicking(true)} />
+                <button className="wb-btn" onClick={() => setPicking(true)}>{draft.cwd ? '更换目录' : '选择目录'}</button></div></div>
+            {picking && <DirPicker start={draft.cwd} onClose={() => setPicking(false)}
+              onPick={(path) => { setDraft({ ...draft, cwd: path, name: draft.name.trim() ? draft.name : (path.split(/[\\/]/).filter(Boolean).at(-1) ?? '') }); setPicking(false) }} />}
             <div className="wb-row">{f('gitlabProjectId', 'GitLab 项目 ID', '101')}{f('zentaoProductId', '禅道产品 ID', '12')}{f('jenkinsJob', 'Jenkins Job 名', 'payment-core')}</div>
             <div className="wb-field"><label>测试命令（开工后用来验证改动，在任务的工作树里运行）</label>
               <input className="wb-input" placeholder="npm test / mvn -q test / pytest" value={draft.testCmd ?? ''} onChange={(e) => setDraft({ ...draft, testCmd: e.target.value || undefined })} /></div>
