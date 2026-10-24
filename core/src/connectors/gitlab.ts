@@ -33,7 +33,7 @@ export async function fetchGitlab(c: ConnectorContext): Promise<WorkItem[] | und
   const base = trimSlash(url)
   const headers = { 'PRIVATE-TOKEN': token }
   const me = await getJson<{ username: string }>(c.fetch, `${base}/api/v4/user`, { headers })
-  const q = new URLSearchParams({ scope: 'all', state: 'opened', reviewer_username: me.username })
+  const q = new URLSearchParams({ scope: 'all', state: 'opened', reviewer_username: me.username, per_page: '100' }) // the default page is 20: a busy reviewer would silently miss the rest
   return parseMergeRequests(await getJson<Mr[]>(c.fetch, `${base}/api/v4/merge_requests?${q}`, { headers }))
 }
 

@@ -53,6 +53,7 @@ test('gitlab: user lookup then reviewer MR query with PRIVATE-TOKEN; project par
   }) as unknown as ConnectorContext['fetch']
   const items = await fetchGitlab({ creds: creds({ WORKBENCH_GITLAB_URL: 'https://g.test', WORKBENCH_GITLAB_TOKEN: 'glpat' }), fetch: fetchImpl, zentaoProductIds: [] })
   assert.match(calls[1]!, /merge_requests\?scope=all&state=opened&reviewer_username=me/)
+  assert.match(calls[1]!, /per_page=100/) // not just GitLab's default first 20
   assert.deepEqual([items![0]!.ref, items![0]!.project, items![0]!.gitlabProjectId], ['teleone/teleone-order!11287', 'teleone/teleone-order', 101])
 })
 
