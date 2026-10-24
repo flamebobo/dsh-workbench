@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, isAbsolute } from 'node:path'
+import { dirname, isAbsolute, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { AgentDriver, DriverEvent } from './driver.ts'
@@ -15,6 +15,8 @@ import { Store } from './store.ts'
 import { fuzzy, listFiles, mentionedFiles } from './files.ts'
 import * as g from './git.ts'
 import { anonymousPayload, computeStats, exportRows, toCsv } from './stats.ts'
+import { discoverSkills } from './skillpack.ts'
+import { expandHome } from './onboarding.ts'
 import { describeRepo, findRepos, parseRemote, suggestRoots, type RepoCandidate } from './onboarding.ts'
 import { DemoSparkin, suggestTask, type SparkinClient } from './sparkin.ts'
 import type { AgentProfile, Attachment, Build, BuildState, Check, CommandName, Data, Issue, Priority, Project, Run, Source, Status, WorkItem } from './types.ts'
@@ -304,14 +306,16 @@ export class Workbench {
       return run
     })
     const issue = this.store.data.issues.find((i) => i.id === issueId)!
+    // the agent's own skills plus the project's conventions, each named once
+    const skills = [...new Set([...(agent.skills ?? []), ...(project.skills ?? [])])]
     try {
       const cwd = await this.workDir(issue.id, project)
       const { sessionId } = await this.driver.start({
         runId: run.id, cwd, title: `${issue.key} ${issue.title}`,
-        prompt: this.buildPrompt(issue, item, mentionedFiles(cwd, issue.description), agent, this.predecessorsOf(issue.id)),
+        prompt: this.buildPrompt(issue, item, mentionedFiles(cwd, issue.description), { ...agent, skills }, this.predecessorsOf(issue.id)),
         command: issue.command,
         attachments: (issue.attachments ?? []).map((a) => ({ name: a.name, mediaType: a.mediaType, path: this.uploadPath(a) })),
-        profile: { presetId: agent.id, model: agent.model, effort: agent.effort, skills: agent.skills, instructions: agentPersona(agent) },
+        profile: { presetId: agent.id, model: agent.model, effort: agent.effort, skills, instructions: agentPersona(agent) },
       })
       return this.store.update((d) => {
         d.issues.find((i) => i.id === issueId)!.sessionId = sessionId
@@ -1017,7 +1021,7 @@ export class Workbench {
   saveProject(p: Omit<Project, 'id'> & { id?: string }): Project {
     if (!p.name.trim() || !isAbsolute(p.cwd.trim())) throw new WorkbenchError('invalid', '项目名称必填，工作目录必须是绝对路径')
     return this.store.update((d) => {
-      const clean = { ...p, name: p.name.trim(), cwd: p.cwd.trim() }
+      const clean = { ...p, name: p.name.trim(), cwd: p.cwd.trim(), skills: [...new Set((p.skills ?? []).filter((x) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(x)))] }
       const cur = p.id ? d.projects.find((x) => x.id === p.id) : undefined
       if (cur) { Object.assign(cur, clean); return cur }
       d.seq += 1
@@ -1082,6 +1086,17 @@ export class Workbench {
   /** Notices newer than `after`; `after` undefined only reports the current position (nothing old is replayed on start). */
   noticesSince(after?: number) {
     return { boot: this.boot, last: this.noticeSeq, enabled: this.settings().desktopNotify, items: after === undefined ? [] : this.notices.filter((n) => n.id > after) }
+  }
+
+  // ---------- skill packs ----------
+  /** Skills found in the configured skill roots (the provider the Host registers with DSH serves exactly these). */
+  packSkills() { return discoverSkills(this.settings().skillRoots) }
+
+  /** For the settings page: per configured root, whether it exists and how many skills it yields; plus the merged list. */
+  packSkillReport() {
+    const roots = this.settings().skillRoots
+    const skills = discoverSkills(roots)
+    return { roots: roots.map((r) => ({ root: r, exists: existsSync(resolve(expandHome(r))), count: skills.filter((s) => s.root === resolve(expandHome(r.trim()))).length })), skills: skills.map(({ name, description, root }) => ({ name, description, root })) }
   }
 
   // ---------- statistics ----------

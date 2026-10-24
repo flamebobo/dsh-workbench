@@ -168,6 +168,8 @@ function General({ p }: { p: PageProps }) {
           <option value="auto">自动回写（已完成即评论并改为已解决，不再确认）</option></select>
         <div className="wb-sub" style={{ marginTop: 3 }}>回写 = 给禅道 Bug 加评论并改为「已解决」；只对 Bug 生效，需要先配置禅道账号。</div></div>
 
+      <SkillRoots f={f} set={set} example={p.state.exampleSkillRoot} saved={saved} />
+
       <h4 className="wb-sec">桌面通知</h4>
       {check('desktopNotify', '卡片需要你时弹桌面通知', '任务进入「待审核」「已阻塞」或禅道回写完成时提醒；你正在看工作台页面时不弹。点击通知会打开对应卡片')}
       <div className="wb-row" style={{ margin: '4px 0 8px' }}>
@@ -191,6 +193,25 @@ function General({ p }: { p: PageProps }) {
         <button className="wb-btn" onClick={() => { setF(saved); setMsg(undefined) }}>还原</button>
         {msg && <span style={{ color: msg.startsWith('已保存') ? 'var(--wb-green)' : 'var(--wb-red)' }}>{msg}</span>}
       </div>
+    </>
+  )
+}
+
+/** 技能包目录: extra skill directories offered to DSH and to projects (the company convention pack). */
+function SkillRoots({ f, set, example, saved }: { f: PluginSettings; set: <K extends keyof PluginSettings>(k: K, v: PluginSettings[K]) => void; example?: string; saved?: PluginSettings }) {
+  const [report, setReport] = useState<{ roots: { root: string; exists: boolean; count: number }[]; skills: { name: string; description: string }[] }>()
+  const key = (saved?.skillRoots ?? []).join('\n')
+  useEffect(() => { void rpc<NonNullable<typeof report>>('skills.packs').then(setReport).catch(() => {}) }, [key])
+  return (
+    <>
+      <h4 className="wb-sec">技能包</h4>
+      <div className="wb-field"><label>技能包目录（每行一个；目录下每个技能是 <code>名称/SKILL.md</code>）</label>
+        <textarea className="wb-textarea" style={{ minHeight: 64 }} value={f.skillRoots.join('\n')} onChange={(e) => set('skillRoots', e.target.value.split('\n'))} placeholder="例如公司规范技能包所在的目录，留空 = 不使用" />
+        <div className="wb-sub" style={{ marginTop: 3 }}>保存后这些技能会出现在 DSH 的技能列表里，并可在「项目 → 编辑 → 项目规范技能」里按项目挂载：该项目的任务开工时会自动加载。</div></div>
+      <div className="wb-row" style={{ margin: '4px 0 8px' }}>
+        {example && !f.skillRoots.includes(example) && <button className="wb-btn" title={example} onClick={() => set('skillRoots', [...f.skillRoots.filter((x) => x.trim()), example])}>添加示例技能包</button>}
+        <span className="wb-sub">{report ? (report.roots.length ? report.roots.map((r) => `${r.root}：${r.exists ? `${r.count} 个技能` : '目录不存在'}`).join('；') : '尚未配置') : ''}</span></div>
+      {!!report?.skills.length && <div className="wb-sub">已保存的技能：{report.skills.map((s) => `/${s.name}`).join('  ')}</div>}
     </>
   )
 }

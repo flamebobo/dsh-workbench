@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { ago, BUILD_LABEL, buildColor, rpc, STATUS_LABEL, type Issue, type Project, type Status } from './api.ts'
+import { SkillPicker } from './SkillPicker.tsx'
 import type { PageProps } from './App.tsx'
 
 const { useState, useEffect } = React
@@ -57,6 +58,7 @@ export function Projects(p: PageProps) {
                 <select className="wb-select" value={draft.isolate === undefined ? '' : draft.isolate ? 'on' : 'off'} onChange={(e) => setDraft({ ...draft, isolate: e.target.value === '' ? undefined : e.target.value === 'on' })}>
                   <option value="">跟随插件设置</option><option value="on">开：每个任务独立分支</option><option value="off">关：直接在项目目录</option></select></div>
             </div>
+            <SkillPicker label="项目规范技能（多选；这个项目的任务开工时自动加载，例如公司代码规范，和智能体自己的技能合并）" value={draft.skills ?? []} onChange={(skills) => setDraft({ ...draft, skills })} />
             <div className="wb-field"><label>Sparkin 项目（填报工时时对应到它的任务）</label>
               <select className="wb-select" value={draft.sparkinProjectId ?? ''} onChange={(e) => setDraft({ ...draft, sparkinProjectId: e.target.value || undefined })}>
                 <option value="">未关联</option>{sparkin.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
@@ -71,7 +73,7 @@ export function Projects(p: PageProps) {
 function Chips({ x, sparkin }: { x: Project; sparkin: { id: string; name: string }[] }) {
   const items = [
     x.gitlabProjectId != null && `GitLab #${x.gitlabProjectId}`, x.zentaoProductId != null && `禅道产品 ${x.zentaoProductId}`,
-    x.jenkinsJob && `Jenkins ${x.jenkinsJob}`, x.testCmd && `测试 ${x.testCmd}`, x.sparkinProjectId && `Sparkin ${sparkin.find((s) => s.id === x.sparkinProjectId)?.name ?? x.sparkinProjectId}`,
+    x.jenkinsJob && `Jenkins ${x.jenkinsJob}`, x.testCmd && `测试 ${x.testCmd}`, x.skills?.length && `技能 ${x.skills.map((k) => `/${k}`).join(' ')}`, x.sparkinProjectId && `Sparkin ${sparkin.find((s) => s.id === x.sparkinProjectId)?.name ?? x.sparkinProjectId}`,
   ].filter(Boolean) as string[]
   return items.length ? <div className="wb-chips">{items.map((t) => <span className="wb-pill" key={t}>{t}</span>)}</div> : <span className="wb-muted">还没有关联 GitLab / 禅道 / Jenkins / Sparkin</span>
 }

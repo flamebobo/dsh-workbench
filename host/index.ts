@@ -1,7 +1,10 @@
 import { join } from 'node:path'
 import { Store, Workbench, WorkbenchError, dataDir, defaultDataPath } from '../core/src/index.ts'
 import type { Status, WorkItem } from '../core/src/index.ts'
+import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { DshDriver } from './dsh-driver.ts'
+import { registerSkillProvider } from './skill-provider.ts'
 
 type Ctx = any // eslint-disable-line @typescript-eslint/no-explicit-any
 /** Replaced with dsh-plugin/package.json's version by scripts/build.mjs. */
@@ -25,6 +28,9 @@ export function apply(ctx: Ctx) {
     setCred: async (name, value) => { if (value === undefined) await ctx.credentials.unset(name); else await ctx.credentials.set(name, value) },
   })
   driver.permission = () => wb.settings().permissionPreset
+  const refreshSkills = registerSkillProvider(ctx, wb)
+  // the example skill pack ships next to the Host bundle
+  const exampleSkillRoot = fileURLToPath(new URL('./examples/skills', import.meta.url))
   wb.seedDemoProjects(join(dataDir(), 'demo-repos'))
   wb.upgradeDemoRepos(join(dataDir(), 'demo-repos'))
   void Promise.all(wb.listAgents().map((a) => driver.registerPreset(a)))
@@ -39,7 +45,7 @@ export function apply(ctx: Ctx) {
   ctx.effect(() => () => { stopped = true; clearTimeout(timer); wb.dispose(); return driver.disposePresets() })
 
   const state = async () => ({
-    version: wb.version, issues: wb.listIssues(), runs: wb.listRuns(), agents: wb.listAgents(), projects: wb.listProjects(), builds: await wb.refreshBuilds(), autoRun: wb.autoRun, working: wb.workingCount(), settings: wb.settings(),
+    version: wb.version, exampleSkillRoot: existsSync(exampleSkillRoot) ? exampleSkillRoot : undefined, issues: wb.listIssues(), runs: wb.listRuns(), agents: wb.listAgents(), projects: wb.listProjects(), builds: await wb.refreshBuilds(), autoRun: wb.autoRun, working: wb.workingCount(), settings: wb.settings(),
   })
 
   async function dispatch(endpoint: string, p: any): Promise<unknown> {
@@ -68,6 +74,7 @@ export function apply(ctx: Ctx) {
       case 'stats.payload': return { payload: wb.statsPayload(), last: wb.store.data.statsReport }
       case 'stats.report': return await wb.reportStats(true) // explicit click: sends even when the daily switch is off
       case 'stats.export': return wb.exportCards()
+      case 'skills.packs': return wb.packSkillReport()
       case 'sparkin.info': return await wb.sparkinInfo()
       case 'timesheet.report': return await wb.reportTimesheet({ date: p.date, entries: p.entries ?? [] })
       case 'issue.move': return wb.moveIssue(p.id, p.status as Status, p.beforeId, 'human') // only the UI (a human) calls this
@@ -89,12 +96,12 @@ export function apply(ctx: Ctx) {
       case 'builds.trigger': return await wb.triggerBuild({ job: p.job, params: p.params, issueIds: p.issueIds ?? [] })
       case 'files.search': return wb.searchFiles(p.projectId, p.q ?? '')
       case 'models.list': return { models: await driver.listModels(), defaultModel: ctx.agentDefaultModel.currentSelection().model }
-      case 'skills.list': return await driver.listSkills(wb.listProjects().map((x) => x.cwd))
+      case 'skills.list': refreshSkills(); return await driver.listSkills(wb.listProjects().map((x) => x.cwd))
       case 'issue.changes': return await wb.issueChanges(p.id)
       case 'issue.test': return await wb.runChecks(p.id)
       case 'issue.mr': return await wb.submitMergeRequest(p.id) // outward-facing: only an explicit click in the UI calls this
       case 'settings.get': return wb.settings()
-      case 'settings.save': return wb.saveSettings(p ?? {})
+      case 'settings.save': { const r = wb.saveSettings(p ?? {}); refreshSkills(); return r }
       default: throw new WorkbenchError('invalid', `unknown endpoint ${endpoint}`)
     }
   }

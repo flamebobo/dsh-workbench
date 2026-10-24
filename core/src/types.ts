@@ -44,6 +44,8 @@ export interface Project {
   baseBranch?: string
   /** Run each task on its own branch + worktree. Unset = follow the plugin setting. */
   isolate?: boolean
+  /** Skills loaded for every task in this project (company conventions); added to the agent's own skills at 开工. */
+  skills?: string[]
 }
 
 export interface AgentProfile {
