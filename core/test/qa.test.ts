@@ -146,3 +146,10 @@ test('Q8b nothing can be dragged into 进行中 by hand: it would spin with no s
   const c = wb.createIssue({ title: 'manual', projectId: wb.listProjects()[0]!.id })
   assert.throws(() => wb.moveIssue(c.id, 'in_progress'), /开工/)
 })
+
+test('Q9 a Zentao item without a priority is not shown as P0', async () => {
+  const { parseBugs, parseTasks } = await import('../src/connectors/zentao.ts')
+  const b = parseBugs({ bugs: [{ id: 1, title: 'a', status: 'active', assignedTo: 'me' }, { id: 2, title: 'b', pri: 0, status: 'active', assignedTo: 'me' }, { id: 3, title: 'c', pri: 1, status: 'active', assignedTo: 'me' }, { id: 4, title: 'd', pri: 9, status: 'active', assignedTo: 'me' }] }, 'me', 1, 'http://z')
+  assert.deepEqual(b.map((x) => x.priority), ['P2', 'P2', 'P0', 'P3'])
+  assert.equal(parseTasks({ tasks: [{ id: 5, name: 't', pri: '', status: 'wait', assignedTo: 'me' }] }, 'me', 1, 'http://z')[0]!.priority, 'P2')
+})

@@ -2,8 +2,8 @@ import type { Priority, WorkItem } from '../types.ts'
 import { getJson, stripHtml, trimSlash, type ConnectorContext } from './http.ts'
 
 const PRI: Priority[] = ['P0', 'P1', 'P2', 'P3']
-// Zentao pri: 1 is the most urgent.
-const priority = (n: unknown): Priority => PRI[Math.min(3, Math.max(0, Number(n) - 1 || 0))]!
+// Zentao pri: 1 is the most urgent; unset / 0 / junk is "no priority", which must not look like the most urgent.
+const priority = (n: unknown): Priority => { const v = Number(n); return Number.isFinite(v) && v >= 1 ? PRI[Math.min(3, Math.ceil(v) - 1)]! : 'P2' }
 
 const account = (a: unknown) =>
   typeof a === 'string' ? a : ((a as { account?: string } | null)?.account ?? '')
