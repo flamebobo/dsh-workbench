@@ -82,7 +82,12 @@ export function anonymousPayload(s: Stats, clientId: string, version: string, bu
   }
 }
 
-const csvCell = (v: unknown) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s }
+// Titles come from other people's Zentao / GitLab entries: a leading = + - @ would run as a formula when the CSV is opened in Excel.
+const csvCell = (v: unknown) => {
+  let s = String(v ?? '')
+  if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`
+  return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s
+}
 
 /** Per-card rows for the local export (this one does contain titles: it never leaves the machine on its own). */
 export function exportRows(d: Pick<Data, 'issues' | 'runs' | 'projects'>) {

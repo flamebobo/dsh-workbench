@@ -282,3 +282,12 @@ test('Q8c a new card cannot be created straight into 进行中 either', () => {
   assert.throws(() => wb.createIssue({ title: 'x', status: 'in_progress' }), /开工/)
   assert.equal(wb.createIssue({ title: 'x', status: 'blocked' }).status, 'blocked') // the other columns stay open
 })
+
+test('Q16 the CSV export does not let a card title run as a spreadsheet formula', async () => {
+  const { toCsv } = await import('../src/stats.ts')
+  const csv = toCsv([{ title: '=HYPERLINK("http://evil","x")', other: '+1+1', third: '@SUM(A1)', ok: '普通标题', hours: 2, neg: -1, dash: '-cmd|calc' }])
+  const line = csv.split('\n')[1]!
+  assert.ok(line.includes(`"'=HYPERLINK(""http://evil"",""x"")"`), line) // quoted and defanged
+  assert.ok(line.includes("'+1+1") && line.includes("'@SUM(A1)") && line.includes("'-cmd|calc"), line)
+  assert.ok(line.includes(',普通标题,2,-1,'), line) // plain text and real numbers are untouched
+})
