@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { App } from './App.tsx'
+import { startNotifier } from './notify.ts'
 
 const PANEL = 'workbench'
 export const inject = ['slots', 'uiWorkspace']
@@ -13,6 +14,9 @@ function Icon({ size }: { size: number }) {
 }
 
 export function apply(ctx: any) {
+  // notifications must work while the page is closed, so the poller belongs to the entry, not to the page
+  const stop = startNotifier()
+  if (typeof ctx.effect === 'function') ctx.effect(() => stop)
   const openSession = (id: string) => { try { ctx.uiWorkspace.openSession(id) } catch (e) { console.warn('[workbench] openSession failed', e) } }
   const Page = () => <App openSession={openSession} />
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL }, Page))

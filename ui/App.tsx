@@ -47,6 +47,16 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
   }, [])
   const go = useCallback((t: Tab, issueId?: string) => { setTab(t); setFocusIssue(issueId) }, [])
 
+  // desktop notifications: tell the entry-level notifier whether we are on screen, and jump to a card when one was clicked
+  useEffect(() => {
+    window.__wbOpen = true
+    const open = (issueId?: string) => { if (issueId) go('board', issueId) }
+    if (window.__wbPending) { open(window.__wbPending); window.__wbPending = undefined }
+    const on = (e: Event) => open((e as CustomEvent<{ issueId?: string }>).detail?.issueId)
+    window.addEventListener('wb:open', on)
+    return () => { window.__wbOpen = false; window.removeEventListener('wb:open', on) }
+  }, [go])
+
   // The board changes by itself when a session ends, so poll the cheap `state` call while the page is open.
   useEffect(() => {
     void refresh(); void loadTodos()

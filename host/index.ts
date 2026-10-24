@@ -62,6 +62,7 @@ export function apply(ctx: Ctx) {
       case 'onboarding.roots': return wb.onboardingRoots()
       case 'onboarding.scan': return await wb.scanRepos(Array.isArray(p.roots) ? p.roots.map(String) : [])
       case 'onboarding.import': return wb.importRepos(Array.isArray(p.items) ? p.items : [])
+      case 'notices.since': return wb.noticesSince(typeof p.after === 'number' ? p.after : undefined)
       case 'stats.get': return wb.stats()
       case 'stats.payload': return { payload: wb.statsPayload(), last: wb.store.data.statsReport }
       case 'stats.report': return await wb.reportStats(true) // explicit click: sends even when the daily switch is off

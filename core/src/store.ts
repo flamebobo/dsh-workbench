@@ -16,6 +16,8 @@ const empty = (): Data => ({ version: 1, seq: 0, projects: [], issues: [], agent
 export class Store {
   data: Data
   readonly path: string
+  /** Called after every persisted change with the data before and after; the workbench derives notifications from it. */
+  onChange?: (before: Data, after: Data) => void
   constructor(path: string = defaultDataPath()) {
     this.path = path
     try {
@@ -31,7 +33,9 @@ export class Store {
     const draft: Data = structuredClone(this.data)
     const result = fn(draft)
     this.write(draft)
+    const before = this.data
     this.data = draft
+    try { this.onChange?.(before, draft) } catch { /* a listener must never undo or fail a saved change */ }
     return result
   }
 

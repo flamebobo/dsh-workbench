@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { notificationState, testNotification } from './notify.ts'
 import { rpc, type ConnectionView, type PluginSettings } from './api.ts'
 import type { PageProps } from './App.tsx'
 
@@ -114,6 +115,7 @@ function General({ p }: { p: PageProps }) {
   const saved = p.state.settings
   const [f, setF] = useState<PluginSettings | undefined>(saved)
   const [msg, setMsg] = useState<string>()
+  const [perm, setPerm] = useState(notificationState())
   useEffect(() => { if (!f && saved) setF(saved) }, [saved])
   if (!f) return <div className="wb-muted">加载中…</div>
   const set = <K extends keyof PluginSettings>(k: K, v: PluginSettings[K]) => setF({ ...f, [k]: v })
@@ -122,7 +124,7 @@ function General({ p }: { p: PageProps }) {
       <input className="wb-input" type="number" min={min} max={max} step={step} value={String(f[k] as number)} onChange={(e) => set(k, Number(e.target.value) as never)} />
       <div className="wb-sub" style={{ marginTop: 3 }}>{hint}（{min}–{max}）</div></div>
   )
-  const check = (k: 'isolateByDefault' | 'autoTestOnReview' | 'autoDoneOnPass' | 'statsReportEnabled', label: string, hint: string) => (
+  const check = (k: 'isolateByDefault' | 'autoTestOnReview' | 'autoDoneOnPass' | 'statsReportEnabled' | 'desktopNotify', label: string, hint: string) => (
     <label className="wb-pick" style={{ alignItems: 'flex-start' }}><input type="checkbox" checked={f[k]} onChange={(e) => set(k, e.target.checked)} />
       <span><b>{label}</b><div className="wb-sub">{hint}</div></span></label>
   )
@@ -165,6 +167,12 @@ function General({ p }: { p: PageProps }) {
           <option value="confirm">确认后回写（推荐：显示评论草稿，你点了才发送）</option>
           <option value="auto">自动回写（已完成即评论并改为已解决，不再确认）</option></select>
         <div className="wb-sub" style={{ marginTop: 3 }}>回写 = 给禅道 Bug 加评论并改为「已解决」；只对 Bug 生效，需要先配置禅道账号。</div></div>
+
+      <h4 className="wb-sec">桌面通知</h4>
+      {check('desktopNotify', '卡片需要你时弹桌面通知', '任务进入「待审核」「已阻塞」或禅道回写完成时提醒；你正在看工作台页面时不弹。点击通知会打开对应卡片')}
+      <div className="wb-row" style={{ margin: '4px 0 8px' }}>
+        <button className="wb-btn" onClick={() => { void testNotification().then((t) => { setPerm(notificationState()); p.notify(t) }) }}>授权并发送测试通知</button>
+        <span className="wb-sub">系统通知权限：{{ granted: '已允许', denied: '已拒绝（到系统设置里允许）', default: '尚未询问', unsupported: '当前环境不支持' }[perm]}</span></div>
 
       <h4 className="wb-sec">统计与上报</h4>
       <div className="wb-field"><label>匿名统计上报地址</label>

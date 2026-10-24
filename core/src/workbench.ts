@@ -28,6 +28,9 @@ export interface TodoResult {
   sources: Record<'zentao' | 'gitlab' | 'jenkins' | 'sparkin', { mode: 'live' | 'demo' | 'fallback'; error?: string }>
 }
 
+/** Something worth interrupting the user for. Kept in memory only; the page asks for what is new since the last id it saw. */
+export interface Notice { id: number; at: string; kind: 'review' | 'blocked' | 'writeback'; issueId: string; title: string; text: string }
+
 export class WorkbenchError extends Error {
   readonly code: 'duplicate' | 'not_found' | 'forbidden' | 'invalid'
   readonly issueId?: string
@@ -77,6 +80,10 @@ export class Workbench {
   readonly version: string
   readonly sparkin: SparkinClient
   private lastPoll = 0
+  private notices: Notice[] = []
+  private noticeSeq = 0
+  /** Changes on every Host start, so a page that remembers ids from an earlier run knows to start over. */
+  readonly boot = randomUUID()
   private fetch: FetchLike
   private off: () => void
 
@@ -89,6 +96,7 @@ export class Workbench {
     this.version = o.version ?? 'dev'
     this.sparkin = o.sparkin ?? new DemoSparkin()
     this.fetch = o.fetch ?? ((u, i) => fetch(u, i))
+    this.store.onChange = (before, after) => this.collectNotices(before, after)
     this.seedAgents()
     this.normalizeOrders()
     this.reconcileOrphans()
@@ -1027,6 +1035,27 @@ export class Workbench {
       initDemoRepo(p.cwd)
       if (p.name.endsWith('payment-core') && p.testCmd === undefined) this.saveProject({ ...p, testCmd: 'node --test' })
     }
+  }
+
+  // ---------- notifications ----------
+  private collectNotices(before: Data, after: Data) {
+    const was = new Map(before.issues.map((i) => [i.id, i]))
+    const push = (kind: Notice['kind'], i: Issue, text: string) => {
+      this.notices.push({ id: ++this.noticeSeq, at: new Date(this.clock()).toISOString(), kind, issueId: i.id, title: `${i.key} ${i.title}`, text })
+      if (this.notices.length > 50) this.notices.shift()
+    }
+    for (const i of after.issues) {
+      const prev = was.get(i.id)
+      if (!prev) continue // a brand new card in 待审核 / 已阻塞 was put there by hand
+      if (prev.status !== i.status && i.status === 'in_review') push('review', i, i.note ?? '智能体已完成，等你审核')
+      else if (prev.status !== i.status && i.status === 'blocked') push('blocked', i, i.note ?? '任务已阻塞')
+      if (!prev.writeBack && i.writeBack) push('writeback', i, `已回写禅道 ${i.sourceRef?.ref ?? ''}，状态改为已解决${i.writeBack.demo ? '（演示）' : ''}`)
+    }
+  }
+
+  /** Notices newer than `after`; `after` undefined only reports the current position (nothing old is replayed on start). */
+  noticesSince(after?: number) {
+    return { boot: this.boot, last: this.noticeSeq, enabled: this.settings().desktopNotify, items: after === undefined ? [] : this.notices.filter((n) => n.id > after) }
   }
 
   // ---------- statistics ----------

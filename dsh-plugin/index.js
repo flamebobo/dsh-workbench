@@ -16,6 +16,8 @@ var empty = () => ({ version: 1, seq: 0, projects: [], issues: [], agents: [], r
 var Store = class {
   data;
   path;
+  /** Called after every persisted change with the data before and after; the workbench derives notifications from it. */
+  onChange;
   constructor(path = defaultDataPath()) {
     this.path = path;
     try {
@@ -30,7 +32,12 @@ var Store = class {
     const draft = structuredClone(this.data);
     const result = fn(draft);
     this.write(draft);
+    const before = this.data;
     this.data = draft;
+    try {
+      this.onChange?.(before, draft);
+    } catch {
+    }
     return result;
   }
   write(d) {
@@ -1047,6 +1054,7 @@ var DEFAULT_SETTINGS = {
   autoDoneOnPass: true,
   zentaoWriteBack: "confirm",
   onboarded: false,
+  desktopNotify: true,
   statsReportEnabled: false,
   statsReportUrl: ""
 };
@@ -1075,6 +1083,7 @@ function normalizeSettings(input) {
     autoDoneOnPass: typeof i.autoDoneOnPass === "boolean" ? i.autoDoneOnPass : d.autoDoneOnPass,
     zentaoWriteBack: i.zentaoWriteBack === "auto" ? "auto" : "confirm",
     onboarded: i.onboarded === true,
+    desktopNotify: typeof i.desktopNotify === "boolean" ? i.desktopNotify : d.desktopNotify,
     statsReportEnabled: i.statsReportEnabled === true,
     statsReportUrl: typeof i.statsReportUrl === "string" && /^https?:\/\/\S+$/.test(i.statsReportUrl.trim()) ? i.statsReportUrl.trim() : ""
   };
@@ -1112,6 +1121,10 @@ var Workbench = class {
   version;
   sparkin;
   lastPoll = 0;
+  notices = [];
+  noticeSeq = 0;
+  /** Changes on every Host start, so a page that remembers ids from an earlier run knows to start over. */
+  boot = randomUUID();
   fetch;
   off;
   constructor(o) {
@@ -1123,6 +1136,7 @@ var Workbench = class {
     this.version = o.version ?? "dev";
     this.sparkin = o.sparkin ?? new DemoSparkin();
     this.fetch = o.fetch ?? ((u, i) => fetch(u, i));
+    this.store.onChange = (before, after) => this.collectNotices(before, after);
     this.seedAgents();
     this.normalizeOrders();
     this.reconcileOrphans();
@@ -2174,6 +2188,25 @@ ${summary.slice(0, 4e3)}`,
       if (p.name.endsWith("payment-core") && p.testCmd === void 0) this.saveProject({ ...p, testCmd: "node --test" });
     }
   }
+  // ---------- notifications ----------
+  collectNotices(before, after) {
+    const was = new Map(before.issues.map((i) => [i.id, i]));
+    const push2 = (kind, i, text) => {
+      this.notices.push({ id: ++this.noticeSeq, at: new Date(this.clock()).toISOString(), kind, issueId: i.id, title: `${i.key} ${i.title}`, text });
+      if (this.notices.length > 50) this.notices.shift();
+    };
+    for (const i of after.issues) {
+      const prev = was.get(i.id);
+      if (!prev) continue;
+      if (prev.status !== i.status && i.status === "in_review") push2("review", i, i.note ?? "\u667A\u80FD\u4F53\u5DF2\u5B8C\u6210\uFF0C\u7B49\u4F60\u5BA1\u6838");
+      else if (prev.status !== i.status && i.status === "blocked") push2("blocked", i, i.note ?? "\u4EFB\u52A1\u5DF2\u963B\u585E");
+      if (!prev.writeBack && i.writeBack) push2("writeback", i, `\u5DF2\u56DE\u5199\u7985\u9053 ${i.sourceRef?.ref ?? ""}\uFF0C\u72B6\u6001\u6539\u4E3A\u5DF2\u89E3\u51B3${i.writeBack.demo ? "\uFF08\u6F14\u793A\uFF09" : ""}`);
+    }
+  }
+  /** Notices newer than `after`; `after` undefined only reports the current position (nothing old is replayed on start). */
+  noticesSince(after) {
+    return { boot: this.boot, last: this.noticeSeq, enabled: this.settings().desktopNotify, items: after === void 0 ? [] : this.notices.filter((n) => n.id > after) };
+  }
   // ---------- statistics ----------
   stats() {
     return computeStats(this.store.data, this.clock());
@@ -2660,6 +2693,8 @@ function apply(ctx) {
         return await wb.scanRepos(Array.isArray(p.roots) ? p.roots.map(String) : []);
       case "onboarding.import":
         return wb.importRepos(Array.isArray(p.items) ? p.items : []);
+      case "notices.since":
+        return wb.noticesSince(typeof p.after === "number" ? p.after : void 0);
       case "stats.get":
         return wb.stats();
       case "stats.payload":

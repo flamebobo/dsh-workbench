@@ -172,3 +172,27 @@ test('周报: this week\'s cards and hours are gathered into a backlog task for 
   assert.ok(open)
   assert.throws(() => wb.createWeeklyReport(), /已经生成过/)
 })
+
+test('notices: 待审核, 已阻塞 and write-back are announced once, in order; nothing replays after a start', async () => {
+  const { wb, driver } = setup()
+  const start = wb.noticesSince(undefined)
+  assert.deepEqual([start.items.length, start.last, start.enabled], [0, 0, true])
+  const a = await wb.startWork({ item: bug })
+  assert.equal(wb.noticesSince(0).items.length, 0) // 进行中 is not news
+  driver.emit({ type: 'turn.completed', runId: a.run.id, status: 'completed', finalText: 'x' })
+  const b = wb.createIssue({ title: '会失败', projectId: wb.listProjects()[0]!.id, status: 'todo' })
+  const rb = (await wb.startIssue(b.id)).run
+  driver.emit({ type: 'turn.completed', runId: rb.id, status: 'failed', error: '模型出错' })
+  const items = wb.noticesSince(0).items
+  assert.deepEqual(items.map((n) => [n.kind, n.issueId]), [['review', a.issue.id], ['blocked', b.id]])
+  assert.match(items[0]!.title, /^WB-1 支付回调幂等修复/)
+  assert.equal(items[1]!.text, '模型出错')
+  wb.setStatus(a.issue.id, 'done')
+  await wb.writeBackZentao(a.issue.id, '修好了')
+  const last = wb.noticesSince(items.at(-1)!.id)
+  assert.deepEqual(last.items.map((n) => n.kind), ['writeback']) // only what is newer than the id the page saw
+  assert.match(last.items[0]!.text, /已回写禅道 BUG-4821.*演示/)
+  assert.equal(wb.noticesSince(last.last).items.length, 0)
+  wb.saveSettings({ desktopNotify: false })
+  assert.equal(wb.noticesSince(0).enabled, false)
+})

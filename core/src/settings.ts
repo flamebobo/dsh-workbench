@@ -29,6 +29,8 @@ export interface PluginSettings {
   zentaoWriteBack: 'confirm' | 'auto'
   /** The first-run guide has been completed or skipped. */
   onboarded: boolean
+  /** Desktop notification when a card needs you (待审核 / 已阻塞) or a Zentao write-back completes. */
+  desktopNotify: boolean
   /** Anonymous usage counts are sent to `statsReportUrl` about once a day. Off until the user turns it on and sets an address. */
   statsReportEnabled: boolean
   statsReportUrl: string
@@ -39,7 +41,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   permissionPreset: 'workspace-write',
   defaultAgents: { zentao: 'fullstack', gitlab: 'reviewer', jenkins: 'build-fixer', sparkin: 'fullstack', manual: 'fullstack' },
   isolateByDefault: true, branchPrefix: 'wb/', autoTestOnReview: true, testTimeoutSeconds: 600,
-  autoDoneOnPass: true, zentaoWriteBack: 'confirm', onboarded: false,
+  autoDoneOnPass: true, zentaoWriteBack: 'confirm', onboarded: false, desktopNotify: true,
   statsReportEnabled: false, statsReportUrl: '',
 }
 
@@ -70,6 +72,7 @@ export function normalizeSettings(input: Partial<PluginSettings> | undefined): P
     autoDoneOnPass: typeof i.autoDoneOnPass === 'boolean' ? i.autoDoneOnPass : d.autoDoneOnPass,
     zentaoWriteBack: i.zentaoWriteBack === 'auto' ? 'auto' : 'confirm',
     onboarded: i.onboarded === true,
+    desktopNotify: typeof i.desktopNotify === 'boolean' ? i.desktopNotify : d.desktopNotify,
     statsReportEnabled: i.statsReportEnabled === true,
     statsReportUrl: typeof i.statsReportUrl === 'string' && /^https?:\/\/\S+$/.test(i.statsReportUrl.trim()) ? i.statsReportUrl.trim() : '',
   }
