@@ -1,0 +1,9 @@
+研发工作台
+
+Codex 插件部分（codex/、ui/codex.tsx、ui/mcp-transport.ts、codex-plugin/）的设计参考了
+better-codex（https://github.com/Ericwong5021/better-codex，Apache License 2.0）：
+用 codex app-server 驱动线程、以 MCP App 页面加 global 入口出现在 Codex 侧栏、页面经
+postMessage 的 tools/call 转发到本机服务、插件包与本地插件市场的格式。没有复制它的源代码。
+
+scripts/schemas/agent-plugins-1.0.0-{plugin,mcp}.schema.json 是 Agent Plugins 1.0.0 公开
+JSON Schema（https://agent-plugins.org/schemas/1.0.0/）的原样副本，取自上述仓库。

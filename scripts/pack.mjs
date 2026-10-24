@@ -13,6 +13,12 @@ mkdirSync(`${stage}/dsh-plugin`, { recursive: true })
 // exactly what the plugin needs at run time: the bundles, the patch, the locale and icon, the example skill pack
 for (const f of ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'package.json', 'locale', 'examples']) cpSync(`dsh-plugin/${f}`, `${stage}/dsh-plugin/${f}`, { recursive: true })
 for (const f of ['install.sh', 'install.ps1', 'INSTALL.md']) cpSync(`scripts/install/${f}`, `${stage}/${f}`)
+// the Codex version travels in the same package: its plugin, the local marketplace that points at it, its own install scripts
+execFileSync('node', ['scripts/build-codex.mjs'], { stdio: 'inherit' })
+cpSync('codex-plugin', `${stage}/codex-plugin`, { recursive: true })
+cpSync('.agents/plugins/marketplace.json', `${stage}/.agents/plugins/marketplace.json`)
+for (const f of ['install-codex.sh', 'install-codex.ps1']) cpSync(`scripts/install/${f}`, `${stage}/${f}`)
+chmodSync(`${stage}/install-codex.sh`, 0o755)
 chmodSync(`${stage}/install.sh`, 0o755)
 writeFileSync(`${stage}/VERSION`, `${pkg.version}\n`)
 

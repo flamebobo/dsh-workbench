@@ -192,7 +192,7 @@ function General({ p }: { p: PageProps }) {
       <h4 className="wb-sec">关于与更新</h4>
       <div className="wb-sub" style={{ marginBottom: 6 }}>研发工作台 {p.state.version ?? '开发版'}　·　数据文件版本由插件自动升级，升级前会备份为 <code>workbench.json.v&lt;旧版本&gt;.bak</code></div>
       {HOST === 'codex'
-        ? <div className="wb-sub" style={{ marginBottom: 8 }}>Codex 版通过插件市场更新：<code>codex plugin marketplace upgrade</code>，再重新打开工作台（本地服务会自动换成新版本）。</div>
+        ? <div className="wb-sub" style={{ marginBottom: 8 }}>Codex 版的更新：拿到新版本后重新运行 <code>install-codex.sh</code>（Windows 为 <code>install-codex.ps1</code>），再重新打开工作台；本地服务会自动换成新版本，数据保留。</div>
         : <>
         <div className="wb-field"><label>更新地址</label>
           <input className="wb-input" value={f.updateCheckUrl} onChange={(e) => set('updateCheckUrl', e.target.value)} placeholder='留空 = 不检查。返回 {"version":"0.3.0","url":"https://…/workbench-plugin-0.3.0.zip","notes":"…"}' />

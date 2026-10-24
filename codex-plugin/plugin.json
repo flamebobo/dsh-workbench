@@ -1,0 +1,19 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "workbench",
+  "version": "0.2.0",
+  "description": "研发工作台：汇总禅道 / GitLab / Jenkins / Sparkin 待办，六列看板，开工后由 Codex 在独立分支上完成任务，审查改动、提交 MR、回写禅道。",
+  "license": "UNLICENSED",
+  "keywords": ["workbench", "kanban", "zentao", "gitlab", "jenkins", "agents"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "研发工作台",
+        "shortDescription": "待办、看板、智能体与项目",
+        "longDescription": "在 Codex 侧栏打开研发工作台：我的待办、六列看板、智能体、项目、统计与设置。点「开工」会为任务建独立分支并起一个 Codex 线程，结束后卡片进入「待审核」。模型也可以只读地查询待办和卡片。",
+        "capabilities": ["Read", "Write"],
+        "defaultPrompt": ["打开研发工作台"]
+      }
+    }
+  }
+}

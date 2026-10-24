@@ -6,9 +6,12 @@
     "test": "node --test core/test/*.test.ts codex/test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "node scripts/build.mjs",
+    "build:codex": "node scripts/build-codex.mjs",
+    "validate:codex": "node scripts/validate-codex-plugin.mjs",
     "pack": "node scripts/pack.mjs"
   },
   "devDependencies": {
+    "@cfworker/json-schema": "^4.1.1",
     "@modelcontextprotocol/ext-apps": "^1.7.5",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@types/node": "^26.6.5",
