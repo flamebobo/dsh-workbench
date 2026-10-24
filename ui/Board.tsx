@@ -227,7 +227,7 @@ export function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue
           <div className="wb-field wb-grow"><label>指派智能体</label>
             <select className="wb-select" value={agentId} onChange={(e) => setAgentId(e.target.value)}>{state.agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
           <div className="wb-field wb-grow"><label>状态（已完成只能由你设置）</label>
-            <select className="wb-select" value={status} onChange={(e) => setStatus(e.target.value as Status)}>{COLUMNS.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}</select></div>
+            <select className="wb-select" value={status} onChange={(e) => setStatus(e.target.value as Status)}>{COLUMNS.filter((s) => s !== 'in_progress' || issue?.status === 'in_progress').map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}</select></div>
         </div>
         {issue && <ChainField issue={issue} p={p} />}
         {issue && <CodeField issue={issue} p={p} onChanges={() => setViewing(true)} />}

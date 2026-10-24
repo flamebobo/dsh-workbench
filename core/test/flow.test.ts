@@ -163,7 +163,7 @@ test('日报/周报: draft from this period\'s cards, hours by Sparkin task and 
   const today = new Date()
   const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   await wb.reportTimesheet({ date: ymd, entries: [{ issueId: a.issue.id, hours: 3, taskId: info.tasks['SP-PAY']![0]!.id }] })
-  const open = wb.createIssue({ title: '还在做', projectId: a.issue.projectId, status: 'in_progress' })
+  const open = wb.createIssue({ title: '还在做', projectId: a.issue.projectId, status: 'todo' }); await wb.startIssue(open.id)
 
   const day = await wb.buildReport('day')
   assert.match(day.title, /^日报 \d{4}-\d{2}-\d{2}$/)

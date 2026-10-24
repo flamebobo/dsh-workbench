@@ -1240,6 +1240,7 @@ function cleanDue(v) {
 }
 var cleanRelated = (l) => (l ?? []).map((r) => ({ label: String(r.label ?? "").trim().slice(0, 200), detail: String(r.detail ?? "").trim().slice(0, 500) || void 0 })).filter((r) => r.label).slice(0, 20);
 var POLL_GIVE_UP = 10;
+var DEMO_ITEMS = [...demoZentao, ...demoGitlab, ...demoJenkins, ...demoSparkin];
 var COMMANDS = ["plan", "goal"];
 var Workbench = class {
   store;
@@ -1513,8 +1514,12 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
     if (!(project.isolate ?? s.isolateByDefault) || !await isGitRepo(project.cwd)) return project.cwd;
     const base = project.baseBranch?.trim() || await defaultBase(project.cwd);
     const baseRef = await branchExists(project.cwd, base) ? base : `origin/${base}`;
-    const branch = issue.branch ?? branchName(s.branchPrefix, issue.key, issue.title);
-    const path = join5(dirname2(this.store.path), "worktrees", project.id, issue.key);
+    const wanted = branchName(s.branchPrefix, issue.key, issue.title);
+    let branch = issue.branch ?? wanted;
+    if (!issue.branch) for (let n = 2; await branchExists(project.cwd, branch); n++) branch = `${wanted}-${n}`;
+    const root = join5(dirname2(this.store.path), "worktrees", project.id, issue.key);
+    let path = root;
+    for (let n = 2; existsSync5(path); n++) path = `${root}-${n}`;
     mkdirSync2(dirname2(path), { recursive: true });
     try {
       await addWorktree(project.cwd, branch, path, baseRef);
@@ -1693,6 +1698,11 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
     const i = this.store.data.issues.find((x) => x.id === id);
     return !!i && i.status === "done" && !i.writeBack && i.sourceRef?.source === "zentao" && /^BUG-\d+$/.test(i.sourceRef.ref);
   }
+  /** The card was made from one of the built-in demo to-dos (same source, number and text), not from the user's real system. */
+  fromDemo(i) {
+    const r = i.sourceRef;
+    return !!r && DEMO_ITEMS.some((d) => d.source === r.source && d.ref === r.ref && (d.title === i.title || d.description === i.description));
+  }
   /** The comment that will be posted: what was done, how it was verified, where the change is. The human can edit it first. */
   async writeBackDraft(id) {
     const i = this.store.data.issues.find((x) => x.id === id);
@@ -1723,6 +1733,7 @@ ${summary.slice(0, 1500)}`,
     if (!issue) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
     if (issue.writeBack) throw new WorkbenchError("invalid", `${issue.key} \u5DF2\u7ECF\u56DE\u5199\u8FC7\u7985\u9053`);
     if (!this.canWriteBack(id)) throw new WorkbenchError("invalid", "\u53EA\u6709\u5DF2\u5B8C\u6210\u3001\u6765\u81EA\u7985\u9053 Bug \u7684\u4EFB\u52A1\u624D\u80FD\u56DE\u5199\u7985\u9053");
+    if (this.fromDemo(issue) && await this.creds("WORKBENCH_ZENTAO_URL")) throw new WorkbenchError("invalid", `${issue.key} \u6765\u81EA\u6F14\u793A\u6570\u636E\uFF0C\u4E0D\u662F\u4F60\u7985\u9053\u91CC\u7684 Bug\uFF0C\u4E0D\u4F1A\u56DE\u5199\u5230\u771F\u5B9E\u7985\u9053\uFF08\u53EF\u4EE5\u5220\u9664\u8FD9\u5F20\u5361\u7247\uFF09`);
     const text = (comment ?? (await this.writeBackDraft(id)).comment).trim();
     if (!text) throw new WorkbenchError("invalid", "\u56DE\u5199\u7684\u8BC4\u8BBA\u4E0D\u80FD\u4E3A\u7A7A");
     const bugId = Number(/^BUG-(\d+)$/.exec(issue.sourceRef.ref)[1]);
@@ -1933,6 +1944,7 @@ ${summary.slice(0, 1500)}`,
   createIssue(input) {
     if (!input.title.trim()) throw new WorkbenchError("invalid", "\u6807\u9898\u4E0D\u80FD\u4E3A\u7A7A");
     if (input.status === "done") throw new WorkbenchError("forbidden", "\u300C\u5DF2\u5B8C\u6210\u300D\u53EA\u80FD\u7531\u4EBA\u5728\u770B\u677F\u4E0A\u8BBE\u7F6E");
+    if (input.status === "in_progress") throw new WorkbenchError("invalid", "\u300C\u8FDB\u884C\u4E2D\u300D\u7531\u5F00\u5DE5\u81EA\u52A8\u8BBE\u7F6E\uFF0C\u4E0D\u80FD\u76F4\u63A5\u5EFA\u5728\u8FD9\u4E00\u5217\uFF1B\u8BF7\u70B9\u300C\u521B\u5EFA\u5E76\u5F00\u5DE5\u300D");
     const extras = this.cleanExtras(input);
     const due = input.due === void 0 ? void 0 : cleanDue(input.due);
     const created = this.store.update((d) => {
@@ -2367,7 +2379,7 @@ ${summary.slice(0, 4e3)}`,
     const r = await this.buildReport(kind);
     if (this.store.data.issues.some((i) => i.title === r.title && !i.archivedAt)) throw new WorkbenchError("duplicate", `\u300C${r.title}\u300D\u5DF2\u7ECF\u751F\u6210\u8FC7`);
     const count = /* @__PURE__ */ new Map();
-    for (const i of this.store.data.issues) if (i.projectId && r.text.includes(`${i.key}`)) count.set(i.projectId, (count.get(i.projectId) ?? 0) + 1);
+    for (const i of this.store.data.issues) if (i.projectId && new RegExp(`${i.key}(?!\\d)`).test(r.text)) count.set(i.projectId, (count.get(i.projectId) ?? 0) + 1);
     const projectId = [...count].sort((a, b) => b[1] - a[1])[0]?.[0];
     return this.createIssue({
       title: r.title,

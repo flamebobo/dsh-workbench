@@ -276,3 +276,9 @@ test('Q15 a card made from demo data is never written back to a real Zentao bug 
   await assert.rejects(live.writeBackZentao(issue.id, 'x'), /演示数据/)
   assert.deepEqual(posts, []) // nothing reached the real system
 })
+
+test('Q8c a new card cannot be created straight into 进行中 either', () => {
+  const { wb } = setup()
+  assert.throws(() => wb.createIssue({ title: 'x', status: 'in_progress' }), /开工/)
+  assert.equal(wb.createIssue({ title: 'x', status: 'blocked' }).status, 'blocked') // the other columns stay open
+})

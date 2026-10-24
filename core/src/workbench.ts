@@ -736,6 +736,7 @@ export class Workbench {
   createIssue(input: { title: string; description?: string; acceptance?: string[]; priority?: Priority; command?: string; attachments?: Attachment[]; agentId?: string; projectId?: string; status?: Status; due?: string; related?: { label: string; detail?: string }[] }): Issue {
     if (!input.title.trim()) throw new WorkbenchError('invalid', '标题不能为空')
     if (input.status === 'done') throw new WorkbenchError('forbidden', '「已完成」只能由人在看板上设置')
+    if (input.status === 'in_progress') throw new WorkbenchError('invalid', '「进行中」由开工自动设置，不能直接建在这一列；请点「创建并开工」')
     const extras = this.cleanExtras(input)
     const due = input.due === undefined ? undefined : cleanDue(input.due)
     const created = this.store.update((d) => {
