@@ -4,5 +4,5 @@
     "strict": true, "noEmit": true, "skipLibCheck": true, "jsx": "react",
     "allowImportingTsExtensions": true, "types": ["node"], "lib": ["ES2023", "DOM"]
   },
-  "include": ["core", "ui", "host"]
+  "include": ["core", "ui", "host", "codex"]
 }

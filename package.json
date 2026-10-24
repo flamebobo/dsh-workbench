@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test core/test/*.test.ts",
+    "test": "node --test core/test/*.test.ts codex/test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "node scripts/build.mjs",
     "pack": "node scripts/pack.mjs"
