@@ -291,3 +291,14 @@ test('Q16 the CSV export does not let a card title run as a spreadsheet formula'
   assert.ok(line.includes("'+1+1") && line.includes("'@SUM(A1)") && line.includes("'-cmd|calc"), line)
   assert.ok(line.includes(',普通标题,2,-1,'), line) // plain text and real numbers are untouched
 })
+
+test('Q17 merge requests with the same number in two GitLab projects are two different to-dos', async () => {
+  const { parseMergeRequests } = await import('../src/connectors/gitlab.ts')
+  const items = parseMergeRequests([
+    { iid: 12, title: 'a', web_url: 'https://g/a/-/merge_requests/12', project_id: 1, references: { full: 'team/a!12' } },
+    { iid: 12, title: 'b', web_url: 'https://g/b/-/merge_requests/12', project_id: 2, references: { full: 'team/b!12' } },
+    { iid: 7, title: 'c', web_url: 'https://g/c', project_id: 3 },
+  ])
+  assert.deepEqual(items.map((i) => i.ref), ['team/a!12', 'team/b!12', '3!7'])
+  assert.equal(new Set(items.map((i) => i.ref)).size, 3) // refs identify the card (one card per source ref), so they must not collide
+})

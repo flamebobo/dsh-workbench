@@ -12,7 +12,7 @@ export function parseMergeRequests(list: Mr[]): WorkItem[] {
     const full = m.references?.full ?? ''
     const project = full.includes('!') ? full.slice(0, full.lastIndexOf('!')) : `project ${m.project_id}`
     return {
-      ref: `!${m.iid}`,
+      ref: full || `${m.project_id}!${m.iid}`, // `!12` alone is only unique inside one project; the ref identifies the card
       source: 'gitlab' as const,
       title: `MR !${m.iid} 代码评审：${m.title}`,
       priority: 'P1' as const,

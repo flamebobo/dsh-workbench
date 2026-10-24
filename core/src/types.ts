@@ -6,7 +6,7 @@ export type Priority = 'P0' | 'P1' | 'P2' | 'P3'
 
 /** One row of 我的待办, as produced by a connector (or the demo fixtures). */
 export interface WorkItem {
-  /** Source number shown in the table, e.g. BUG-4821, !11287, teleone-order #2145. Unique per source. */
+  /** Source number shown in the table, e.g. BUG-4821, team/order!11287, teleone-order #2145. Unique per source. */
   ref: string
   source: Source
   title: string
