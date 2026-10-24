@@ -41781,6 +41781,13 @@ async function runMcp(o) {
   };
   const server = createMcpServer({ backend, boardHtml: o.boardHtml, version: o.version });
   await server.connect(new StdioServerTransport());
+  await new Promise((resolve5) => {
+    process.stdin.once("end", resolve5);
+    process.stdin.once("close", resolve5);
+  });
+  await server.close().catch(() => {
+  });
+  process.exit(0);
 }
 var BOARD_URI, STATUS, reply, text, failure2, unreachable;
 var init_mcp2 = __esm({

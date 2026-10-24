@@ -136,4 +136,9 @@ export async function runMcp(o: { dir: string; version: string; entry: string[];
   }
   const server = createMcpServer({ backend, boardHtml: o.boardHtml, version: o.version })
   await server.connect(new StdioServerTransport())
+  // The SDK's stdio transport does not notice the client going away. Codex closes our stdin when the session ends: exit then,
+  // or every session would leave an MCP process behind (the local service is meant to stay, this process is not).
+  await new Promise<void>((resolve) => { process.stdin.once('end', resolve); process.stdin.once('close', resolve) })
+  await server.close().catch(() => {})
+  process.exit(0)
 }

@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
+import { fileURLToPath } from 'node:url'
+import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -101,4 +104,16 @@ test('page transport: reads go to runtime_read, actions and uploads to runtime_c
   await t.upload(new Blob(['hello'], { type: 'text/plain' }) as File)
   assert.deepEqual(sent.map((s) => [s.name, s.arguments?.endpoint]), [['runtime_read', 'state'], ['runtime_command', 'issue.start'], ['runtime_command', 'issue.stop'], ['runtime_command', 'upload']])
   assert.equal((sent[3]!.arguments!.payload as { base64: string }).base64, Buffer.from('hello').toString('base64'))
+})
+
+test('mcp process: exits when the client closes its stdin (a Codex session ending), without starting the local service', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'wb-mcp-exit-'))
+  const child = spawn(process.execPath, [fileURLToPath(new URL('../main.ts', import.meta.url)), 'mcp'], { env: { ...process.env, WORKBENCH_CODEX_HOME: home }, stdio: ['pipe', 'pipe', 'inherit'] })
+  await new Promise((r) => setTimeout(r, 500))
+  child.stdin!.end()
+  const timer = setTimeout(() => child.kill('SIGKILL'), 5000)
+  const [code] = await once(child, 'exit')
+  clearTimeout(timer)
+  assert.equal(code, 0)
+  assert.equal(existsSync(join(home, 'serve.json')), false)
 })
