@@ -4,7 +4,7 @@
 环境：`scripts/qa-web.sh`（独立的 `DSH_HOME` 和 `WORKBENCH_HOME`，禅道 / GitLab / Jenkins / 更新 / 上报全部指向本地 mock `scripts/qa/mock.mjs`）。
 真实的 `~/.workbench` 测试前备份到 `~/.workbench.backup-<时间戳>`，测试结束后核对过没有被改动；真实 `~/.dsh/.credentials.yaml` 里本来就没有任何 `WORKBENCH_*` 凭据，测试没有写入。
 
-测试条数：70 → 92（`core/test/qa.test.ts` 22 条是本轮问题的回归用例，另有 3 处旧用例按新行为调整）。`npm run typecheck` 通过。
+测试条数：70 → 92（`core/test/qa.test.ts` 22 条是本轮问题的回归用例，另有 7 个旧用例按新行为做了调整：连接器的 MR 编号与 `per_page`、flow 里的自动完成 / 实时回写 / 周报用例、review 里的「分支创建失败」、stats 和 update 里的非法地址）。`npm run typecheck` 通过。
 
 ## 已修复
 
@@ -49,7 +49,7 @@
 
 - 窄窗口（< 900px）下详情面板占一半宽度，待办表要横向滚动（`06`）。
 - 自动运行队列的 `#1` 序号包含会被跳过的（没选项目的）卡片。
-- 改了插件 / 点击卡片后，浏览器原生 `confirm()` 对话框在自动化里不可见（真实桌面端里正常弹出），所以「提交 MR」的确认是用脚本放行后测的。
+- 浏览器自动化里看不到原生 `confirm()` 对话框，所以「提交 MR」的确认弹窗是用脚本放行后测的（真实桌面端会正常弹出）。
 
 ## 靠 mock / 脚本验证的部分
 
