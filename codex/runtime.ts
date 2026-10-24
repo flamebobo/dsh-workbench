@@ -46,6 +46,7 @@ export async function runServe(o: { dir: string; version: string; exampleSkillRo
   timer = setTimeout(loop, 5000)
   const dispatch = createDispatch(wb, {
     driver,
+    defaultModel: driver.defaultModel,
     exampleSkillRoot: () => (o.exampleSkillRoot && existsSync(o.exampleSkillRoot) ? o.exampleSkillRoot : undefined),
   })
   const s = await serve({ dir: o.dir, dispatch, version: o.version, revision: () => wb.store.data, log: (m, e) => console.warn(`workbench: ${m}`, e) })

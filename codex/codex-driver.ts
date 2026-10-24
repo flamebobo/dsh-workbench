@@ -23,6 +23,9 @@ export class CodexDriver implements AgentDriver {
   private version: string
   private cbs = new Set<(e: DriverEvent) => void>()
   private sessions = new Map<string, Session>() // threadId -> session
+  /** The model Codex uses when a thread names none (from the last model/list), so the page can show its reasoning efforts. */
+  defaultModel = async () => { await this.listModels(); return this.defaultId }
+  private defaultId?: string
   private models?: { at: number; list: Awaited<ReturnType<AgentDriver['listModels']>> }
 
   constructor(o: { command?: AppServerCommand; version?: string } = {}) {
@@ -44,6 +47,7 @@ export class CodexDriver implements AgentDriver {
       do {
         const page = await s.request('model/list', { cursor })
         for (const m of page.data ?? []) {
+          if (m.isDefault) this.defaultId = m.model ?? m.id
           if (m.hidden) continue
           out.push({
             id: m.model ?? m.id, name: m.displayName ?? m.id, defaultEffort: m.defaultReasoningEffort ?? undefined,

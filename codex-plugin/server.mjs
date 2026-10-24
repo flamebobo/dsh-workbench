@@ -3015,7 +3015,7 @@ function createDispatch(wb, h2) {
       case "files.search":
         return wb.searchFiles(p2.projectId, p2.q ?? "");
       case "models.list":
-        return { models: await driver.listModels(), defaultModel: h2.defaultModel?.() };
+        return { models: await driver.listModels(), defaultModel: await h2.defaultModel?.() };
       case "skills.list":
         refreshSkills();
         return await driver.listSkills(wb.listProjects().map((x) => x.cwd));
@@ -3409,6 +3409,12 @@ var init_codex_driver = __esm({
       cbs = /* @__PURE__ */ new Set();
       sessions = /* @__PURE__ */ new Map();
       // threadId -> session
+      /** The model Codex uses when a thread names none (from the last model/list), so the page can show its reasoning efforts. */
+      defaultModel = async () => {
+        await this.listModels();
+        return this.defaultId;
+      };
+      defaultId;
       models;
       constructor(o = {}) {
         this.cmd = o.command ?? codexCommand();
@@ -3431,6 +3437,7 @@ var init_codex_driver = __esm({
           do {
             const page = await s.request("model/list", { cursor });
             for (const m2 of page.data ?? []) {
+              if (m2.isDefault) this.defaultId = m2.model ?? m2.id;
               if (m2.hidden) continue;
               out.push({
                 id: m2.model ?? m2.id,
@@ -3594,6 +3601,7 @@ async function runServe(o) {
   timer = setTimeout(loop, 5e3);
   const dispatch = createDispatch(wb, {
     driver,
+    defaultModel: driver.defaultModel,
     exampleSkillRoot: () => o.exampleSkillRoot && existsSync7(o.exampleSkillRoot) ? o.exampleSkillRoot : void 0
   });
   const s = await serve({ dir: o.dir, dispatch, version: o.version, revision: () => wb.store.data, log: (m2, e) => console.warn(`workbench: ${m2}`, e) });

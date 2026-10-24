@@ -8,7 +8,7 @@ export interface DispatchHost {
   /** The example skill pack shipped next to the bundle, when present. */
   exampleSkillRoot?: () => string | undefined
   /** The host's own default model, shown as 「跟随默认模型」. */
-  defaultModel?: () => string | undefined
+  defaultModel?: () => string | undefined | Promise<string | undefined>
   /** After an agent is saved (DSH re-registers it as a preset). */
   agentSaved?: (a: AgentProfile) => Promise<unknown>
   /** The skill roots may have changed: tell the host's skill registry to look again. */
@@ -75,7 +75,7 @@ export function createDispatch(wb: Workbench, h: DispatchHost): Dispatch {
       case 'jenkins.jobs': return await wb.jenkinsJobs()
       case 'builds.trigger': return await wb.triggerBuild({ job: p.job, params: p.params, issueIds: p.issueIds ?? [] })
       case 'files.search': return wb.searchFiles(p.projectId, p.q ?? '')
-      case 'models.list': return { models: await driver.listModels(), defaultModel: h.defaultModel?.() }
+      case 'models.list': return { models: await driver.listModels(), defaultModel: await h.defaultModel?.() }
       case 'skills.list': refreshSkills(); return await driver.listSkills(wb.listProjects().map((x) => x.cwd))
       case 'issue.changes': return await wb.issueChanges(p.id)
       case 'issue.test': return await wb.runChecks(p.id)

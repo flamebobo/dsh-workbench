@@ -32,7 +32,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     case 'initialized': return
     case 'model/list': return send({ id: m.id, result: m.params?.cursor
       ? { data: [{ id: 'gpt-b', model: 'gpt-b', displayName: 'GPT B', hidden: false, supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '快' }], defaultReasoningEffort: 'low' }, { id: 'secret', model: 'secret', displayName: 'S', hidden: true, supportedReasoningEfforts: [] }], nextCursor: null }
-      : { data: [{ id: 'gpt-a', model: 'gpt-a', displayName: 'GPT A', hidden: false, supportedReasoningEfforts: [{ reasoningEffort: 'medium', description: '均衡' }, { reasoningEffort: 'high', description: '深' }], defaultReasoningEffort: 'medium' }], nextCursor: 'p2' } })
+      : { data: [{ id: 'gpt-a', model: 'gpt-a', displayName: 'GPT A', hidden: false, isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'medium', description: '均衡' }, { reasoningEffort: 'high', description: '深' }], defaultReasoningEffort: 'medium' }], nextCursor: 'p2' } })
     case 'skills/list': return send({ id: m.id, result: { data: [{ cwd: m.params.cwds?.[0] ?? '', errors: [], skills: [
       { name: 'company-style', description: '公司规范', path: '/skills/company-style/SKILL.md', scope: 'repo', enabled: true },
       { name: 'a-team:five-whys', description: '插件里的技能', path: '/plugins/a-team/skills/five-whys/SKILL.md', scope: 'user', enabled: true },

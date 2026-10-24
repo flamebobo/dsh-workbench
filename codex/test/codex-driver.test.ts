@@ -95,5 +95,6 @@ test('codex driver: models come from model/list (all pages, hidden ones left out
   const { driver } = setup()
   const models = await driver.listModels()
   assert.deepEqual(models.map((m) => [m.id, m.name, m.defaultEffort, m.efforts?.map((e) => e.id)]), [['gpt-a', 'GPT A', 'medium', ['medium', 'high']], ['gpt-b', 'GPT B', 'low', ['low']]])
+  assert.equal(await driver.defaultModel(), 'gpt-a') // the page needs it to show the efforts of 「跟随 Codex 默认模型」
   assert.deepEqual(await driver.listSkills(['/x']), [{ name: 'a-team:five-whys', description: '插件里的技能', source: 'user' }, { name: 'company-style', description: '公司规范', source: 'repo' }])
 })
