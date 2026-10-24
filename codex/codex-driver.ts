@@ -10,13 +10,15 @@ export type Skill = { name: string; description: string; path: string; scope: st
 /**
  * AgentDriver on Codex: one `codex app-server` child per running card, one thread per run. The agent's model goes into
  * `thread/start`, its role and rules into `developerInstructions` (the user's ~/.codex/config.toml is never written), the effort
- * into `turn/start`. Threads run sandboxed to the task's worktree (`workspace-write`) with approvalPolicy `never`, so an
+ * into `turn/start`. Threads run sandboxed to the task's worktree (`workspace-write`, unless the setting says otherwise) with approvalPolicy `never`, so an
  * unattended run never waits for an approval nobody will give: what the sandbox refuses comes back to the model as a failure.
  */
 export class CodexDriver implements AgentDriver {
   id = 'codex' as const
   /** The workbench's own skill packs (设置 → 技能包目录), offered next to the skills Codex finds itself. */
   packSkills: () => Skill[] = () => []
+  /** The sandbox new threads get (设置 → 新会话的权限预设; Codex's sandbox modes carry the same names). */
+  permission: () => string = () => 'workspace-write'
   private cmd: AppServerCommand
   private version: string
   private cbs = new Set<(e: DriverEvent) => void>()
@@ -76,7 +78,7 @@ export class CodexDriver implements AgentDriver {
       const wanted = new Set(req.profile.skills ?? [])
       const skills = wanted.size ? (await this.skills(conn, [req.cwd])).filter((k) => wanted.has(k.name)) : []
       const t = await conn.request('thread/start', {
-        cwd: req.cwd, model: req.profile.model || null, sandbox: 'workspace-write', approvalPolicy: 'never',
+        cwd: req.cwd, model: req.profile.model || null, sandbox: this.permission(), approvalPolicy: 'never',
         developerInstructions: req.profile.instructions,
       })
       const id: string = t.thread.id

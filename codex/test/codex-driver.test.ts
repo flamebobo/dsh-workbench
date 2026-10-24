@@ -15,6 +15,7 @@ function setup(mode = 'complete') {
   const logFile = join(dir, 'rpc.log')
   const driver = new CodexDriver({ command: { bin: process.execPath, args: [fake, mode, logFile] }, version: 't' })
   const wb = new Workbench({ store: new Store(join(dir, 'workbench.json')), driver, creds: async () => undefined })
+  driver.permission = () => wb.settings().permissionPreset // as codex/runtime.ts wires it
   wb.seedDemoProjects(join(dir, 'repos'))
   wb.saveSettings({ isolateByDefault: false, autoTestOnReview: false })
   const sent = () => (existsSync(logFile) ? readFileSync(logFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [])
@@ -51,12 +52,14 @@ test('codex driver: 开工 starts a thread with the agent profile, and the finis
   assert.match(issue(c.id).sessionId!, /^thr-/)
 })
 
-test('codex driver: a failed turn blocks the card with Codex\'s reason', async () => {
-  const { wb, card, issue } = setup('fail')
+test('codex driver: a failed turn blocks the card with Codex\'s reason; the permission setting picks the sandbox', async () => {
+  const { wb, sent, card, issue } = setup('fail')
+  wb.saveSettings({ permissionPreset: 'danger-full-access' })
   const c = card()
   await wb.startIssue(c.id)
   await until(() => issue(c.id).status === 'blocked')
   assert.equal(issue(c.id).note, '额度用完了')
+  assert.equal(sent().find((m) => m.method === 'thread/start')!.params.sandbox, 'danger-full-access')
 })
 
 test('codex driver: 停止 sends turn/interrupt for the open turn and the card stays 已阻塞 with the stop reason', async () => {

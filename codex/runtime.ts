@@ -33,6 +33,7 @@ export async function runServe(o: { dir: string; version: string; exampleSkillRo
   const creds = credentialFile(o.dir)
   const wb = new Workbench({ store: new Store(join(o.dir, 'workbench.json')), driver, version: o.version, creds: creds.get, setCred: creds.set })
   // DSH registers the configured skill packs with its skill registry; Codex has no such hook, so they travel as skill inputs instead
+  driver.permission = () => wb.settings().permissionPreset
   driver.packSkills = () => wb.packSkills().map((k) => ({ name: k.name, description: k.description, path: k.path, scope: 'workbench', enabled: true }))
   wb.seedDemoProjects(join(o.dir, 'demo-repos'))
   wb.upgradeDemoRepos(join(o.dir, 'demo-repos'))

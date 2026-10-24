@@ -3400,6 +3400,8 @@ var init_codex_driver = __esm({
       id = "codex";
       /** The workbench's own skill packs (设置 → 技能包目录), offered next to the skills Codex finds itself. */
       packSkills = () => [];
+      /** The sandbox new threads get (设置 → 新会话的权限预设; Codex's sandbox modes carry the same names). */
+      permission = () => "workspace-write";
       cmd;
       version;
       cbs = /* @__PURE__ */ new Set();
@@ -3461,7 +3463,7 @@ var init_codex_driver = __esm({
           const t = await conn.request("thread/start", {
             cwd: req.cwd,
             model: req.profile.model || null,
-            sandbox: "workspace-write",
+            sandbox: this.permission(),
             approvalPolicy: "never",
             developerInstructions: req.profile.instructions
           });
@@ -3576,6 +3578,7 @@ async function runServe(o) {
   const driver = new CodexDriver({ version: o.version });
   const creds = credentialFile(o.dir);
   const wb = new Workbench({ store: new Store(join8(o.dir, "workbench.json")), driver, version: o.version, creds: creds.get, setCred: creds.set });
+  driver.permission = () => wb.settings().permissionPreset;
   driver.packSkills = () => wb.packSkills().map((k2) => ({ name: k2.name, description: k2.description, path: k2.path, scope: "workbench", enabled: true }));
   wb.seedDemoProjects(join8(o.dir, "demo-repos"));
   wb.upgradeDemoRepos(join8(o.dir, "demo-repos"));

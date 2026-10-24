@@ -172,7 +172,7 @@ function General({ p }: { p: PageProps }) {
         </div></div>
       <div className="wb-field"><label>新会话的权限预设</label>
         <select className="wb-select" value={f.permissionPreset} onChange={(e) => set('permissionPreset', e.target.value as PluginSettings['permissionPreset'])}>
-          <option value="workspace-write">工作区内修改（推荐：只能改工作目录，越界操作需要你批准）</option>
+          <option value="workspace-write">{HOST === 'codex' ? '工作区内修改（推荐：只能改工作目录；Codex 版无人值守，越界操作直接失败、不等审批）' : '工作区内修改（推荐：只能改工作目录，越界操作需要你批准）'}</option>
           <option value="danger-full-access">完全访问（智能体可改动任何位置，自动运行时请慎用）</option></select></div>
 
       <h4 className="wb-sec">分支与验证</h4>
