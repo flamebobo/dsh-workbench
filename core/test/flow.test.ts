@@ -207,3 +207,82 @@ test('notices: 待审核, 已阻塞 and write-back are announced once, in order;
   wb.saveSettings({ desktopNotify: false })
   assert.equal(wb.noticesSince(0).enabled, false)
 })
+
+test('board sync: every to-do gets a 待规划 card once, keeps its own edits, and a deleted card stays deleted', async () => {
+  const { wb } = setup()
+  const t1 = await wb.listTodos()
+  const sourced = t1.items.filter((i) => i.source !== 'manual')
+  assert.ok(sourced.length >= 15)
+  assert.ok(sourced.every((i) => i.issueId && i.issueStatus === 'backlog'))
+  const cards = wb.listIssues()
+  assert.equal(cards.length, sourced.length)
+  const card = cards.find((c) => c.sourceRef?.ref === 'BUG-4821')!
+  assert.deepEqual([card.status, card.agentId, card.projectId, card.priority], ['backlog', 'fullstack', wb.resolveProject(bug)!.id, 'P0'])
+  await wb.listTodos() // pulling again adds nothing
+  assert.equal(wb.listIssues().length, cards.length)
+  const gitlab = cards.find((c) => c.sourceRef?.source === 'gitlab')!
+  assert.equal(gitlab.agentId, 'reviewer') // the per-source default agent
+
+  // auto-run never picks them up: 待规划 is not 待办
+  wb.setAutoRun(true)
+  await wb.tick()
+  assert.equal(wb.workingCount(), 0)
+
+  // deleting the card on purpose keeps it off the board; asking for it again (编辑) brings it back
+  wb.deleteIssue(card.id)
+  await wb.listTodos()
+  assert.equal(wb.listIssues().some((c) => c.sourceRef?.ref === 'BUG-4821'), false)
+  assert.equal((await wb.listTodos()).items.find((i) => i.ref === 'BUG-4821')!.issueId, undefined)
+  wb.adoptTodo({ item: bug })
+  assert.equal(wb.listIssues().some((c) => c.sourceRef?.ref === 'BUG-4821'), true)
+  wb.deleteIssue(wb.listIssues().find((c) => c.sourceRef?.ref === 'BUG-4821')!.id)
+
+  // switched off: the old behaviour, cards only when started
+  const off = setup()
+  off.wb.saveSettings({ syncTodosToBoard: false })
+  await off.wb.listTodos()
+  assert.equal(off.wb.listIssues().length, 0)
+})
+
+test('deadline and related info are edited on the card and win over the source; clearing sticks', async () => {
+  const { wb } = setup()
+  const row = async () => (await wb.listTodos()).items.find((i) => i.ref === 'BUG-4821')!
+  let r = await row()
+  assert.equal(r.due, '2026-10-23') // the source's own to start with
+  assert.ok(r.related.length >= 3)
+  const card = wb.listIssues().find((c) => c.sourceRef?.ref === 'BUG-4821')!
+  wb.updateIssue(card.id, { due: '2026-11-02', related: [{ label: '  分支 fix/new ', detail: '改过的说明' }, { label: '  ' }, { label: '只有标题' }] })
+  r = await row()
+  assert.equal(r.due, '2026-11-02')
+  assert.deepEqual(r.related, [{ label: '分支 fix/new', detail: '改过的说明' }, { label: '只有标题', detail: undefined }])
+  assert.throws(() => wb.updateIssue(card.id, { due: '明天' }), /YYYY-MM-DD/)
+  assert.throws(() => wb.updateIssue(card.id, { due: '2026-13-45' }), /YYYY-MM-DD/)
+  wb.updateIssue(card.id, { due: '', related: [] })
+  r = await row()
+  assert.deepEqual([r.due, r.related], [undefined, []]) // cleared on purpose: the source's values do not come back
+
+  // manual cards carry them too
+  const m = wb.createIssue({ title: '手工', due: '2026-12-01', related: [{ label: '文档', detail: 'wiki' }], status: 'todo' })
+  const mr = (await wb.listTodos()).items.find((i) => i.ref === m.key)!
+  assert.deepEqual([mr.due, mr.related], ['2026-12-01', [{ label: '文档', detail: 'wiki' }]])
+})
+
+test('a card whose item left a live source is flagged, and unflagged when it returns', async () => {
+  let gone = false
+  const f = (async (url: string) => {
+    const u = String(url)
+    if (u.endsWith('/tokens')) return Response.json({ token: 'T' })
+    if (u.includes('/products/12/bugs')) return Response.json({ bugs: gone ? [] : [{ id: 7, title: '线上缺陷', pri: 1, status: 'active', assignedTo: 'me' }] })
+    return Response.json({ bugs: [], tasks: [], executions: [], products: [] })
+  }) as typeof fetch
+  const { wb } = setup({ WORKBENCH_ZENTAO_URL: 'https://z.test', WORKBENCH_ZENTAO_ACCOUNT: 'me', WORKBENCH_ZENTAO_PASSWORD: 'pw' }, f)
+  await wb.listTodos()
+  const card = () => wb.listIssues().find((c) => c.sourceRef?.ref === 'BUG-7')!
+  assert.equal(card().note, undefined)
+  gone = true
+  await wb.listTodos()
+  assert.match(card().note!, /已不在你的待办中/)
+  gone = false
+  await wb.listTodos()
+  assert.equal(card().note, undefined)
+})

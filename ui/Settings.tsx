@@ -124,7 +124,7 @@ function General({ p }: { p: PageProps }) {
       <input className="wb-input" type="number" min={min} max={max} step={step} value={String(f[k] as number)} onChange={(e) => set(k, Number(e.target.value) as never)} />
       <div className="wb-sub" style={{ marginTop: 3 }}>{hint}（{min}–{max}）</div></div>
   )
-  const check = (k: 'isolateByDefault' | 'autoTestOnReview' | 'autoDoneOnPass' | 'statsReportEnabled' | 'desktopNotify', label: string, hint: string) => (
+  const check = (k: 'isolateByDefault' | 'autoTestOnReview' | 'autoDoneOnPass' | 'statsReportEnabled' | 'desktopNotify' | 'syncTodosToBoard', label: string, hint: string) => (
     <label className="wb-pick" style={{ alignItems: 'flex-start' }}><input type="checkbox" checked={f[k]} onChange={(e) => set(k, e.target.checked)} />
       <span><b>{label}</b><div className="wb-sub">{hint}</div></span></label>
   )
@@ -142,6 +142,7 @@ function General({ p }: { p: PageProps }) {
 
       <h4 className="wb-sec">待办与智能体</h4>
       {n('todoRefreshSeconds', '待办自动拉取间隔（秒）', '「我的待办」多久重新拉取禅道 / GitLab / Jenkins', 15, 3600)}
+      {check('syncTodosToBoard', '待办同步到看板', '禅道 / GitLab / Jenkins / Sparkin 的待办会自动在看板的「待规划」列建一张卡片；你删除的卡片不会再回来。关闭后只有开工 / 编辑过的待办才有卡片')}
       <div className="wb-field"><label>各来源默认指派的智能体</label>
         <div className="wb-row" style={{ flexWrap: 'wrap' }}>
           {AGENT_SOURCES.map(([k, label]) => (

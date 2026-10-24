@@ -1161,6 +1161,7 @@ var DEFAULT_SETTINGS = {
   autoDoneOnPass: true,
   zentaoWriteBack: "confirm",
   onboarded: false,
+  syncTodosToBoard: true,
   skillRoots: [],
   desktopNotify: true,
   statsReportEnabled: false,
@@ -1192,6 +1193,7 @@ function normalizeSettings(input) {
     autoDoneOnPass: typeof i.autoDoneOnPass === "boolean" ? i.autoDoneOnPass : d.autoDoneOnPass,
     zentaoWriteBack: i.zentaoWriteBack === "auto" ? "auto" : "confirm",
     onboarded: i.onboarded === true,
+    syncTodosToBoard: typeof i.syncTodosToBoard === "boolean" ? i.syncTodosToBoard : d.syncTodosToBoard,
     skillRoots: Array.isArray(i.skillRoots) ? [...new Set(i.skillRoots.map((x) => String(x).trim()).filter(Boolean))].slice(0, 20) : d.skillRoots,
     desktopNotify: typeof i.desktopNotify === "boolean" ? i.desktopNotify : d.desktopNotify,
     statsReportEnabled: i.statsReportEnabled === true,
@@ -1222,6 +1224,13 @@ function place(d, issue, status, beforeId) {
   });
 }
 var cleanLines = (l) => (l ?? []).map((x) => x.trim()).filter(Boolean);
+function cleanDue(v) {
+  const s = v.trim();
+  if (!s) return "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s))) throw new WorkbenchError("invalid", `\u622A\u6B62\u65E5\u671F\u8981\u5199\u6210 YYYY-MM-DD\uFF1A${v}`);
+  return s;
+}
+var cleanRelated = (l) => (l ?? []).map((r) => ({ label: String(r.label ?? "").trim().slice(0, 200), detail: String(r.detail ?? "").trim().slice(0, 500) || void 0 })).filter((r) => r.label).slice(0, 20);
 var COMMANDS = ["plan", "goal"];
 var Workbench = class {
   store;
@@ -1328,15 +1337,45 @@ var Workbench = class {
       statusText: "\u624B\u5DE5\u4EFB\u52A1",
       description: i.description,
       acceptance: i.acceptance,
-      related: []
+      related: i.related ?? [],
+      due: i.due || void 0
     }));
-    const items = [...lists.flat(), ...manual].sort((a, b) => rank[a.priority] - rank[b.priority]).map((w) => {
+    const sorted = [...lists.flat(), ...manual].sort((a, b) => rank[a.priority] - rank[b.priority]);
+    this.syncBoard(sorted, sources);
+    const items = sorted.map((w) => {
       const issue = this.issueForSource(w.source, w.ref);
       const hidden = (this.store.data.hiddenTodos ?? []).some((h) => h.source === w.source && h.ref === w.ref);
-      const edited = issue?.sourceRef ? { title: issue.title, priority: issue.priority ?? w.priority, description: issue.description, acceptance: issue.acceptance, project: issue.projectId ? projectName(issue.projectId) : w.project } : {};
+      const edited = issue?.sourceRef ? { title: issue.title, priority: issue.priority ?? w.priority, description: issue.description, acceptance: issue.acceptance, project: issue.projectId ? projectName(issue.projectId) : w.project, due: issue.due === void 0 ? w.due : issue.due || void 0, related: issue.related ?? w.related } : {};
       return { ...w, ...edited, issueId: issue?.id, issueStatus: issue?.status, archived: hidden || !!issue?.archivedAt };
     });
     return { items, sources };
+  }
+  /**
+   * Put every to-do on the board (待规划) so the board shows everything on your plate, not only what was started. Source items
+   * the user deleted the card of stay off; an untouched card whose item vanished from a live source is flagged (not removed).
+   */
+  syncBoard(items, sources) {
+    if (!this.settings().syncTodosToBoard) return;
+    const d0 = this.store.data;
+    const hidden = (s, r) => (d0.hiddenTodos ?? []).some((h) => h.source === s && h.ref === r);
+    const gone = (s, r) => (d0.unsynced ?? []).some((u) => u.source === s && u.ref === r);
+    const fresh = items.filter((w) => w.source !== "manual" && !this.issueForSource(w.source, w.ref) && !hidden(w.source, w.ref) && !gone(w.source, w.ref));
+    const present = new Set(items.map((w) => `${w.source}:${w.ref}`));
+    const MISSING = "\u6765\u6E90\u7CFB\u7EDF\u91CC\u5DF2\u4E0D\u5728\u4F60\u7684\u5F85\u529E\u4E2D\uFF08\u53EF\u80FD\u5DF2\u89E3\u51B3\u6216\u6539\u6D3E\uFF09";
+    const stale = d0.issues.filter((i) => i.sourceRef && i.status === "backlog" && !present.has(`${i.sourceRef.source}:${i.sourceRef.ref}`) && sources[i.sourceRef.source]?.mode === "live" && i.note !== MISSING);
+    const back = d0.issues.filter((i) => i.note === MISSING && i.sourceRef && present.has(`${i.sourceRef.source}:${i.sourceRef.ref}`));
+    if (!fresh.length && !stale.length && !back.length) return;
+    this.store.update((d) => {
+      for (const w of fresh) this.addCard(d, w, "backlog", this.settings().defaultAgents[w.source] ?? defaultAgentFor(w), this.resolveProject(w)?.id);
+      for (const i of stale) {
+        const x = d.issues.find((y) => y.id === i.id);
+        if (x) x.note = MISSING;
+      }
+      for (const i of back) {
+        const x = d.issues.find((y) => y.id === i.id);
+        if (x) x.note = void 0;
+      }
+    });
   }
   issueForSource(source, ref) {
     if (source === "manual") return this.store.data.issues.find((i) => !i.sourceRef && i.key === ref);
@@ -1368,32 +1407,38 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
     const existing = this.issueForSource(item.source, item.ref);
     if (existing) throw new WorkbenchError("duplicate", `${item.ref} \u5DF2\u7ECF\u5F00\u8FC7\u5361\u7247\uFF08${existing.key}\uFF09`, existing.id);
   }
+  /** Append a card for a source item to `d` (inside a store update). Clears a "deleted on purpose" mark: the user asked for it again. */
+  addCard(d, item, status, agentId, projectId) {
+    d.seq += 1;
+    d.issueSeq = (d.issueSeq ?? 0) + 1;
+    const t = now();
+    const issue = {
+      id: `iss_${d.seq}`,
+      key: `WB-${d.issueSeq}`,
+      title: item.title,
+      description: item.description,
+      acceptance: item.acceptance,
+      status,
+      agentId,
+      projectId,
+      priority: item.priority,
+      sourceRef: { source: item.source, ref: item.ref },
+      sparkinTaskId: item.sparkinTaskId,
+      // copied so they can be edited on the card; the source's own values are only the starting point
+      due: item.due ?? "",
+      related: item.related,
+      createdAt: t,
+      updatedAt: t
+    };
+    d.issues.push(issue);
+    place(d, issue, status);
+    d.unsynced = (d.unsynced ?? []).filter((u) => !(u.source === item.source && u.ref === item.ref));
+    return issue;
+  }
   cardFor(item, status, agentId, projectId) {
     this.noCardYet(item);
     const agent = this.agent(agentId ?? this.settings().defaultAgents[item.source] ?? defaultAgentFor(item));
-    return this.store.update((d) => {
-      d.seq += 1;
-      d.issueSeq = (d.issueSeq ?? 0) + 1;
-      const t = now();
-      const issue = {
-        id: `iss_${d.seq}`,
-        key: `WB-${d.issueSeq}`,
-        title: item.title,
-        description: item.description,
-        acceptance: item.acceptance,
-        status,
-        agentId: agent.id,
-        projectId,
-        priority: item.priority,
-        sourceRef: { source: item.source, ref: item.ref },
-        sparkinTaskId: item.sparkinTaskId,
-        createdAt: t,
-        updatedAt: t
-      };
-      d.issues.push(issue);
-      place(d, issue, status);
-      return issue;
-    });
+    return this.store.update((d) => this.addCard(d, item, status, agent.id, projectId));
   }
   /** 编辑 a source item: make a local backlog card (the source system is never written) so it can be adjusted like any card. */
   adoptTodo(input) {
@@ -1402,6 +1447,12 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
   /** 开工: one card per source ref; create it, start a session, then wire events back to the card. */
   async startWork(input) {
     const { item } = input;
+    const existing = this.issueForSource(item.source, item.ref);
+    if (existing && ["backlog", "todo", "blocked"].includes(existing.status) && !existing.archivedAt) {
+      const project2 = existing.projectId ? void 0 : this.resolveProject(item);
+      if (project2) this.updateIssue(existing.id, { projectId: project2.id });
+      return this.startIssue(existing.id, input.agentId);
+    }
     this.noCardYet(item);
     const project = this.resolveProject(item);
     if (!project) throw new WorkbenchError("invalid", `\u300C${item.project}\u300D\u6CA1\u6709\u5BF9\u5E94\u7684\u9879\u76EE\u5DE5\u4F5C\u76EE\u5F55\uFF0C\u8BF7\u5148\u5728\u300C\u9879\u76EE\u300D\u9875\u6DFB\u52A0`);
@@ -1825,6 +1876,7 @@ ${summary.slice(0, 1500)}`,
     if (!input.title.trim()) throw new WorkbenchError("invalid", "\u6807\u9898\u4E0D\u80FD\u4E3A\u7A7A");
     if (input.status === "done") throw new WorkbenchError("forbidden", "\u300C\u5DF2\u5B8C\u6210\u300D\u53EA\u80FD\u7531\u4EBA\u5728\u770B\u677F\u4E0A\u8BBE\u7F6E");
     const extras = this.cleanExtras(input);
+    const due = input.due === void 0 ? void 0 : cleanDue(input.due);
     const created = this.store.update((d) => {
       d.seq += 1;
       d.issueSeq = (d.issueSeq ?? 0) + 1;
@@ -1840,6 +1892,8 @@ ${summary.slice(0, 1500)}`,
         projectId: input.projectId || void 0,
         priority: input.priority ?? "P2",
         ...extras,
+        ...due ? { due } : {},
+        ...input.related ? { related: cleanRelated(input.related) } : {},
         createdAt: t,
         updatedAt: t
       };
@@ -1851,13 +1905,16 @@ ${summary.slice(0, 1500)}`,
     return created;
   }
   updateIssue(id, patch) {
+    const due = patch.due === void 0 ? void 0 : cleanDue(patch.due);
     const extras = "command" in patch || patch.attachments ? this.cleanExtras(patch) : void 0;
     return this.store.update((d) => {
       const i = d.issues.find((x) => x.id === id);
       if (!i) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
-      const { projectId, acceptance, command: _c, attachments: _a, ...rest } = patch;
+      const { projectId, acceptance, command: _c, attachments: _a, due: _d, related, ...rest } = patch;
       Object.assign(i, Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== void 0)), { updatedAt: now() });
       if (acceptance) i.acceptance = cleanLines(acceptance);
+      if (due !== void 0) i.due = due;
+      if (related) i.related = cleanRelated(related);
       if (extras) {
         if ("command" in patch) i.command = extras.command;
         if (patch.attachments) i.attachments = extras.attachments;
@@ -1953,6 +2010,7 @@ ${summary.slice(0, 1500)}`,
     if (gone) void this.releaseWorktree(gone);
     for (const a of this.store.data.issues.find((i) => i.id === id)?.attachments ?? []) rmSync(this.uploadPath(a), { force: true });
     this.store.update((d) => {
+      if (gone?.sourceRef) d.unsynced = [...d.unsynced ?? [], { source: gone.sourceRef.source, ref: gone.sourceRef.ref }];
       d.issues = d.issues.filter((i) => i.id !== id);
       d.runs = d.runs.filter((r) => r.issueId !== id);
       for (const i of d.issues) if (i.nextId === id) i.nextId = void 0;

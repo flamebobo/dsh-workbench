@@ -105,6 +105,7 @@ export function Board(p: PageProps) {
                       <span>{i.key}</span>{i.sourceRef && <span>· {i.sourceRef.ref}</span>}{i.archivedAt && <span className="wb-pill">已归档</span>}
                     </div>
                     <div className="t">{i.title}</div>
+                    {i.due && <div className="wb-bld wb-muted" style={{ color: i.status !== 'done' && i.due < new Date().toISOString().slice(0, 10) ? 'var(--wb-red)' : undefined }} title="截止日期">截止 {i.due.slice(5)}</div>}
                     {i.note && <div className="wb-ellipsis" style={{ color: i.status === 'blocked' ? 'var(--wb-red)' : 'var(--wb-amber)', fontSize: 11, marginBottom: 4 }} title={i.note}>{i.note}</div>}
                     {lastBuild(state.builds, i.id) && <div className="wb-bld" style={{ color: buildColor(lastBuild(state.builds, i.id)!.state) }}>构建 {lastBuild(state.builds, i.id)!.job}{lastBuild(state.builds, i.id)!.number ? ` #${lastBuild(state.builds, i.id)!.number}` : ''} · {BUILD_LABEL[lastBuild(state.builds, i.id)!.state]}</div>}
                     {(i.nextId || state.issues.some((x) => x.nextId === i.id)) && <div className="wb-bld wb-muted">{state.issues.some((x) => x.nextId === i.id) ? `← ${state.issues.filter((x) => x.nextId === i.id).map((x) => x.key).join(' ')}` : ''}{i.nextId ? `  → ${keyOf(i.nextId)}` : ''}</div>}
@@ -145,6 +146,9 @@ export function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue
   // the description box works like DSH's composer: a leading /plan or /goal is the task's command
   const [text, setText] = useState(issue?.command ? `/${issue.command} ${issue.description}` : (issue?.description ?? ''))
   const [acceptance, setAcceptance] = useState((issue?.acceptance ?? []).join('\n'))
+  const [due, setDue] = useState(issue?.due ?? '')
+  // one line per item: `标题 | 说明`
+  const [related, setRelated] = useState((issue?.related ?? []).map((r) => (r.detail ? `${r.label} | ${r.detail}` : r.label)).join('\n'))
   const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>(issue?.priority ?? 'P2')
   const [projectId, setProjectId] = useState(issue?.projectId ?? '')
   const [agentId, setAgentId] = useState(issue?.agentId ?? 'fullstack')
@@ -161,7 +165,7 @@ export function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue
 
   const fields = () => {
     const m = /^\/(plan|goal)(?:\s+([\s\S]*))?$/.exec(text.trimStart())
-    return { title, description: m ? (m[2] ?? '') : text, command: m ? m[1] : '', acceptance: lines, priority, projectId, agentId, attachments: files }
+    return { title, description: m ? (m[2] ?? '') : text, command: m ? m[1] : '', acceptance: lines, priority, projectId, agentId, attachments: files, due, related: related.split('\n').map((l) => { const [label = '', ...rest] = l.split('|'); return { label: label.trim(), detail: rest.join('|').trim() || undefined } }).filter((r) => r.label) }
   }
   async function save(start: boolean) {
     if (!title.trim()) { p.notify('标题不能为空'); return }
@@ -212,9 +216,13 @@ export function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue
           <div className="wb-field wb-grow"><label>项目（工作目录）</label>
             <select className="wb-select" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
               <option value="">未选择</option>{state.projects.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></div>
+          <div className="wb-field" style={{ width: 150 }}><label>截止日期</label>
+            <input className="wb-input" type="date" value={due} onChange={(e) => setDue(e.target.value)} /></div>
           <div className="wb-field" style={{ width: 90 }}><label>优先级</label>
             <select className="wb-select" value={priority} onChange={(e) => setPriority(e.target.value as typeof priority)}>{PRIORITIES.map((x) => <option key={x}>{x}</option>)}</select></div>
         </div>
+        <div className="wb-field"><label>关联信息（每行一条：标题 | 说明，显示在「我的待办」详情里）</label>
+          <textarea className="wb-textarea" style={{ minHeight: 56 }} value={related} onChange={(e) => setRelated(e.target.value)} placeholder={'分支 fix/pay-callback | payment-core\nMR !11287 | 相关改动'} /></div>
         <div className="wb-row">
           <div className="wb-field wb-grow"><label>指派智能体</label>
             <select className="wb-select" value={agentId} onChange={(e) => setAgentId(e.target.value)}>{state.agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>

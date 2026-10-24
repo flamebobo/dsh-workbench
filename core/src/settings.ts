@@ -29,6 +29,8 @@ export interface PluginSettings {
   zentaoWriteBack: 'confirm' | 'auto'
   /** The first-run guide has been completed or skipped. */
   onboarded: boolean
+  /** Every to-do from Zentao / GitLab / Jenkins / Sparkin also appears on the board (待规划), so the board is the whole picture. */
+  syncTodosToBoard: boolean
   /** Extra directories of skills (`<dir>/<name>/SKILL.md`) offered to DSH and to projects, e.g. the company convention pack. */
   skillRoots: string[]
   /** Desktop notification when a card needs you (待审核 / 已阻塞) or a Zentao write-back completes. */
@@ -45,7 +47,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   permissionPreset: 'workspace-write',
   defaultAgents: { zentao: 'fullstack', gitlab: 'reviewer', jenkins: 'build-fixer', sparkin: 'fullstack', manual: 'fullstack' },
   isolateByDefault: true, branchPrefix: 'wb/', autoTestOnReview: true, testTimeoutSeconds: 600,
-  autoDoneOnPass: true, zentaoWriteBack: 'confirm', onboarded: false, skillRoots: [], desktopNotify: true,
+  autoDoneOnPass: true, zentaoWriteBack: 'confirm', onboarded: false, syncTodosToBoard: true, skillRoots: [], desktopNotify: true,
   statsReportEnabled: false, statsReportUrl: '', updateCheckUrl: '',
 }
 
@@ -76,6 +78,7 @@ export function normalizeSettings(input: Partial<PluginSettings> | undefined): P
     autoDoneOnPass: typeof i.autoDoneOnPass === 'boolean' ? i.autoDoneOnPass : d.autoDoneOnPass,
     zentaoWriteBack: i.zentaoWriteBack === 'auto' ? 'auto' : 'confirm',
     onboarded: i.onboarded === true,
+    syncTodosToBoard: typeof i.syncTodosToBoard === 'boolean' ? i.syncTodosToBoard : d.syncTodosToBoard,
     skillRoots: Array.isArray(i.skillRoots) ? [...new Set(i.skillRoots.map((x) => String(x).trim()).filter(Boolean))].slice(0, 20) : d.skillRoots,
     desktopNotify: typeof i.desktopNotify === 'boolean' ? i.desktopNotify : d.desktopNotify,
     statsReportEnabled: i.statsReportEnabled === true,

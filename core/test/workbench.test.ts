@@ -422,7 +422,9 @@ test('编辑 a source item: local backlog card overrides the source copy, can st
   assert.deepEqual(row.acceptance, ['新验收'])
   assert.equal(row.issueStatus, 'backlog')
   assert.throws(() => wb.adoptTodo({ item: bug }), /已经开过卡片/)
-  await assert.rejects(wb.startWork({ item: bug }), /已经开过卡片/)
-  await wb.startIssue(card.id)
+  const started = await wb.startWork({ item: bug }) // starting the item starts that card, it does not make a second one
+  assert.equal(started.issue.id, card.id)
+  assert.equal(wb.listIssues().filter((i) => i.sourceRef?.ref === bug.ref).length, 1)
   assert.match(driver.started[0]!.prompt, /改过的标题/)
+  await assert.rejects(wb.startWork({ item: bug }), /已经开过卡片/) // once it is under way, starting again is refused
 })

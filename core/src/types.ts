@@ -119,6 +119,10 @@ export interface Issue {
   /** Hidden from the board by default; the card and its history are kept. */
   archivedAt?: string
   timesheet?: Timesheet
+  /** Deadline, YYYY-MM-DD; '' = cleared on purpose (a card from a source system otherwise shows the source's date). */
+  due?: string
+  /** Related info lines shown in the to-do detail; undefined = the source system's own. */
+  related?: { label: string; detail?: string }[]
   /** Sparkin task a card from the Sparkin to-do list is booked on; pre-selects the time-sheet task. */
   sparkinTaskId?: string
   writeBack?: ZentaoWriteBack
@@ -194,6 +198,8 @@ export interface Data {
   clientId?: string
   /** Latest result of the update check (kept so the banner survives a restart). */
   update?: UpdateInfo
+  /** Source items whose card the user deleted on purpose: the board sync must not bring them back. */
+  unsynced?: { source: Source; ref: string }[]
   statsReport?: { at: string; ok: boolean; error?: string }
   hiddenTodos?: { source: Source; ref: string; at: string }[]
 }

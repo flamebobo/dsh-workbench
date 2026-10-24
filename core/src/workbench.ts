@@ -57,6 +57,15 @@ function place(d: Data, issue: Issue, status: Status, beforeId?: string) {
 }
 
 const cleanLines = (l?: string[]) => (l ?? []).map((x) => x.trim()).filter(Boolean)
+/** '' clears; otherwise a real calendar date as YYYY-MM-DD. */
+function cleanDue(v: string): string {
+  const s = v.trim()
+  if (!s) return ''
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s))) throw new WorkbenchError('invalid', `截止日期要写成 YYYY-MM-DD：${v}`)
+  return s
+}
+const cleanRelated = (l?: { label?: string; detail?: string }[]) =>
+  (l ?? []).map((r) => ({ label: String(r.label ?? '').trim().slice(0, 200), detail: String(r.detail ?? '').trim().slice(0, 500) || undefined })).filter((r) => r.label).slice(0, 20)
 const COMMANDS: CommandName[] = ['plan', 'goal']
 const ACTIVE: Status[] = ['todo', 'in_progress', 'in_review', 'blocked', 'backlog']
 
@@ -163,16 +172,40 @@ export class Workbench {
     const projectName = (id?: string) => this.store.data.projects.find((p) => p.id === id)?.name ?? '未选择项目'
     const manual: WorkItem[] = this.store.data.issues.filter((i) => !i.sourceRef).map((i) => ({
       ref: i.key, source: 'manual' as const, title: i.title, priority: i.priority ?? 'P2', project: projectName(i.projectId),
-      statusText: '手工任务', description: i.description, acceptance: i.acceptance, related: [],
+      statusText: '手工任务', description: i.description, acceptance: i.acceptance, related: i.related ?? [], due: i.due || undefined,
     }))
-    const items = [...lists.flat(), ...manual].sort((a, b) => rank[a.priority] - rank[b.priority]).map((w) => {
+    const sorted = [...lists.flat(), ...manual].sort((a, b) => rank[a.priority] - rank[b.priority])
+    this.syncBoard(sorted, sources)
+    const items = sorted.map((w) => {
       const issue = this.issueForSource(w.source, w.ref)
       const hidden = (this.store.data.hiddenTodos ?? []).some((h) => h.source === w.source && h.ref === w.ref)
       // edits made on the card (title, priority, background, acceptance, project) win over the source system's copy
-      const edited = issue?.sourceRef ? { title: issue.title, priority: issue.priority ?? w.priority, description: issue.description, acceptance: issue.acceptance, project: issue.projectId ? projectName(issue.projectId) : w.project } : {}
+      const edited = issue?.sourceRef ? { title: issue.title, priority: issue.priority ?? w.priority, description: issue.description, acceptance: issue.acceptance, project: issue.projectId ? projectName(issue.projectId) : w.project, due: issue.due === undefined ? w.due : issue.due || undefined, related: issue.related ?? w.related } : {}
       return { ...w, ...edited, issueId: issue?.id, issueStatus: issue?.status, archived: hidden || !!issue?.archivedAt }
     })
     return { items, sources }
+  }
+
+  /**
+   * Put every to-do on the board (待规划) so the board shows everything on your plate, not only what was started. Source items
+   * the user deleted the card of stay off; an untouched card whose item vanished from a live source is flagged (not removed).
+   */
+  private syncBoard(items: WorkItem[], sources: TodoResult['sources']) {
+    if (!this.settings().syncTodosToBoard) return
+    const d0 = this.store.data
+    const hidden = (s: Source, r: string) => (d0.hiddenTodos ?? []).some((h) => h.source === s && h.ref === r)
+    const gone = (s: Source, r: string) => (d0.unsynced ?? []).some((u) => u.source === s && u.ref === r)
+    const fresh = items.filter((w) => w.source !== 'manual' && !this.issueForSource(w.source, w.ref) && !hidden(w.source, w.ref) && !gone(w.source, w.ref))
+    const present = new Set(items.map((w) => `${w.source}:${w.ref}`))
+    const MISSING = '来源系统里已不在你的待办中（可能已解决或改派）'
+    const stale = d0.issues.filter((i) => i.sourceRef && i.status === 'backlog' && !present.has(`${i.sourceRef.source}:${i.sourceRef.ref}`) && sources[i.sourceRef.source as keyof typeof sources]?.mode === 'live' && i.note !== MISSING)
+    const back = d0.issues.filter((i) => i.note === MISSING && i.sourceRef && present.has(`${i.sourceRef.source}:${i.sourceRef.ref}`))
+    if (!fresh.length && !stale.length && !back.length) return
+    this.store.update((d) => {
+      for (const w of fresh) this.addCard(d, w, 'backlog', this.settings().defaultAgents[w.source] ?? defaultAgentFor(w), this.resolveProject(w)?.id)
+      for (const i of stale) { const x = d.issues.find((y) => y.id === i.id); if (x) x.note = MISSING }
+      for (const i of back) { const x = d.issues.find((y) => y.id === i.id); if (x) x.note = undefined }
+    })
   }
 
   private issueForSource(source: Source, ref: string) {
@@ -214,21 +247,27 @@ export class Workbench {
     if (existing) throw new WorkbenchError('duplicate', `${item.ref} 已经开过卡片（${existing.key}）`, existing.id)
   }
 
+  /** Append a card for a source item to `d` (inside a store update). Clears a "deleted on purpose" mark: the user asked for it again. */
+  private addCard(d: Data, item: WorkItem, status: Status, agentId: string, projectId?: string): Issue {
+    d.seq += 1
+    d.issueSeq = (d.issueSeq ?? 0) + 1
+    const t = now()
+    const issue: Issue = {
+      id: `iss_${d.seq}`, key: `WB-${d.issueSeq}`, title: item.title, description: item.description,
+      acceptance: item.acceptance, status, agentId, projectId, priority: item.priority,
+      sourceRef: { source: item.source, ref: item.ref }, sparkinTaskId: item.sparkinTaskId,
+      // copied so they can be edited on the card; the source's own values are only the starting point
+      due: item.due ?? '', related: item.related, createdAt: t, updatedAt: t,
+    }
+    d.issues.push(issue); place(d, issue, status)
+    d.unsynced = (d.unsynced ?? []).filter((u) => !(u.source === item.source && u.ref === item.ref))
+    return issue
+  }
+
   private cardFor(item: WorkItem, status: Status, agentId?: string, projectId?: string): Issue {
     this.noCardYet(item)
     const agent = this.agent(agentId ?? this.settings().defaultAgents[item.source] ?? defaultAgentFor(item))
-    return this.store.update((d) => {
-      d.seq += 1
-      d.issueSeq = (d.issueSeq ?? 0) + 1
-      const t = now()
-      const issue: Issue = {
-        id: `iss_${d.seq}`, key: `WB-${d.issueSeq}`, title: item.title, description: item.description,
-        acceptance: item.acceptance, status, agentId: agent.id, projectId, priority: item.priority,
-        sourceRef: { source: item.source, ref: item.ref }, sparkinTaskId: item.sparkinTaskId, createdAt: t, updatedAt: t,
-      }
-      d.issues.push(issue); place(d, issue, status)
-      return issue
-    })
+    return this.store.update((d) => this.addCard(d, item, status, agent.id, projectId))
   }
 
   /** 编辑 a source item: make a local backlog card (the source system is never written) so it can be adjusted like any card. */
@@ -239,6 +278,13 @@ export class Workbench {
   /** 开工: one card per source ref; create it, start a session, then wire events back to the card. */
   async startWork(input: { item: WorkItem; agentId?: string }): Promise<{ issue: Issue; run: Run }> {
     const { item } = input
+    // the board sync may have made a card for it already: starting that card is the same as starting the item
+    const existing = this.issueForSource(item.source, item.ref)
+    if (existing && ['backlog', 'todo', 'blocked'].includes(existing.status) && !existing.archivedAt) {
+      const project = existing.projectId ? undefined : this.resolveProject(item)
+      if (project) this.updateIssue(existing.id, { projectId: project.id })
+      return this.startIssue(existing.id, input.agentId)
+    }
     this.noCardYet(item)
     const project = this.resolveProject(item)
     if (!project) throw new WorkbenchError('invalid', `「${item.project}」没有对应的项目工作目录，请先在「项目」页添加`)
@@ -621,10 +667,11 @@ export class Workbench {
   listIssues() { return this.store.data.issues }
   listRuns(issueId?: string) { return this.store.data.runs.filter((r) => !issueId || r.issueId === issueId) }
 
-  createIssue(input: { title: string; description?: string; acceptance?: string[]; priority?: Priority; command?: string; attachments?: Attachment[]; agentId?: string; projectId?: string; status?: Status }): Issue {
+  createIssue(input: { title: string; description?: string; acceptance?: string[]; priority?: Priority; command?: string; attachments?: Attachment[]; agentId?: string; projectId?: string; status?: Status; due?: string; related?: { label: string; detail?: string }[] }): Issue {
     if (!input.title.trim()) throw new WorkbenchError('invalid', '标题不能为空')
     if (input.status === 'done') throw new WorkbenchError('forbidden', '「已完成」只能由人在看板上设置')
     const extras = this.cleanExtras(input)
+    const due = input.due === undefined ? undefined : cleanDue(input.due)
     const created = this.store.update((d) => {
       d.seq += 1
       d.issueSeq = (d.issueSeq ?? 0) + 1
@@ -632,7 +679,7 @@ export class Workbench {
       const issue: Issue = {
         id: `iss_${d.seq}`, key: `WB-${d.issueSeq}`, title: input.title.trim(), description: input.description ?? '', acceptance: cleanLines(input.acceptance),
         status: input.status ?? 'backlog', agentId: input.agentId ?? 'fullstack', projectId: input.projectId || undefined,
-        priority: input.priority ?? 'P2', ...extras, createdAt: t, updatedAt: t,
+        priority: input.priority ?? 'P2', ...extras, ...(due ? { due } : {}), ...(input.related ? { related: cleanRelated(input.related) } : {}), createdAt: t, updatedAt: t,
       }
       d.issues.push(issue); place(d, issue, issue.status)
       return issue
@@ -641,14 +688,17 @@ export class Workbench {
     return created
   }
 
-  updateIssue(id: string, patch: Partial<Pick<Issue, 'title' | 'description' | 'acceptance' | 'priority' | 'agentId' | 'projectId'>> & { command?: string; attachments?: Attachment[] }) {
+  updateIssue(id: string, patch: Partial<Pick<Issue, 'title' | 'description' | 'acceptance' | 'priority' | 'agentId' | 'projectId' | 'due' | 'related'>> & { command?: string; attachments?: Attachment[] }) {
+    const due = patch.due === undefined ? undefined : cleanDue(patch.due)
     const extras = 'command' in patch || patch.attachments ? this.cleanExtras(patch) : undefined
     return this.store.update((d) => {
       const i = d.issues.find((x) => x.id === id)
       if (!i) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
-      const { projectId, acceptance, command: _c, attachments: _a, ...rest } = patch
+      const { projectId, acceptance, command: _c, attachments: _a, due: _d, related, ...rest } = patch
       Object.assign(i, Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)), { updatedAt: now() })
       if (acceptance) i.acceptance = cleanLines(acceptance)
+      if (due !== undefined) i.due = due // '' stays '' so a source item's date is not brought back
+      if (related) i.related = cleanRelated(related)
       if (extras) {
         if ('command' in patch) i.command = extras.command
         if (patch.attachments) i.attachments = extras.attachments
@@ -734,6 +784,8 @@ export class Workbench {
     if (gone) void this.releaseWorktree(gone)
     for (const a of this.store.data.issues.find((i) => i.id === id)?.attachments ?? []) rmSync(this.uploadPath(a), { force: true })
     this.store.update((d) => {
+      // a card from a source item that was deleted on purpose must not come back with the next to-do pull
+      if (gone?.sourceRef) d.unsynced = [...(d.unsynced ?? []), { source: gone.sourceRef.source, ref: gone.sourceRef.ref }]
       d.issues = d.issues.filter((i) => i.id !== id); d.runs = d.runs.filter((r) => r.issueId !== id)
       for (const i of d.issues) if (i.nextId === id) i.nextId = undefined
     })

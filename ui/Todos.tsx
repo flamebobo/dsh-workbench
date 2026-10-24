@@ -161,7 +161,8 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
             <h3 style={{ marginTop: 6 }}>{sel.title}</h3>
             <dl className="wb-kv">
               <dt>优先级</dt><dd><span className={`wb-pri ${sel.priority}`}>{sel.priority}</span></dd>
-              <dt>状态</dt><dd>{statusText(sel)}</dd>
+              <dt>{issue ? '看板状态' : '状态'}</dt><dd>{statusText(sel)}</dd>
+              {issue && sel.statusText !== '手工任务' && <><dt>来源状态</dt><dd>{sel.statusText}</dd></>}
               <dt>截止</dt><dd>{sel.due ?? '—'}</dd>
               <dt>工作目录</dt><dd className="wb-ellipsis" title={project?.cwd}>{project ? project.cwd : <span style={{ color: 'var(--wb-red)' }}>{sel.source === 'manual' ? '未选择项目，请在看板卡片里选择' : '未配置，请到「项目」页添加'}</span>}</dd>
             </dl>
