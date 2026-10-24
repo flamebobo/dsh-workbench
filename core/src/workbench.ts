@@ -14,6 +14,7 @@ import { fetchZentao, resolveBug } from './connectors/zentao.ts'
 import { Store } from './store.ts'
 import { fuzzy, listFiles, mentionedFiles } from './files.ts'
 import * as g from './git.ts'
+import { anonymousPayload, computeStats, exportRows, toCsv } from './stats.ts'
 import { describeRepo, findRepos, parseRemote, suggestRoots, type RepoCandidate } from './onboarding.ts'
 import { DemoSparkin, suggestTask, type SparkinClient } from './sparkin.ts'
 import type { AgentProfile, Attachment, Build, BuildState, Check, CommandName, Data, Issue, Priority, Project, Run, Source, Status, WorkItem } from './types.ts'
@@ -63,6 +64,8 @@ export interface WorkbenchOptions {
   sparkin?: SparkinClient
   /** Milliseconds clock; tests move it to age simulated builds. */
   now?: () => number
+  /** Plugin version, shown in the UI and sent in anonymous reports. */
+  version?: string
 }
 
 export class Workbench {
@@ -71,6 +74,7 @@ export class Workbench {
   private creds: Creds
   private setCred?: WorkbenchOptions['setCred']
   private clock: () => number
+  readonly version: string
   readonly sparkin: SparkinClient
   private lastPoll = 0
   private fetch: FetchLike
@@ -82,6 +86,7 @@ export class Workbench {
     this.creds = o.creds
     this.setCred = o.setCred
     this.clock = o.now ?? Date.now
+    this.version = o.version ?? 'dev'
     this.sparkin = o.sparkin ?? new DemoSparkin()
     this.fetch = o.fetch ?? ((u, i) => fetch(u, i))
     this.seedAgents()
@@ -1022,6 +1027,42 @@ export class Workbench {
       initDemoRepo(p.cwd)
       if (p.name.endsWith('payment-core') && p.testCmd === undefined) this.saveProject({ ...p, testCmd: 'node --test' })
     }
+  }
+
+  // ---------- statistics ----------
+  stats() { return computeStats(this.store.data, this.clock()) }
+
+  /** Per-card rows for the local CSV / JSON export. */
+  exportCards() { const rows = exportRows(this.store.data); return { rows, csv: toCsv(rows) } }
+
+  /** Exactly what an anonymous report would send; shown to the user before anything is ever sent. */
+  statsPayload() {
+    let clientId = this.store.data.clientId
+    if (!clientId) { clientId = randomUUID(); this.store.update((d) => { d.clientId = clientId }) }
+    return anonymousPayload(this.stats(), clientId, this.version, new Set(this.store.data.agents.filter((a) => a.builtin).map((a) => a.id)))
+  }
+
+  /** Send the anonymous report now. Needs an address; `force` ignores the on/off switch (the 立即上报 button). */
+  async reportStats(force = false): Promise<{ at: string; ok: boolean; error?: string }> {
+    const s = this.settings()
+    if (!s.statsReportUrl) throw new WorkbenchError('invalid', '还没有填写上报地址（设置 → 插件设置 → 统计与上报）')
+    if (!force && !s.statsReportEnabled) throw new WorkbenchError('invalid', '匿名上报没有开启')
+    const at = new Date(this.clock()).toISOString()
+    let result: { at: string; ok: boolean; error?: string }
+    try {
+      const res = await this.fetch(s.statsReportUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(this.statsPayload()), signal: AbortSignal.timeout(8000) })
+      result = res.ok ? { at, ok: true } : { at, ok: false, error: `HTTP ${res.status}` }
+    } catch (e) { result = { at, ok: false, error: String((e as Error).message ?? e) } }
+    this.store.update((d) => { d.statsReport = result })
+    return result
+  }
+
+  /** Called from the Host's timer: report at most once a day, and only when switched on. Failures are recorded, never thrown. */
+  async maybeReportStats() {
+    const s = this.settings(), last = this.store.data.statsReport
+    if (!s.statsReportEnabled || !s.statsReportUrl) return
+    if (last && this.clock() - Date.parse(last.at) < 24 * 3600_000) return
+    await this.reportStats().catch(() => {})
   }
 
   // ---------- first-run guide ----------

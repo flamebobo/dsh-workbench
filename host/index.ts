@@ -4,6 +4,8 @@ import type { Status, WorkItem } from '../core/src/index.ts'
 import { DshDriver } from './dsh-driver.ts'
 
 type Ctx = any // eslint-disable-line @typescript-eslint/no-explicit-any
+/** Replaced with dsh-plugin/package.json's version by scripts/build.mjs. */
+declare const __WB_VERSION__: string | undefined
 
 export const inject = [
   'connection', 'credentials', 'agents', 'agentDefaultModel', 'agentPresets',
@@ -16,6 +18,7 @@ export function apply(ctx: Ctx) {
   const wb = new Workbench({
     store: new Store(defaultDataPath()),
     driver,
+    version: typeof __WB_VERSION__ === 'string' ? __WB_VERSION__ : 'dev',
     // Credentials are resolved per call and only ever used inside the connectors (never logged or sent to the page).
     creds: async (name) => (await ctx.credentials.resolve(name))?.value,
     // The settings page stores into DSH's credential store (private file under ~/.dsh); values never go back to the page.
@@ -29,13 +32,14 @@ export function apply(ctx: Ctx) {
   let stopped = false
   let timer: ReturnType<typeof setTimeout>
   const loop = () => {
+    void wb.maybeReportStats()
     wb.tick().catch((e) => ctx.logger.warn('workbench: auto-run tick failed', e)).finally(() => { if (!stopped) timer = setTimeout(loop, wb.settings().autoRunPollSeconds * 1000) })
   }
   timer = setTimeout(loop, 5000)
   ctx.effect(() => () => { stopped = true; clearTimeout(timer); wb.dispose(); return driver.disposePresets() })
 
   const state = async () => ({
-    issues: wb.listIssues(), runs: wb.listRuns(), agents: wb.listAgents(), projects: wb.listProjects(), builds: await wb.refreshBuilds(), autoRun: wb.autoRun, working: wb.workingCount(), settings: wb.settings(),
+    version: wb.version, issues: wb.listIssues(), runs: wb.listRuns(), agents: wb.listAgents(), projects: wb.listProjects(), builds: await wb.refreshBuilds(), autoRun: wb.autoRun, working: wb.workingCount(), settings: wb.settings(),
   })
 
   async function dispatch(endpoint: string, p: any): Promise<unknown> {
@@ -58,6 +62,10 @@ export function apply(ctx: Ctx) {
       case 'onboarding.roots': return wb.onboardingRoots()
       case 'onboarding.scan': return await wb.scanRepos(Array.isArray(p.roots) ? p.roots.map(String) : [])
       case 'onboarding.import': return wb.importRepos(Array.isArray(p.items) ? p.items : [])
+      case 'stats.get': return wb.stats()
+      case 'stats.payload': return { payload: wb.statsPayload(), last: wb.store.data.statsReport }
+      case 'stats.report': return await wb.reportStats(true) // explicit click: sends even when the daily switch is off
+      case 'stats.export': return wb.exportCards()
       case 'sparkin.info': return await wb.sparkinInfo()
       case 'timesheet.report': return await wb.reportTimesheet({ date: p.date, entries: p.entries ?? [] })
       case 'issue.move': return wb.moveIssue(p.id, p.status as Status, p.beforeId, 'human') // only the UI (a human) calls this

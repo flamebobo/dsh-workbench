@@ -6,11 +6,12 @@ import { Board } from './Board.tsx'
 import { Agents } from './Agents.tsx'
 import { Projects } from './Projects.tsx'
 import { Settings } from './Settings.tsx'
+import { StatsPage } from './Stats.tsx'
 import { Onboarding } from './Onboarding.tsx'
 
 const { useState, useEffect, useCallback, useRef } = React
-export type Tab = 'todos' | 'board' | 'agents' | 'projects' | 'settings'
-const TABS: [Tab, string][] = [['todos', '我的待办'], ['board', '看板'], ['agents', '智能体'], ['projects', '项目'], ['settings', '设置']]
+export type Tab = 'todos' | 'board' | 'agents' | 'projects' | 'stats' | 'settings'
+const TABS: [Tab, string][] = [['todos', '我的待办'], ['board', '看板'], ['agents', '智能体'], ['projects', '项目'], ['stats', '统计'], ['settings', '设置']]
 
 /** Shared props for every page. */
 export interface PageProps {
@@ -89,6 +90,7 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
             {tab === 'board' && <Board {...props} />}
             {tab === 'agents' && <Agents {...props} />}
             {tab === 'projects' && <Projects {...props} />}
+            {tab === 'stats' && <StatsPage p={props} />}
             {tab === 'settings' && <Settings {...props} reloadTodos={loadTodos} />}
           </>
         )}

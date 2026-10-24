@@ -36,6 +36,13 @@ export const css = `
 .wb-th { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
 .wb-th:hover, .wb-th:focus-visible { color: var(--wb-fg); }
 .wb-th-ind { font-size: 9px; min-width: 9px; }
+.wb-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 12px 0 4px; }
+.wb-tile { background: var(--wb-l1); border-radius: 12px; padding: 10px 14px; } .wb-tile-v { font-size: 24px; font-weight: 600; margin: 2px 0; }
+.wb-weeks { display: flex; gap: 10px; align-items: flex-end; height: 120px; margin: 8px 0 4px; max-width: 640px; }
+.wb-week { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; gap: 4px; }
+.wb-bars { flex: 1; width: 100%; display: flex; gap: 3px; align-items: flex-end; } .wb-bars i { flex: 1; min-height: 2px; border-radius: 3px 3px 0 0; } .wb-bars i.a, .wb-key.a { background: var(--wb-blue); } .wb-bars i.b, .wb-key.b { background: var(--wb-green); }
+.wb-key { display: inline-block; width: 9px; height: 9px; border-radius: 2px; vertical-align: baseline; }
+.wb-pre { background: var(--wb-l1); border-radius: 10px; padding: 10px 12px; font-size: 11px; max-height: 260px; overflow: auto; margin-top: 8px; }
 .wb-badge { margin-left: 5px; min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--wb-red); color: #fff; font-size: 10px; line-height: 16px; display: inline-block; text-align: center; }
 .wb-table td { padding: 9px 10px; border-bottom: 1px solid var(--wb-bd1); vertical-align: middle; }
 .wb-table td .wb-btn { white-space: nowrap; }

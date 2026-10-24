@@ -184,5 +184,8 @@ export interface Data {
   /** Auto-run: cards in 待办 are started one after another, top to bottom, with no click. */
   autoRun?: boolean
   settings?: Partial<import('./settings.ts').PluginSettings>
+  /** Random id for anonymous statistics (never derived from the user or machine). */
+  clientId?: string
+  statsReport?: { at: string; ok: boolean; error?: string }
   hiddenTodos?: { source: Source; ref: string; at: string }[]
 }

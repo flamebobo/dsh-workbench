@@ -798,6 +798,102 @@ ${e.message}`.trim(), timedOut, ms: Date.now() - t0 });
   });
 }
 
+// core/src/stats.ts
+var day2 = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+var mondayOf = (t) => {
+  const d = new Date(t);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - (d.getDay() + 6) % 7);
+};
+var ratio = (a, b) => b ? Math.round(a / b * 1e3) / 10 : 0;
+function computeStats(d, nowMs = Date.now()) {
+  const runsOf = /* @__PURE__ */ new Map();
+  for (const r of d.runs) runsOf.set(r.issueId, [...runsOf.get(r.issueId) ?? [], r]);
+  const started = d.issues.filter((i) => runsOf.has(i.id));
+  const done = d.issues.filter((i) => i.status === "done");
+  const reviewed = d.issues.filter((i) => runsOf.get(i.id)?.some((r) => r.status === "completed"));
+  const checks = d.issues.flatMap((i) => i.checks ?? []).filter((c) => c.state !== "running");
+  const minutes = d.runs.reduce((n, r) => n + (r.endedAt ? Math.max(0, Date.parse(r.endedAt) - Date.parse(r.startedAt)) / 6e4 : 0), 0);
+  const totals = {
+    cards: d.issues.length,
+    started: started.length,
+    done: done.length,
+    doneRate: ratio(done.length, started.length),
+    reviewed: reviewed.length,
+    reviewPassRate: ratio(reviewed.filter((i) => i.status === "done").length, reviewed.length),
+    mrs: d.issues.filter((i) => i.mr).length,
+    testsRun: checks.length,
+    testsPassed: checks.filter((c) => c.state === "passed").length,
+    hoursReported: Math.round(d.issues.reduce((n, i) => n + (i.timesheet?.hours ?? 0), 0) * 10) / 10,
+    agentMinutes: Math.round(minutes)
+  };
+  const firstRun = (i) => runsOf.get(i.id).map((r) => r.startedAt).sort()[0];
+  const weeks = Array.from({ length: 8 }, (_, k) => day2(new Date(mondayOf(nowMs).getFullYear(), mondayOf(nowMs).getMonth(), mondayOf(nowMs).getDate() - 7 * (7 - k))));
+  const weekOf = (iso) => day2(mondayOf(Date.parse(iso)));
+  const byWeek = weeks.map((week) => ({
+    week,
+    started: started.filter((i) => weekOf(firstRun(i)) === week).length,
+    // done cards are no longer edited, so their last update is when they were accepted
+    done: done.filter((i) => weekOf(i.updatedAt) === week).length
+  }));
+  const group = (key) => {
+    const out = /* @__PURE__ */ new Map();
+    for (const i of d.issues) {
+      const g = out.get(key(i)) ?? { started: 0, done: 0 };
+      if (runsOf.has(i.id)) g.started++;
+      if (i.status === "done") g.done++;
+      out.set(key(i), g);
+    }
+    return [...out].map(([k, v]) => ({ k, ...v })).filter((g) => g.started || g.done);
+  };
+  return {
+    generatedAt: new Date(nowMs).toISOString(),
+    totals,
+    byWeek,
+    byAgent: group((i) => i.agentId).map(({ k, ...v }) => ({ agentId: k, ...v })),
+    bySource: group((i) => i.sourceRef?.source ?? "manual").map(({ k, ...v }) => ({ source: k, ...v }))
+  };
+}
+function anonymousPayload(s, clientId, version, builtinAgents2) {
+  return {
+    clientId,
+    version,
+    generatedAt: s.generatedAt,
+    totals: s.totals,
+    byWeek: s.byWeek,
+    byAgent: s.byAgent.map((a) => ({ ...a, agentId: builtinAgents2.has(a.agentId) ? a.agentId : "custom" })),
+    bySource: s.bySource
+  };
+}
+var csvCell = (v) => {
+  const s = String(v ?? "");
+  return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+};
+function exportRows(d) {
+  return d.issues.map((i) => {
+    const runs = d.runs.filter((r) => r.issueId === i.id);
+    return {
+      key: i.key,
+      source: i.sourceRef?.source ?? "manual",
+      ref: i.sourceRef?.ref ?? "",
+      title: i.title,
+      status: i.status,
+      agent: i.agentId,
+      project: d.projects.find((p) => p.id === i.projectId)?.name ?? "",
+      created: i.createdAt,
+      firstRun: runs.map((r) => r.startedAt).sort()[0] ?? "",
+      updated: i.updatedAt,
+      runs: runs.length,
+      testsPassed: i.checks?.at(-1)?.state === "passed" ? "yes" : i.checks?.length ? "no" : "",
+      mr: i.mr?.url ?? "",
+      hours: i.timesheet?.hours ?? ""
+    };
+  });
+}
+var toCsv = (rows) => {
+  const cols = Object.keys(rows[0] ?? { key: 1 });
+  return "\uFEFF" + [cols.join(","), ...rows.map((r) => cols.map((c) => csvCell(r[c])).join(","))].join("\n");
+};
+
 // core/src/onboarding.ts
 import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
 import { readdir } from "node:fs/promises";
@@ -950,7 +1046,9 @@ var DEFAULT_SETTINGS = {
   testTimeoutSeconds: 600,
   autoDoneOnPass: true,
   zentaoWriteBack: "confirm",
-  onboarded: false
+  onboarded: false,
+  statsReportEnabled: false,
+  statsReportUrl: ""
 };
 var num = (v, lo, hi, fallback, step = 1) => {
   const n = Number(v);
@@ -976,7 +1074,9 @@ function normalizeSettings(input) {
     testTimeoutSeconds: num(i.testTimeoutSeconds, 10, 3600, d.testTimeoutSeconds),
     autoDoneOnPass: typeof i.autoDoneOnPass === "boolean" ? i.autoDoneOnPass : d.autoDoneOnPass,
     zentaoWriteBack: i.zentaoWriteBack === "auto" ? "auto" : "confirm",
-    onboarded: i.onboarded === true
+    onboarded: i.onboarded === true,
+    statsReportEnabled: i.statsReportEnabled === true,
+    statsReportUrl: typeof i.statsReportUrl === "string" && /^https?:\/\/\S+$/.test(i.statsReportUrl.trim()) ? i.statsReportUrl.trim() : ""
   };
 }
 
@@ -1009,6 +1109,7 @@ var Workbench = class {
   creds;
   setCred;
   clock;
+  version;
   sparkin;
   lastPoll = 0;
   fetch;
@@ -1019,6 +1120,7 @@ var Workbench = class {
     this.creds = o.creds;
     this.setCred = o.setCred;
     this.clock = o.now ?? Date.now;
+    this.version = o.version ?? "dev";
     this.sparkin = o.sparkin ?? new DemoSparkin();
     this.fetch = o.fetch ?? ((u, i) => fetch(u, i));
     this.seedAgents();
@@ -1969,7 +2071,7 @@ ${summary.slice(0, 4e3)}`,
     const t = new Date(this.clock());
     const mon = new Date(t.getFullYear(), t.getMonth(), t.getDate() - (t.getDay() + 6) % 7);
     const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
-    const day2 = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const day3 = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const all = this.store.data.issues.filter((i) => i.agentId !== "weekly");
     const groups = [
       ["\u5DF2\u5B8C\u6210", all.filter((i) => i.status === "done" && new Date(i.updatedAt) >= mon)],
@@ -1979,13 +2081,13 @@ ${summary.slice(0, 4e3)}`,
     ];
     const used = groups.flatMap(([, l]) => l);
     if (!used.length) throw new WorkbenchError("invalid", "\u672C\u5468\u8FD8\u6CA1\u6709\u53EF\u6C47\u603B\u7684\u4EFB\u52A1");
-    const title = `\u5468\u62A5 ${day2(mon)} ~ ${day2(sun)}`;
+    const title = `\u5468\u62A5 ${day3(mon)} ~ ${day3(sun)}`;
     if (this.store.data.issues.some((i) => i.title === title && !i.archivedAt)) throw new WorkbenchError("duplicate", `\u300C${title}\u300D\u5DF2\u7ECF\u751F\u6210\u8FC7`);
     const projectName = (id) => this.store.data.projects.find((p) => p.id === id)?.name ?? "\u672A\u9009\u62E9\u9879\u76EE";
     const line = (i) => `- ${i.key}${i.sourceRef ? `\uFF08${i.sourceRef.ref}\uFF09` : ""} ${i.title} \xB7 ${projectName(i.projectId)}${i.timesheet ? ` \xB7 ${i.timesheet.hours}h` : ""}${i.mr ? ` \xB7 MR !${i.mr.iid}` : ""}`;
     const hours = used.reduce((n, i) => n + (i.timesheet?.hours ?? 0), 0);
     const description = [
-      `\u7EDF\u8BA1\u533A\u95F4\uFF1A${day2(mon)} ~ ${day2(sun)}\uFF08\u6765\u81EA\u7814\u53D1\u5DE5\u4F5C\u53F0\u7684\u4EFB\u52A1\uFF09\u3002`,
+      `\u7EDF\u8BA1\u533A\u95F4\uFF1A${day3(mon)} ~ ${day3(sun)}\uFF08\u6765\u81EA\u7814\u53D1\u5DE5\u4F5C\u53F0\u7684\u4EFB\u52A1\uFF09\u3002`,
       ...groups.filter(([, l]) => l.length).flatMap(([name, l]) => ["", `## ${name}\uFF08${l.length}\uFF09`, ...l.map(line)]),
       "",
       `\u5DF2\u586B\u62A5\u5DE5\u65F6\u5408\u8BA1\uFF1A${hours}h`
@@ -2071,6 +2173,52 @@ ${summary.slice(0, 4e3)}`,
       initDemoRepo(p.cwd);
       if (p.name.endsWith("payment-core") && p.testCmd === void 0) this.saveProject({ ...p, testCmd: "node --test" });
     }
+  }
+  // ---------- statistics ----------
+  stats() {
+    return computeStats(this.store.data, this.clock());
+  }
+  /** Per-card rows for the local CSV / JSON export. */
+  exportCards() {
+    const rows = exportRows(this.store.data);
+    return { rows, csv: toCsv(rows) };
+  }
+  /** Exactly what an anonymous report would send; shown to the user before anything is ever sent. */
+  statsPayload() {
+    let clientId = this.store.data.clientId;
+    if (!clientId) {
+      clientId = randomUUID();
+      this.store.update((d) => {
+        d.clientId = clientId;
+      });
+    }
+    return anonymousPayload(this.stats(), clientId, this.version, new Set(this.store.data.agents.filter((a) => a.builtin).map((a) => a.id)));
+  }
+  /** Send the anonymous report now. Needs an address; `force` ignores the on/off switch (the 立即上报 button). */
+  async reportStats(force = false) {
+    const s = this.settings();
+    if (!s.statsReportUrl) throw new WorkbenchError("invalid", "\u8FD8\u6CA1\u6709\u586B\u5199\u4E0A\u62A5\u5730\u5740\uFF08\u8BBE\u7F6E \u2192 \u63D2\u4EF6\u8BBE\u7F6E \u2192 \u7EDF\u8BA1\u4E0E\u4E0A\u62A5\uFF09");
+    if (!force && !s.statsReportEnabled) throw new WorkbenchError("invalid", "\u533F\u540D\u4E0A\u62A5\u6CA1\u6709\u5F00\u542F");
+    const at = new Date(this.clock()).toISOString();
+    let result;
+    try {
+      const res = await this.fetch(s.statsReportUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(this.statsPayload()), signal: AbortSignal.timeout(8e3) });
+      result = res.ok ? { at, ok: true } : { at, ok: false, error: `HTTP ${res.status}` };
+    } catch (e) {
+      result = { at, ok: false, error: String(e.message ?? e) };
+    }
+    this.store.update((d) => {
+      d.statsReport = result;
+    });
+    return result;
+  }
+  /** Called from the Host's timer: report at most once a day, and only when switched on. Failures are recorded, never thrown. */
+  async maybeReportStats() {
+    const s = this.settings(), last = this.store.data.statsReport;
+    if (!s.statsReportEnabled || !s.statsReportUrl) return;
+    if (last && this.clock() - Date.parse(last.at) < 24 * 36e5) return;
+    await this.reportStats().catch(() => {
+    });
   }
   // ---------- first-run guide ----------
   onboardingRoots() {
@@ -2434,6 +2582,7 @@ function apply(ctx) {
   const wb = new Workbench({
     store: new Store(defaultDataPath()),
     driver,
+    version: true ? "0.1.0" : "dev",
     // Credentials are resolved per call and only ever used inside the connectors (never logged or sent to the page).
     creds: async (name) => (await ctx.credentials.resolve(name))?.value,
     // The settings page stores into DSH's credential store (private file under ~/.dsh); values never go back to the page.
@@ -2449,6 +2598,7 @@ function apply(ctx) {
   let stopped = false;
   let timer;
   const loop = () => {
+    void wb.maybeReportStats();
     wb.tick().catch((e) => ctx.logger.warn("workbench: auto-run tick failed", e)).finally(() => {
       if (!stopped) timer = setTimeout(loop, wb.settings().autoRunPollSeconds * 1e3);
     });
@@ -2461,6 +2611,7 @@ function apply(ctx) {
     return driver.disposePresets();
   });
   const state = async () => ({
+    version: wb.version,
     issues: wb.listIssues(),
     runs: wb.listRuns(),
     agents: wb.listAgents(),
@@ -2509,6 +2660,15 @@ function apply(ctx) {
         return await wb.scanRepos(Array.isArray(p.roots) ? p.roots.map(String) : []);
       case "onboarding.import":
         return wb.importRepos(Array.isArray(p.items) ? p.items : []);
+      case "stats.get":
+        return wb.stats();
+      case "stats.payload":
+        return { payload: wb.statsPayload(), last: wb.store.data.statsReport };
+      case "stats.report":
+        return await wb.reportStats(true);
+      // explicit click: sends even when the daily switch is off
+      case "stats.export":
+        return wb.exportCards();
       case "sparkin.info":
         return await wb.sparkinInfo();
       case "timesheet.report":

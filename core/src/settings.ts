@@ -29,6 +29,9 @@ export interface PluginSettings {
   zentaoWriteBack: 'confirm' | 'auto'
   /** The first-run guide has been completed or skipped. */
   onboarded: boolean
+  /** Anonymous usage counts are sent to `statsReportUrl` about once a day. Off until the user turns it on and sets an address. */
+  statsReportEnabled: boolean
+  statsReportUrl: string
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -37,6 +40,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   defaultAgents: { zentao: 'fullstack', gitlab: 'reviewer', jenkins: 'build-fixer', sparkin: 'fullstack', manual: 'fullstack' },
   isolateByDefault: true, branchPrefix: 'wb/', autoTestOnReview: true, testTimeoutSeconds: 600,
   autoDoneOnPass: true, zentaoWriteBack: 'confirm', onboarded: false,
+  statsReportEnabled: false, statsReportUrl: '',
 }
 
 const num = (v: unknown, lo: number, hi: number, fallback: number, step = 1) => {
@@ -66,5 +70,7 @@ export function normalizeSettings(input: Partial<PluginSettings> | undefined): P
     autoDoneOnPass: typeof i.autoDoneOnPass === 'boolean' ? i.autoDoneOnPass : d.autoDoneOnPass,
     zentaoWriteBack: i.zentaoWriteBack === 'auto' ? 'auto' : 'confirm',
     onboarded: i.onboarded === true,
+    statsReportEnabled: i.statsReportEnabled === true,
+    statsReportUrl: typeof i.statsReportUrl === 'string' && /^https?:\/\/\S+$/.test(i.statsReportUrl.trim()) ? i.statsReportUrl.trim() : '',
   }
 }

@@ -122,7 +122,7 @@ function General({ p }: { p: PageProps }) {
       <input className="wb-input" type="number" min={min} max={max} step={step} value={String(f[k] as number)} onChange={(e) => set(k, Number(e.target.value) as never)} />
       <div className="wb-sub" style={{ marginTop: 3 }}>{hint}（{min}–{max}）</div></div>
   )
-  const check = (k: 'isolateByDefault' | 'autoTestOnReview' | 'autoDoneOnPass', label: string, hint: string) => (
+  const check = (k: 'isolateByDefault' | 'autoTestOnReview' | 'autoDoneOnPass' | 'statsReportEnabled', label: string, hint: string) => (
     <label className="wb-pick" style={{ alignItems: 'flex-start' }}><input type="checkbox" checked={f[k]} onChange={(e) => set(k, e.target.checked)} />
       <span><b>{label}</b><div className="wb-sub">{hint}</div></span></label>
   )
@@ -165,6 +165,12 @@ function General({ p }: { p: PageProps }) {
           <option value="confirm">确认后回写（推荐：显示评论草稿，你点了才发送）</option>
           <option value="auto">自动回写（已完成即评论并改为已解决，不再确认）</option></select>
         <div className="wb-sub" style={{ marginTop: 3 }}>回写 = 给禅道 Bug 加评论并改为「已解决」；只对 Bug 生效，需要先配置禅道账号。</div></div>
+
+      <h4 className="wb-sec">统计与上报</h4>
+      <div className="wb-field"><label>匿名统计上报地址</label>
+        <input className="wb-input" value={f.statsReportUrl} onChange={(e) => set('statsReportUrl', e.target.value)} placeholder="留空 = 不上报，例如 https://stats.example.com/workbench" />
+        <div className="wb-sub" style={{ marginTop: 3 }}>只接受 http(s) 地址。上报内容在「统计」页可以先查看：只有汇总数字，不含任务标题、编号、路径和人名。</div></div>
+      {check('statsReportEnabled', '每天自动上报一次', '需要先填写上面的地址；关闭时只有你在「统计」页点「立即上报」才会发送')}
 
       <h4 className="wb-sec">附件、搜索与工时</h4>
       {n('maxUploadMB', '附件大小上限（MB）', '任务描述里上传的图片和文档，单个文件的上限', 1, 200)}
