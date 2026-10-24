@@ -40,7 +40,10 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
     try { setState(await rpc<State>('state')); setError(undefined) } catch (e) { setError((e as Error).message) }
   }, [])
   const loadTodos = useCallback(async () => {
-    try { setTodos(await rpc<TodoResult>('todos.list')); setTodosAt(new Date()) } catch (e) { setError((e as Error).message) }
+    try {
+      const r = await rpc<TodoResult>('todos.list'); setTodos(r); setTodosAt(new Date())
+      if (r.cleanedDemo) notify(`已清理 ${r.cleanedDemo} 张演示卡片（这个系统已接入真实数据；开过工或编辑过的演示卡片保留，带「演示」标记）`)
+    } catch (e) { setError((e as Error).message) }
   }, [])
   const notify = useCallback((msg: string) => {
     setToast(msg); clearTimeout(timer.current); timer.current = setTimeout(() => setToast(undefined), 4500)

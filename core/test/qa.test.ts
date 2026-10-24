@@ -345,3 +345,58 @@ test('F4 the weekly trend and the 周报 follow doneAt, not the last update', as
   wb.store.update((x) => { x.issues.find((y) => y.id === k.id)!.doneAt = new Date(Date.now() - 20 * 86400_000).toISOString() })
   await assert.rejects(wb.buildReport('week'), /还没有可汇总/)
 })
+
+/** Zentao that has joined late: one real bug (BUG-9) assigned to `a`, products 12/5/8/9 otherwise empty. */
+const realZentao = (async (u: string) => {
+  if (u.endsWith('/tokens')) return Response.json({ token: 't' })
+  if (/products\/12\/bugs/.test(u)) return Response.json({ bugs: [{ id: 9, title: '真实缺陷', pri: 2, status: 'active', assignedTo: 'a', steps: '' }] })
+  return Response.json({ bugs: [], tasks: [], executions: [] })
+}) as typeof fetch
+
+test('F2 the first real pull from a source clears its untouched demo cards; started, edited or finished ones stay, marked 演示', async () => {
+  const creds: Record<string, string> = {}
+  const { wb, driver } = setup(creds, realZentao)
+  const t0 = await wb.listTodos() // nothing configured: everything is demo, and every to-do has a card
+  assert.equal(t0.cleanedDemo, undefined)
+  const demoZentaoCards = () => wb.listIssues().filter((i) => i.sourceRef?.source === 'zentao')
+  assert.ok(demoZentaoCards().length >= 5 && demoZentaoCards().every((i) => i.demo))
+  const byRef = (r: string) => wb.listIssues().find((i) => i.sourceRef?.ref === r)!
+  await wb.startIssue(byRef('BUG-4821').id) // started
+  driver.emit({ type: 'turn.completed', runId: wb.listRuns().at(-1)!.id, status: 'completed' })
+  wb.updateIssue(byRef('BUG-4809').id, { title: '我改过标题' }) // edited
+  wb.setStatus(byRef('BUG-4815').id, 'done') // finished
+  const gitlabBefore = wb.listIssues().filter((i) => i.sourceRef?.source === 'gitlab').length
+  assert.deepEqual(wb.demoLeftovers(), []) // still in demo mode: these are the cards in use
+
+  Object.assign(creds, zentaoCreds) // Zentao is connected
+  const t1 = await wb.listTodos()
+  assert.equal(t1.sources.zentao.mode, 'live')
+  const left = demoZentaoCards().filter((i) => i.demo).map((i) => i.sourceRef!.ref).sort()
+  assert.deepEqual(left, ['BUG-4809', 'BUG-4815', 'BUG-4821']) // only the three that were used
+  assert.equal(t1.cleanedDemo, 4) // BUG-4818, REQ-316, TASK-902, DOC-77: the untouched ones
+  assert.ok(demoZentaoCards().some((i) => i.sourceRef!.ref === 'BUG-9' && !i.demo)) // the real bug got its card
+  assert.equal(wb.listIssues().filter((i) => i.sourceRef?.source === 'gitlab').length, gitlabBefore) // other sources are untouched
+  assert.deepEqual([...wb.demoLeftovers()].sort(), left.map((r) => byRef(r).id).sort())
+  const t2 = await wb.listTodos()
+  assert.equal(t2.cleanedDemo, undefined) // told once
+})
+
+test('F2b 清理演示卡片 removes the leftovers of sources that are live, but not one with a running session or the demo of a source still in demo mode', async () => {
+  const creds: Record<string, string> = {}
+  const { wb, driver } = setup(creds, realZentao)
+  await wb.listTodos()
+  const card = (r: string) => wb.listIssues().find((i) => i.sourceRef?.ref === r)
+  await wb.startIssue(card('BUG-4821')!.id)
+  driver.emit({ type: 'turn.completed', runId: wb.listRuns().at(-1)!.id, status: 'completed' }) // finished its run
+  wb.updateIssue(card('BUG-4809')!.id, { title: '改过' })
+  await wb.startIssue(card('BUG-4818')!.id) // still running
+  Object.assign(creds, zentaoCreds)
+  await wb.listTodos() // the untouched ones go by themselves
+  const leftovers = () => wb.listIssues().filter((i) => i.demo && i.sourceRef?.source === 'zentao').map((i) => i.sourceRef!.ref).sort()
+  assert.deepEqual(leftovers(), ['BUG-4809', 'BUG-4818', 'BUG-4821'])
+  const gitlab = wb.listIssues().filter((i) => i.sourceRef?.source === 'gitlab').length
+  assert.equal(wb.cleanDemoCards(), 2) // 4821 and 4809; 4818 has a session working
+  assert.deepEqual(leftovers(), ['BUG-4818'])
+  assert.equal(wb.listIssues().filter((i) => i.sourceRef?.source === 'gitlab').length, gitlab) // GitLab is still demo
+  assert.equal(wb.cleanDemoCards(), 0)
+})

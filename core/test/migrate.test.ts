@@ -64,3 +64,18 @@ test('F3 autoDoneOnPass: off for a fresh install; an existing file keeps what it
   assert.equal(open({ settings: { autoDoneOnPass: false } }), false) // an explicit choice is never changed
   assert.equal(open({ settings: { autoDoneOnPass: true } }), true)
 })
+
+test('F2 v2 -> v3: cards made from the built-in demo to-dos are marked demo; real ones and manual ones are not', async () => {
+  const { demoZentao } = await import('../fixtures/demo.ts')
+  const path = tmp()
+  const card = (id: string, title: string, sourceRef?: object, description = '') => ({ id, key: id, title, description, acceptance: [], status: 'backlog', createdAt: 'x', updatedAt: 'x', sourceRef })
+  const bug = demoZentao[0]!
+  writeFileSync(path, JSON.stringify({ version: 2, seq: 3, issueSeq: 3, projects: [], agents: [], runs: [], issues: [
+    card('demo', bug.title, { source: 'zentao', ref: bug.ref }),
+    card('edited', '我改了标题', { source: 'zentao', ref: bug.ref }, bug.description), // title edited, background still the demo's
+    card('real', '线上真实缺陷', { source: 'zentao', ref: bug.ref }, '真实背景'), // same number, real content
+    card('manual', bug.title),
+  ] }))
+  const by = Object.fromEntries(new Store(path).data.issues.map((i) => [i.id, i.demo]))
+  assert.deepEqual(by, { demo: true, edited: true, real: undefined, manual: undefined })
+})

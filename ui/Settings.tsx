@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { notificationState, testNotification } from './notify.ts'
-import { rpc, type ConnectionView, type PluginSettings } from './api.ts'
+import { rpc, type ConnectionView, type Issue, type PluginSettings } from './api.ts'
 import type { PageProps } from './App.tsx'
 
 const { useState, useEffect } = React
@@ -108,6 +108,25 @@ export function Settings(p: PageProps & { reloadTodos: () => Promise<void> }) {
   )
 }
 
+/** Demo cards that outlived the demo: shown only when there are some. Clearing asks first, since it also removes started / edited ones. */
+function DemoCards({ p }: { p: PageProps }) {
+  const left = p.state.demoLeft ?? []
+  if (!left.length) return null
+  const mine = left.map((id) => p.state.issues.find((i) => i.id === id)).filter(Boolean) as Issue[]
+  const used = mine.filter((i) => i.status === 'in_progress').length
+  async function clean() {
+    if (!confirm(`清理 ${left.length - used} 张演示卡片？它们来自已接入真实数据的系统，其中可能有你开过工或编辑过的，删除后不可恢复。正在进行中的不会被清理。`)) return
+    try { p.notify(`已清理 ${await rpc<number>('demo.clean')} 张演示卡片`); await p.refresh() } catch (e) { p.notify((e as Error).message) }
+  }
+  return (
+    <>
+      <h4 className="wb-sec">演示卡片</h4>
+      <div className="wb-sub" style={{ marginBottom: 6 }}>看板上还有 {left.length} 张来自演示数据的卡片（{mine.map((i) => i.key).join('、')}），它们的系统已经接入真实数据。没开过工、没编辑过的演示卡片已经自动清理；这些是开过工或编辑过的，保留并带「演示」标记。</div>
+      <button className="wb-btn" disabled={left.length === used} onClick={() => { void clean() }}>清理演示卡片</button>
+    </>
+  )
+}
+
 const AGENT_SOURCES = [['zentao', '禅道'], ['gitlab', 'GitLab'], ['jenkins', 'Jenkins'], ['sparkin', 'Sparkin'], ['manual', '手工任务']] as const
 
 /** Everything tunable about the plugin itself; saved in the data file and applied immediately. */
@@ -136,6 +155,7 @@ function General({ p }: { p: PageProps }) {
       <div className="wb-row"><h3 style={{ margin: 0 }}>插件设置</h3></div>
       <div className="wb-sub" style={{ margin: '6px 0 14px' }}>这些值原来写在代码里，现在都能在这里调整；保存后立即生效，并保存在工作台的数据文件里。</div>
 
+      <DemoCards p={p} />
       <h4 className="wb-sec">自动运行</h4>
       {n('autoRunConcurrency', '同时运行的智能体数', '看板「自动运行」时，一次让几个智能体同时工作；1 表示严格按顺序一个一个来', 1, 5)}
       {n('autoRunPollSeconds', '队列检查间隔（秒）', '自动运行时多久检查一次待办队列（会话结束和拖动卡片时会立即检查）', 2, 60)}

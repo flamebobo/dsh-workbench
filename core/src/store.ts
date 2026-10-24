@@ -1,6 +1,7 @@
 import { copyFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { isDemoItem } from '../fixtures/demo.ts'
 import type { Data } from './types.ts'
 
 /** `WORKBENCH_HOME` relocates the data dir (tests, a second DSH profile running side by side). */
@@ -24,6 +25,8 @@ const migrations: Record<number, (d: Data) => void> = {
   // inaccuracy doneAt exists to end for cards finished from now on.
   2: (d) => {
     for (const i of d.issues) if (i.status === 'done') i.doneAt ??= i.updatedAt
+    // cards made from the built-in demo to-dos get marked, so they can be told apart (and cleaned up) once a real system is connected
+    for (const i of d.issues) if (i.sourceRef && isDemoItem({ ...i.sourceRef, title: i.title, description: i.description })) i.demo = true
     // autoDoneOnPass used to default to on and now defaults to off: whoever never chose keeps the behaviour they had
     d.settings = { ...d.settings, autoDoneOnPass: d.settings?.autoDoneOnPass ?? true }
   },

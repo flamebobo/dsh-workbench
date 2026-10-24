@@ -135,3 +135,9 @@ export const demoSparkin: WorkItem[] = [
     related: [{ label: 'Sparkin 任务 SPK-2045', detail: '预估 12h' }], url: 'https://sparkin.example.com/task/SPK-2045',
   },
 ]
+
+export const DEMO_ITEMS: WorkItem[] = [...demoZentao, ...demoGitlab, ...demoJenkins, ...demoSparkin]
+
+/** Is this (a to-do, or a card's source + text) one of the built-in demo to-dos? Same source and number, and the same title or background. */
+export const isDemoItem = (x: { source: string; ref: string; title: string; description: string }) =>
+  DEMO_ITEMS.some((d) => d.source === x.source && d.ref === x.ref && (d.title === x.title || d.description === x.description))

@@ -250,6 +250,248 @@ var WB = (() => {
   // ui/Timesheet.tsx
   var React = __toESM(__require("react"), 1);
 
+  // core/fixtures/demo.ts
+  var demoZentao = [
+    {
+      ref: "BUG-4821",
+      source: "zentao",
+      priority: "P0",
+      project: "\u4E91\u652F\u4ED8 / payment-core",
+      zentaoProductId: 12,
+      title: "\u652F\u4ED8\u56DE\u8C03\u5E42\u7B49\u4FEE\u590D",
+      statusText: "\u8FDB\u884C\u4E2D",
+      due: "2026-10-23",
+      description: "\u7070\u5EA6\u73AF\u5883\u51FA\u73B0\u540C\u4E00\u7B14\u652F\u4ED8\u56DE\u8C03\u91CD\u590D\u5165\u8D26 3 \u6B21\uFF0C\u56DE\u8C03\u91CD\u8BD5\u8BF7\u6C42\u4F1A\u518D\u6B21\u5199\u5165\u6D41\u6C34\u3002\u9700\u5728\u4E0D\u5F71\u54CD\u6B63\u5E38\u56DE\u8C03\u7684\u524D\u63D0\u4E0B\u8865\u9F50\u5E42\u7B49\u6821\u9A8C\uFF0C\u91CD\u590D\u8BF7\u6C42\u76F4\u63A5\u8FD4\u56DE\u5DF2\u5904\u7406\u7ED3\u679C\u3002",
+      acceptance: ["\u91CD\u590D\u56DE\u8C03\u4E0D\u91CD\u590D\u5165\u8D26\uFF08\u4EE5\u56DE\u8C03\u6D41\u6C34\u53F7 + \u5546\u6237\u8BA2\u5355\u53F7\u4E3A\u5E42\u7B49\u952E\uFF09", "\u8865\u5355\u573A\u666F\u5E42\u7B49\u8986\u76D6 \u2265 3 \u4E2A\u573A\u666F\u5E76\u6709\u5355\u6D4B", "\u7070\u5EA6 24h \u65E0\u91CD\u590D\u5165\u8D26\u544A\u8B66\uFF0C\u63D0\u4F9B\u56DE\u6EDA\u5F00\u5173"],
+      related: [
+        { label: "\u5206\u652F fix/pay-callback-idempotent", detail: "payment-core" },
+        { label: "Jenkins payment-core #471", detail: "\u4F9D\u8D56\u4E0B\u8F7D\u8D85\u65F6\uFF08\u5DF2\u91CD\u8BD5\uFF09" },
+        { label: "MR !11287", detail: "teleone-order \u8BA2\u5355\u62C6\u5206\u91CD\u6784\uFF08\u76F8\u5173\u6539\u52A8\uFF09" }
+      ],
+      url: "https://zentao.example.com/bug-view-4821.html"
+    },
+    {
+      ref: "REQ-316",
+      source: "zentao",
+      priority: "P2",
+      project: "\u6570\u636E\u4E2D\u5FC3 / report",
+      title: "\u9700\u6C42\u6F84\u6E05\uFF1A\u62A5\u8868\u5BFC\u51FA\u5B57\u6BB5\u53E3\u5F84",
+      statusText: "\u5F85\u6F84\u6E05",
+      due: "2026-10-24",
+      description: "\u8FD0\u8425\u63D0\u51FA\u62A5\u8868\u5BFC\u51FA\u9700\u589E\u52A0\u300C\u5B9E\u6536\u91D1\u989D\u300D\u4E0E\u300C\u9000\u6B3E\u91D1\u989D\u300D\u4E24\u5217\uFF0C\u53E3\u5F84\u4E0E\u8D22\u52A1\u5BF9\u8D26\u8868\u4E0D\u4E00\u81F4\u3002\u9700\u8981\u4E0E\u4EA7\u54C1\u786E\u8BA4\u53E3\u5F84\u5E76\u8F93\u51FA\u6F84\u6E05\u7ED3\u8BBA\uFF0C\u5FC5\u8981\u65F6\u8865\u5145\u5230\u9700\u6C42\u5355\u3002",
+      acceptance: ["\u5217\u51FA\u4E24\u5217\u7684\u53E3\u5F84\u5B9A\u4E49\u4E0E\u6570\u636E\u6765\u6E90\u8868", "\u6807\u6CE8\u4E0E\u8D22\u52A1\u5BF9\u8D26\u8868\u7684\u5DEE\u5F02\u70B9", "\u7ED9\u51FA\u7814\u53D1\u6539\u52A8\u8303\u56F4\u8BC4\u4F30"],
+      related: [{ label: "\u9700\u6C42\u5355 REQ-316", detail: "\u4EA7\u54C1\uFF1A\u674E\u8587" }],
+      url: "https://zentao.example.com/story-view-316.html"
+    },
+    {
+      ref: "BUG-4809",
+      source: "zentao",
+      priority: "P2",
+      project: "\u8BA4\u8BC1\u4E2D\u5FC3 / auth",
+      zentaoProductId: 8,
+      title: "\u7F3A\u9677\u56DE\u5F52\uFF1A\u767B\u5F55\u8D85\u65F6\u63D0\u793A\u6587\u6848",
+      statusText: "\u5F85\u9A8C\u8BC1",
+      due: "2026-10-26",
+      description: "\u767B\u5F55\u4F1A\u8BDD\u8FC7\u671F\u540E\u63D0\u793A\u300C\u7CFB\u7EDF\u9519\u8BEF\u300D\uFF0C\u5E94\u63D0\u793A\u300C\u767B\u5F55\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55\u300D\u3002\u6D4B\u8BD5\u5DF2\u9A8C\u8BC1\u4FEE\u590D\uFF0C\u9700\u8865\u5145\u56DE\u5F52\u7528\u4F8B\u3002",
+      acceptance: ["\u8FC7\u671F\u63D0\u793A\u6587\u6848\u4E0E\u4EA7\u54C1\u786E\u8BA4\u4E00\u81F4", "\u8865\u5145\u4E00\u6761\u767B\u5F55\u8FC7\u671F\u7684 e2e \u56DE\u5F52\u7528\u4F8B"],
+      related: [{ label: "\u5206\u652F fix/login-expired-tip", detail: "auth-center" }],
+      url: "https://zentao.example.com/bug-view-4809.html"
+    },
+    {
+      ref: "TASK-902",
+      source: "zentao",
+      priority: "P1",
+      project: "\u4E91\u652F\u4ED8 / api",
+      zentaoProductId: 12,
+      title: "\u63A5\u53E3\u8054\u8C03\uFF1A\u9000\u6B3E\u67E5\u8BE2\u63A5\u53E3\u5BF9\u63A5",
+      statusText: "\u8FDB\u884C\u4E2D",
+      due: "2026-10-27",
+      description: "\u4E0E\u6E20\u9053\u65B9\u8054\u8C03\u9000\u6B3E\u7ED3\u679C\u67E5\u8BE2\u63A5\u53E3\uFF0C\u5904\u7406 5 \u79CD\u9000\u6B3E\u72B6\u6001\u6620\u5C04\uFF0C\u8D85\u65F6\u4E0E\u672A\u77E5\u72B6\u6001\u9700\u8981\u91CD\u8BD5\u5E76\u843D\u5E93\u544A\u8B66\u3002",
+      acceptance: ["5 \u79CD\u6E20\u9053\u72B6\u6001\u5168\u90E8\u6620\u5C04\u5230\u5185\u90E8\u72B6\u6001\u673A", "\u8D85\u65F6\u91CD\u8BD5 3 \u6B21\u540E\u843D\u544A\u8B66\u8868", "\u8054\u8C03\u8BB0\u5F55\u5199\u5165\u6587\u6863"],
+      related: [{ label: "\u6E20\u9053\u6587\u6863 v2.3", detail: "\u9000\u6B3E\u67E5\u8BE2" }],
+      url: "https://zentao.example.com/task-view-902.html"
+    },
+    {
+      ref: "BUG-4815",
+      source: "zentao",
+      priority: "P2",
+      project: "\u8BA2\u5355\u670D\u52A1 / teleone-order",
+      zentaoProductId: 5,
+      title: "\u7F3A\u9677\uFF1A\u8BA2\u5355\u5217\u8868\u5206\u9875\u8D8A\u754C",
+      statusText: "\u5F85\u9A8C\u8BC1",
+      due: "2026-10-28",
+      description: "\u8BA2\u5355\u5217\u8868\u5728\u6700\u540E\u4E00\u9875\u70B9\u51FB\u4E0B\u4E00\u9875\u65F6\u8FD4\u56DE\u7A7A\u6570\u7EC4\u4E14\u603B\u6570\u5F02\u5E38\uFF08total \u88AB\u91CD\u7F6E\u4E3A 0\uFF09\u3002",
+      acceptance: ["\u6700\u540E\u4E00\u9875\u70B9\u51FB\u4E0B\u4E00\u9875\u4FDD\u6301\u5F53\u524D\u9875\u5E76\u63D0\u793A", "total \u4E0D\u88AB\u91CD\u7F6E", "\u8865\u5145\u5206\u9875\u8FB9\u754C\u5355\u6D4B"],
+      related: [{ label: "\u5206\u652F fix/order-pagination", detail: "teleone-order" }],
+      url: "https://zentao.example.com/bug-view-4815.html"
+    },
+    {
+      ref: "BUG-4818",
+      source: "zentao",
+      priority: "P2",
+      project: "\u6570\u636E\u4E2D\u5FC3 / export",
+      zentaoProductId: 9,
+      title: "\u7F3A\u9677\uFF1A\u5BFC\u51FA\u4EFB\u52A1\u5E76\u53D1\u4E0A\u9650\u62A5\u9519",
+      statusText: "\u8FDB\u884C\u4E2D",
+      due: "2026-10-27",
+      description: "\u540C\u65F6\u53D1\u8D77\u8D85\u8FC7 5 \u4E2A\u5BFC\u51FA\u4EFB\u52A1\u65F6\uFF0C\u7B2C 6 \u4E2A\u4EFB\u52A1\u76F4\u63A5\u8FD4\u56DE 500\uFF0C\u5E94\u6392\u961F\u7B49\u5F85\u3002",
+      acceptance: ["\u8D85\u51FA\u5E76\u53D1\u4E0A\u9650\u7684\u4EFB\u52A1\u8FDB\u5165\u6392\u961F\u72B6\u6001", "\u961F\u5217\u957F\u5EA6\u4E0E\u7B49\u5F85\u65F6\u95F4\u5728\u9875\u9762\u53EF\u89C1"],
+      related: [],
+      url: "https://zentao.example.com/bug-view-4818.html"
+    },
+    {
+      ref: "DOC-77",
+      source: "zentao",
+      priority: "P3",
+      project: "\u4E91\u652F\u4ED8 / docs",
+      zentaoProductId: 12,
+      title: "\u6587\u6863\uFF1A\u652F\u4ED8\u56DE\u8C03\u65F6\u5E8F\u56FE\u8865\u5145",
+      statusText: "\u5F85\u5904\u7406",
+      due: void 0,
+      description: "\u8865\u5145\u56DE\u8C03\u91CD\u8BD5\u3001\u8865\u5355\u3001\u5E42\u7B49\u5224\u65AD\u4E09\u4E2A\u573A\u666F\u7684\u65F6\u5E8F\u56FE\uFF0C\u653E\u5165 payment-core/docs\u3002",
+      acceptance: ["\u4E09\u5F20\u65F6\u5E8F\u56FE\uFF08mermaid\uFF09", "\u4E0E\u4EE3\u7801\u884C\u4E3A\u4E00\u81F4"],
+      related: [],
+      url: "https://zentao.example.com/task-view-77.html"
+    }
+  ];
+  var demoGitlab = [
+    {
+      ref: "!11287",
+      source: "gitlab",
+      priority: "P1",
+      project: "\u8BA2\u5355\u670D\u52A1 / teleone-order",
+      gitlabProjectId: 101,
+      title: "MR !11287 \u4EE3\u7801\u8BC4\u5BA1\uFF1A\u8BA2\u5355\u62C6\u5206\u91CD\u6784",
+      statusText: "\u5F85\u8BC4\u5BA1",
+      due: "2026-10-24",
+      description: "\u5F20\u4F1F \u63D0\u4EA4\u4E86 refactor/order-split \u2192 master\uFF1A\u62C6\u5206\u8BA2\u5355\u805A\u5408\u4E3A\u4E3B\u5355\u4E0E\u5B50\u5355\uFF0C\u6D89\u53CA 38 \u4E2A\u6587\u4EF6\u3002\u9700\u8BC4\u5BA1\u4E8B\u52A1\u8FB9\u754C\u4E0E\u5386\u53F2\u6570\u636E\u517C\u5BB9\u3002",
+      acceptance: ["\u6307\u51FA\u4E8B\u52A1\u8FB9\u754C\u4E0E\u5E42\u7B49\u95EE\u9898\uFF0C\u7ED9\u51FA\u53EF\u6267\u884C\u7684\u4FEE\u6539\u5EFA\u8BAE", "\u786E\u8BA4\u5386\u53F2\u8BA2\u5355\u6570\u636E\u8FC1\u79FB\u811A\u672C\u53EF\u56DE\u6EDA", "\u4E0D\u76F4\u63A5\u4FEE\u6539\u4EE3\u7801\uFF0C\u8BC4\u5BA1\u610F\u89C1\u5199\u6210\u6E05\u5355"],
+      related: [{ label: "refactor/order-split \u2192 master", detail: "\u5F20\u4F1F" }, { label: "\u5173\u8054\u7F3A\u9677 BUG-4821" }],
+      url: "https://gitlab.example.com/teleone/teleone-order/-/merge_requests/11287"
+    },
+    {
+      ref: "!11290",
+      source: "gitlab",
+      priority: "P2",
+      project: "\u8BA2\u5355\u670D\u52A1 / teleone-order",
+      gitlabProjectId: 101,
+      title: "MR !11290 \u8BC4\u5BA1\uFF1A\u7F13\u5B58\u952E\u89C4\u8303\u8C03\u6574",
+      statusText: "\u5F85\u8BC4\u5BA1",
+      due: "2026-10-25",
+      description: "\u738B\u78CA \u63D0\u4EA4\u4E86 feat/cache-key \u2192 master\uFF1A\u7EDF\u4E00\u7F13\u5B58\u952E\u524D\u7F00\u5E76\u589E\u52A0\u7248\u672C\u53F7\u3002",
+      acceptance: ["\u786E\u8BA4\u65E7\u952E\u7684\u517C\u5BB9\u4E0E\u56DE\u6536\u7B56\u7565", "\u8BC4\u5BA1\u547D\u540D\u89C4\u8303\u4E0E\u6587\u6863"],
+      related: [{ label: "feat/cache-key \u2192 master", detail: "\u738B\u78CA" }],
+      url: "https://gitlab.example.com/teleone/teleone-order/-/merge_requests/11290"
+    },
+    {
+      ref: "!11292",
+      source: "gitlab",
+      priority: "P2",
+      project: "\u57FA\u7840\u8BBE\u65BD / infrastructure",
+      gitlabProjectId: 77,
+      title: "MR !11292 \u8BC4\u5BA1\uFF1A\u7F51\u5173\u9650\u6D41\u914D\u7F6E",
+      statusText: "\u5F85\u8BC4\u5BA1",
+      due: "2026-10-28",
+      description: "\u8D75\u654F \u63D0\u4EA4\u4E86 feat/gateway-ratelimit \u2192 master\uFF1A\u65B0\u589E\u6309\u79DF\u6237\u9650\u6D41\u914D\u7F6E\u3002",
+      acceptance: ["\u786E\u8BA4\u9650\u6D41\u9608\u503C\u9ED8\u8BA4\u503C\u4E0E\u964D\u7EA7\u884C\u4E3A", "\u68C0\u67E5\u914D\u7F6E\u70ED\u66F4\u65B0\u662F\u5426\u5B89\u5168"],
+      related: [{ label: "feat/gateway-ratelimit \u2192 master", detail: "\u8D75\u654F" }],
+      url: "https://gitlab.example.com/teleone/infrastructure/-/merge_requests/11292"
+    }
+  ];
+  var demoJenkins = [
+    {
+      ref: "order-service #2145",
+      source: "jenkins",
+      priority: "P1",
+      project: "\u8BA2\u5355\u670D\u52A1 / order-service",
+      jenkinsJob: "order-service",
+      title: "\u6784\u5EFA\u5931\u8D25\uFF1Aorder-service #2145\uFF08\u5355\u6D4B 3 \u4E2A\u5931\u8D25\uFF09",
+      statusText: "\u5931\u8D25",
+      due: "2026-10-23",
+      description: "order-service \u6700\u8FD1\u4E00\u6B21\u6784\u5EFA #2145 \u5931\u8D25\uFF1AOrderSplitServiceTest \u4E2D 3 \u4E2A\u7528\u4F8B\u65AD\u8A00\u5931\u8D25\uFF0C\u7591\u4F3C\u4E0E\u62C6\u5355\u91CD\u6784\u5206\u652F\u6709\u5173\u3002",
+      acceptance: ["\u5B9A\u4F4D 3 \u4E2A\u5931\u8D25\u7528\u4F8B\u7684\u6839\u56E0", "\u4FEE\u590D\u540E\u672C\u5730 mvn test \u901A\u8FC7", "\u8BF4\u660E\u662F\u5426\u9700\u8981\u91CD\u65B0\u89E6\u53D1\u6784\u5EFA"],
+      related: [{ label: "order-service #2145", detail: "FAILURE" }, { label: "MR !11287", detail: "\u6700\u8FD1\u5408\u5165\u7684\u6539\u52A8" }],
+      url: "https://jenkins.example.com/job/order-service/2145/"
+    },
+    {
+      ref: "teleone-web #887",
+      source: "jenkins",
+      priority: "P2",
+      project: "\u524D\u7AEF / teleone-web",
+      jenkinsJob: "teleone-web",
+      title: "\u6784\u5EFA\u5931\u8D25\uFF1Ateleone-web #887\uFF08lint \u62A5\u9519\uFF09",
+      statusText: "\u5931\u8D25",
+      due: "2026-10-24",
+      description: "teleone-web #887 \u5728 lint \u9636\u6BB5\u5931\u8D25\uFF1Asrc/pages/order \u4E0B 4 \u5904 no-unused-vars \u4E0E 1 \u5904 import \u6392\u5E8F\u9519\u8BEF\u3002",
+      acceptance: ["\u4FEE\u590D\u5168\u90E8 lint \u62A5\u9519", "pnpm lint \u672C\u5730\u901A\u8FC7"],
+      related: [{ label: "teleone-web #887", detail: "FAILURE" }],
+      url: "https://jenkins.example.com/job/teleone-web/887/"
+    }
+  ];
+  var demoSparkin = [
+    {
+      ref: "SPK-2031",
+      source: "sparkin",
+      priority: "P1",
+      project: "\u4E91\u652F\u4ED8\u5E73\u53F0 \xB7 \u9700\u6C42\u5F00\u53D1",
+      sparkinProjectId: "SP-PAY",
+      sparkinTaskId: "SP-PAY-T2",
+      title: "\u6E20\u9053\u5BF9\u8D26\u62A5\u8868\u5F00\u53D1",
+      statusText: "\u8FDB\u884C\u4E2D",
+      due: "2026-10-30",
+      description: "\u6309\u6E20\u9053\u3001\u6309\u65E5\u7EF4\u5EA6\u751F\u6210\u5BF9\u8D26\u5DEE\u5F02\u62A5\u8868\uFF0C\u5DEE\u5F02\u660E\u7EC6\u53EF\u5BFC\u51FA\u3002\u6570\u636E\u6765\u6E90\u4E3A\u652F\u4ED8\u6D41\u6C34\u8868\u4E0E\u6E20\u9053\u8D26\u5355\u8868\u3002",
+      acceptance: ["\u6309\u6E20\u9053 + \u65E5\u671F\u7B5B\u9009\u5E76\u5C55\u793A\u5DEE\u5F02\u7B14\u6570\u4E0E\u91D1\u989D", "\u5DEE\u5F02\u660E\u7EC6\u53EF\u5BFC\u51FA CSV", "\u8865\u5145\u62A5\u8868\u53E3\u5F84\u7684\u5355\u5143\u6D4B\u8BD5"],
+      related: [{ label: "Sparkin \u4EFB\u52A1 SPK-2031", detail: "\u9884\u4F30 16h\uFF0C\u5DF2\u586B\u62A5 6h" }],
+      url: "https://sparkin.example.com/task/SPK-2031"
+    },
+    {
+      ref: "SPK-2034",
+      source: "sparkin",
+      priority: "P2",
+      project: "\u8BA2\u5355\u4E2D\u5FC3 \xB7 \u8054\u8C03\u4E0E\u6D4B\u8BD5",
+      sparkinProjectId: "SP-ORDER",
+      sparkinTaskId: "SP-ORDER-T5",
+      title: "\u8BA2\u5355\u53D6\u6D88\u6D41\u7A0B\u8054\u8C03\u4E0E\u6D4B\u8BD5",
+      statusText: "\u672A\u5F00\u59CB",
+      due: "2026-10-28",
+      description: "\u4E0E\u5E93\u5B58\u3001\u652F\u4ED8\u4E24\u4E2A\u4E0A\u4E0B\u6E38\u8054\u8C03\u8BA2\u5355\u53D6\u6D88\u6D41\u7A0B\uFF0C\u8986\u76D6\u5DF2\u652F\u4ED8\u53D6\u6D88\u3001\u8D85\u65F6\u81EA\u52A8\u53D6\u6D88\u3001\u90E8\u5206\u53D1\u8D27\u53D6\u6D88\u4E09\u79CD\u573A\u666F\u3002",
+      acceptance: ["\u4E09\u79CD\u53D6\u6D88\u573A\u666F\u8054\u8C03\u901A\u8FC7\u5E76\u7559\u6709\u7528\u4F8B\u8BB0\u5F55", "\u5E93\u5B58\u56DE\u8865\u4E0E\u9000\u6B3E\u72B6\u6001\u4E00\u81F4"],
+      related: [{ label: "Sparkin \u4EFB\u52A1 SPK-2034", detail: "\u9884\u4F30 8h" }],
+      url: "https://sparkin.example.com/task/SPK-2034"
+    },
+    {
+      ref: "SPK-2040",
+      source: "sparkin",
+      priority: "P2",
+      project: "\u57FA\u7840\u8BBE\u65BD \xB7 \u6587\u6863\u4E0E\u5468\u62A5",
+      sparkinProjectId: "SP-INFRA",
+      sparkinTaskId: "SP-INFRA-T6",
+      title: "10 \u6708\u7B2C 4 \u5468\u7814\u53D1\u5468\u62A5",
+      statusText: "\u672A\u5F00\u59CB",
+      due: "2026-10-25",
+      description: "\u6C47\u603B\u672C\u5468\u5DF2\u5B8C\u6210\u7684\u4EFB\u52A1\u3001\u5408\u5E76\u7684 MR\u3001\u6784\u5EFA\u60C5\u51B5\u4E0E\u4E0B\u5468\u8BA1\u5212\u3002",
+      acceptance: ["\u6309\u9879\u76EE\u5217\u51FA\u672C\u5468\u5B8C\u6210\u9879", "\u6807\u6CE8\u98CE\u9669\u4E0E\u4E0B\u5468\u8BA1\u5212"],
+      related: [{ label: "Sparkin \u4EFB\u52A1 SPK-2040", detail: "\u9884\u4F30 1h" }],
+      url: "https://sparkin.example.com/task/SPK-2040"
+    },
+    {
+      ref: "SPK-2045",
+      source: "sparkin",
+      priority: "P1",
+      project: "\u8BA4\u8BC1\u4E2D\u5FC3 \xB7 \u9700\u6C42\u5F00\u53D1",
+      sparkinProjectId: "SP-AUTH",
+      sparkinTaskId: "SP-AUTH-T2",
+      title: "\u767B\u5F55\u98CE\u63A7\u89C4\u5219\u63A5\u5165",
+      statusText: "\u672A\u5F00\u59CB",
+      due: "2026-10-29",
+      description: "\u767B\u5F55\u6D41\u7A0B\u63A5\u5165\u98CE\u63A7\u89C4\u5219\u670D\u52A1\uFF1A\u5F02\u5E38 IP / \u8BBE\u5907\u547D\u4E2D\u65F6\u8981\u6C42\u4E8C\u6B21\u9A8C\u8BC1\uFF0C\u89C4\u5219\u670D\u52A1\u4E0D\u53EF\u7528\u65F6\u964D\u7EA7\u653E\u884C\u5E76\u544A\u8B66\u3002",
+      acceptance: ["\u547D\u4E2D\u89C4\u5219\u65F6\u8981\u6C42\u4E8C\u6B21\u9A8C\u8BC1", "\u98CE\u63A7\u670D\u52A1\u8D85\u65F6 / \u62A5\u9519\u65F6\u964D\u7EA7\u653E\u884C\u5E76\u8BB0\u5F55\u544A\u8B66", "\u8865\u5145\u964D\u7EA7\u8DEF\u5F84\u7684\u5355\u6D4B"],
+      related: [{ label: "Sparkin \u4EFB\u52A1 SPK-2045", detail: "\u9884\u4F30 12h" }],
+      url: "https://sparkin.example.com/task/SPK-2045"
+    }
+  ];
+  var DEMO_ITEMS = [...demoZentao, ...demoGitlab, ...demoJenkins, ...demoSparkin];
+
   // core/src/sparkin.ts
   var KEYWORDS = { sparkin: "\u9700\u6C42\u5F00\u53D1", zentao: "\u7F3A\u9677\u4FEE\u590D", gitlab: "\u4EE3\u7801\u8BC4\u5BA1", jenkins: "\u6784\u5EFA\u4E0E\u53D1\u5E03", manual: "\u9700\u6C42\u5F00\u53D1" };
   function suggestTask(issue, tasks) {
@@ -815,7 +1057,7 @@ var WB = (() => {
             },
             onClick: () => setOpenId(i.id)
           },
-          /* @__PURE__ */ React7.createElement("div", { className: "k" }, running.has(i.id) && /* @__PURE__ */ React7.createElement("span", { className: "wb-spin", title: "\u4F1A\u8BDD\u8FD0\u884C\u4E2D" }), auto && col === "todo" && /* @__PURE__ */ React7.createElement("span", { className: "wb-pill", title: "\u81EA\u52A8\u8FD0\u884C\u7684\u987A\u5E8F" }, "#", n + 1), /* @__PURE__ */ React7.createElement("span", null, i.key), i.sourceRef && /* @__PURE__ */ React7.createElement("span", null, "\xB7 ", i.sourceRef.ref), i.archivedAt && /* @__PURE__ */ React7.createElement("span", { className: "wb-pill" }, "\u5DF2\u5F52\u6863")),
+          /* @__PURE__ */ React7.createElement("div", { className: "k" }, running.has(i.id) && /* @__PURE__ */ React7.createElement("span", { className: "wb-spin", title: "\u4F1A\u8BDD\u8FD0\u884C\u4E2D" }), auto && col === "todo" && /* @__PURE__ */ React7.createElement("span", { className: "wb-pill", title: "\u81EA\u52A8\u8FD0\u884C\u7684\u987A\u5E8F" }, "#", n + 1), /* @__PURE__ */ React7.createElement("span", null, i.key), i.sourceRef && /* @__PURE__ */ React7.createElement("span", null, "\xB7 ", i.sourceRef.ref), state.demoLeft?.includes(i.id) && /* @__PURE__ */ React7.createElement("span", { className: "wb-pill demo", title: "\u6765\u81EA\u6F14\u793A\u6570\u636E\uFF1B\u8BE5\u7CFB\u7EDF\u5DF2\u63A5\u5165\u771F\u5B9E\u6570\u636E\uFF0C\u53EF\u5728\u300C\u8BBE\u7F6E \u2192 \u63D2\u4EF6\u8BBE\u7F6E\u300D\u91CC\u6E05\u7406" }, "\u6F14\u793A"), i.archivedAt && /* @__PURE__ */ React7.createElement("span", { className: "wb-pill" }, "\u5DF2\u5F52\u6863")),
           /* @__PURE__ */ React7.createElement("div", { className: "t" }, i.title),
           i.due && /* @__PURE__ */ React7.createElement("div", { className: "wb-bld wb-muted", style: { color: i.status !== "done" && i.due < (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) ? "var(--wb-red)" : void 0 }, title: "\u622A\u6B62\u65E5\u671F" }, "\u622A\u6B62 ", i.due.slice(5)),
           i.note && /* @__PURE__ */ React7.createElement("div", { className: "wb-ellipsis", style: { color: i.status === "blocked" ? "var(--wb-red)" : "var(--wb-amber)", fontSize: 11, marginBottom: 4 }, title: i.note }, i.note),
@@ -1139,7 +1381,7 @@ ${r.description}`.toLowerCase().includes(w)));
       void p.reloadTodos();
     } }, "\u5237\u65B0")), /* @__PURE__ */ React8.createElement("table", { className: "wb-table" }, /* @__PURE__ */ React8.createElement("thead", null, /* @__PURE__ */ React8.createElement("tr", null, COLUMNS2.map((c) => /* @__PURE__ */ React8.createElement("th", { key: c.key, style: { width: c.width }, "aria-sort": sort?.key === c.key ? sort.desc ? "descending" : "ascending" : "none" }, /* @__PURE__ */ React8.createElement("button", { className: "wb-th", title: "\u70B9\u51FB\u6392\u5E8F\uFF1A\u5347\u5E8F / \u964D\u5E8F", onClick: () => setSort(sort?.key === c.key ? { key: c.key, desc: !sort.desc } : { key: c.key, desc: false }) }, c.label, /* @__PURE__ */ React8.createElement("span", { className: "wb-th-ind" }, sort?.key === c.key ? sort.desc ? "\u25BC" : "\u25B2" : "")))))), /* @__PURE__ */ React8.createElement("tbody", null, rows.map((r) => {
       const key = `${r.source}:${r.ref}`;
-      return /* @__PURE__ */ React8.createElement("tr", { key, className: `row ${key === selected ? "sel" : ""} ${r.archived ? "arch" : ""}`, onClick: () => setSelected(key) }, /* @__PURE__ */ React8.createElement("td", null, /* @__PURE__ */ React8.createElement("span", { className: `wb-pri ${r.priority}` }, r.priority)), /* @__PURE__ */ React8.createElement("td", null, r.title, r.issueId && /* @__PURE__ */ React8.createElement("span", { className: "wb-pill", style: { marginLeft: 8 } }, state.issues.find((i) => i.id === r.issueId)?.key)), /* @__PURE__ */ React8.createElement("td", null, /* @__PURE__ */ React8.createElement("span", { className: "wb-src" }, /* @__PURE__ */ React8.createElement("i", { className: r.source }), r.ref)), /* @__PURE__ */ React8.createElement("td", { className: "wb-muted wb-ellipsis", style: { maxWidth: 190 } }, r.project), /* @__PURE__ */ React8.createElement("td", null, r.issueStatus ? /* @__PURE__ */ React8.createElement("span", { className: "wb-pill" }, statusText(r)) : /* @__PURE__ */ React8.createElement("span", { className: "wb-muted" }, r.statusText)), /* @__PURE__ */ React8.createElement("td", { className: "wb-muted" }, r.due ? r.due.slice(5) : "\u2014"));
+      return /* @__PURE__ */ React8.createElement("tr", { key, className: `row ${key === selected ? "sel" : ""} ${r.archived ? "arch" : ""}`, onClick: () => setSelected(key) }, /* @__PURE__ */ React8.createElement("td", null, /* @__PURE__ */ React8.createElement("span", { className: `wb-pri ${r.priority}` }, r.priority)), /* @__PURE__ */ React8.createElement("td", null, r.title, r.issueId && /* @__PURE__ */ React8.createElement("span", { className: "wb-pill", style: { marginLeft: 8 } }, state.issues.find((i) => i.id === r.issueId)?.key), r.issueId && state.demoLeft?.includes(r.issueId) && /* @__PURE__ */ React8.createElement("span", { className: "wb-pill demo", style: { marginLeft: 4 }, title: "\u8FD9\u5F20\u5361\u7247\u6765\u81EA\u6F14\u793A\u6570\u636E\uFF1B\u8BE5\u7CFB\u7EDF\u5DF2\u63A5\u5165\u771F\u5B9E\u6570\u636E\uFF0C\u53EF\u5728\u300C\u8BBE\u7F6E \u2192 \u63D2\u4EF6\u8BBE\u7F6E\u300D\u91CC\u6E05\u7406\u6F14\u793A\u5361\u7247" }, "\u6F14\u793A")), /* @__PURE__ */ React8.createElement("td", null, /* @__PURE__ */ React8.createElement("span", { className: "wb-src" }, /* @__PURE__ */ React8.createElement("i", { className: r.source }), r.ref)), /* @__PURE__ */ React8.createElement("td", { className: "wb-muted wb-ellipsis", style: { maxWidth: 190 } }, r.project), /* @__PURE__ */ React8.createElement("td", null, r.issueStatus ? /* @__PURE__ */ React8.createElement("span", { className: "wb-pill" }, statusText(r)) : /* @__PURE__ */ React8.createElement("span", { className: "wb-muted" }, r.statusText)), /* @__PURE__ */ React8.createElement("td", { className: "wb-muted" }, r.due ? r.due.slice(5) : "\u2014"));
     }))), !rows.length && /* @__PURE__ */ React8.createElement("div", { className: "wb-empty" }, "\u6CA1\u6709\u5F85\u529E\u3002")), sel && /* @__PURE__ */ React8.createElement("aside", { className: "wb-detail" }, /* @__PURE__ */ React8.createElement("div", { className: "wb-detail-body" }, /* @__PURE__ */ React8.createElement("div", { className: "wb-sub" }, /* @__PURE__ */ React8.createElement("span", { className: "wb-src" }, /* @__PURE__ */ React8.createElement("i", { className: sel.source }), SOURCE_LABEL[sel.source], " \xB7 ", sel.ref), " \xB7 ", sel.project), /* @__PURE__ */ React8.createElement("h3", { style: { marginTop: 6 } }, sel.title), /* @__PURE__ */ React8.createElement("dl", { className: "wb-kv" }, /* @__PURE__ */ React8.createElement("dt", null, "\u4F18\u5148\u7EA7"), /* @__PURE__ */ React8.createElement("dd", null, /* @__PURE__ */ React8.createElement("span", { className: `wb-pri ${sel.priority}` }, sel.priority)), /* @__PURE__ */ React8.createElement("dt", null, issue ? "\u770B\u677F\u72B6\u6001" : "\u72B6\u6001"), /* @__PURE__ */ React8.createElement("dd", null, statusText(sel)), issue && sel.statusText !== "\u624B\u5DE5\u4EFB\u52A1" && /* @__PURE__ */ React8.createElement(React8.Fragment, null, /* @__PURE__ */ React8.createElement("dt", null, "\u6765\u6E90\u72B6\u6001"), /* @__PURE__ */ React8.createElement("dd", null, sel.statusText)), /* @__PURE__ */ React8.createElement("dt", null, "\u622A\u6B62"), /* @__PURE__ */ React8.createElement("dd", null, sel.due ?? "\u2014"), /* @__PURE__ */ React8.createElement("dt", null, "\u5DE5\u4F5C\u76EE\u5F55"), /* @__PURE__ */ React8.createElement("dd", { className: "wb-ellipsis", title: project?.cwd }, project ? project.cwd : /* @__PURE__ */ React8.createElement("span", { style: { color: "var(--wb-red)" } }, sel.source === "manual" ? "\u672A\u9009\u62E9\u9879\u76EE\uFF0C\u8BF7\u5728\u770B\u677F\u5361\u7247\u91CC\u9009\u62E9" : "\u672A\u914D\u7F6E\uFF0C\u8BF7\u5230\u300C\u9879\u76EE\u300D\u9875\u6DFB\u52A0"))), /* @__PURE__ */ React8.createElement("h4", null, "\u80CC\u666F"), /* @__PURE__ */ React8.createElement("div", null, sel.description || "\uFF08\u65E0\uFF09"), /* @__PURE__ */ React8.createElement("h4", null, "\u9A8C\u6536\u6807\u51C6"), sel.acceptance.length ? /* @__PURE__ */ React8.createElement("ul", { className: "wb-ac" }, sel.acceptance.map((a, i) => /* @__PURE__ */ React8.createElement("li", { key: i }, a))) : /* @__PURE__ */ React8.createElement("div", { className: "wb-muted" }, "\u672A\u7ED9\u51FA\uFF0C\u5F00\u5DE5\u540E\u667A\u80FD\u4F53\u4F1A\u5148\u4E0E\u4F60\u786E\u8BA4\u3002"), issue?.command && /* @__PURE__ */ React8.createElement(React8.Fragment, null, /* @__PURE__ */ React8.createElement("h4", null, "\u6307\u4EE4"), /* @__PURE__ */ React8.createElement("div", null, "/" + issue.command)), !!issue?.attachments?.length && /* @__PURE__ */ React8.createElement(React8.Fragment, null, /* @__PURE__ */ React8.createElement("h4", null, "\u9644\u4EF6"), issue.attachments.map((a) => /* @__PURE__ */ React8.createElement("div", { className: "wb-rel", key: a.id }, a.name, /* @__PURE__ */ React8.createElement("span", { className: "wb-muted" }, " \xB7 ", fmtSize(a.size))))), sel.related.length > 0 && /* @__PURE__ */ React8.createElement(React8.Fragment, null, /* @__PURE__ */ React8.createElement("h4", null, "\u5173\u8054\u4FE1\u606F"), sel.related.map((r, i) => /* @__PURE__ */ React8.createElement("div", { className: "wb-rel", key: i }, r.label, r.detail && /* @__PURE__ */ React8.createElement("span", { className: "wb-muted" }, " \xB7 ", r.detail))))), /* @__PURE__ */ React8.createElement("div", { className: "wb-detail-body", style: { flex: "none", paddingTop: 0, paddingBottom: 8 } }, issue?.nextId && /* @__PURE__ */ React8.createElement("div", { className: "wb-sub" }, "\u540E\u7EED\u4EFB\u52A1\uFF1A", state.issues.find((x) => x.id === issue.nextId)?.key, " ", state.issues.find((x) => x.id === issue.nextId)?.title), issue && state.issues.some((x) => x.nextId === issue.id) && /* @__PURE__ */ React8.createElement("div", { className: "wb-sub" }, "\u524D\u7F6E\u4EFB\u52A1\uFF1A", state.issues.filter((x) => x.nextId === issue.id).map((x) => `${x.key} ${x.title}`).join("\uFF1B")), issue?.writeBack && /* @__PURE__ */ React8.createElement("div", { className: "wb-sub", style: { color: "var(--wb-green)" } }, "\u5DF2\u56DE\u5199\u7985\u9053\uFF1A\u8BC4\u8BBA\u5DF2\u63D0\u4EA4\uFF0C\u72B6\u6001\u6539\u4E3A\u5DF2\u89E3\u51B3", issue.writeBack.demo ? "\uFF08\u6F14\u793A\uFF0C\u672A\u53D1\u9001\uFF09" : ""), issue?.timesheet && /* @__PURE__ */ React8.createElement("div", { className: "wb-sub", style: { color: "var(--wb-green)" } }, "\u5DF2\u586B\u62A5\u5DE5\u65F6 ", issue.timesheet.hours, "h \xB7 ", issue.timesheet.sparkinTaskName), /* @__PURE__ */ React8.createElement("div", { className: "wb-row", style: { marginTop: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React8.createElement("button", { className: "wb-btn", disabled: issue?.status === "in_progress", title: issue?.status === "in_progress" ? "\u8FDB\u884C\u4E2D\u7684\u4EFB\u52A1\u4E0D\u80FD\u4FEE\u6539" : sel.source === "manual" ? "\u4FEE\u6539\u6807\u9898\u3001\u63CF\u8FF0\u3001\u9A8C\u6536\u6807\u51C6\u3001\u9879\u76EE\u3001\u4F18\u5148\u7EA7\u3001\u667A\u80FD\u4F53" : "\u4FEE\u6539\u4F1A\u4FDD\u5B58\u5728\u5DE5\u4F5C\u53F0\u7684\u5361\u7247\u91CC\uFF0C\u4E0D\u4F1A\u5199\u56DE\u7985\u9053/GitLab/Jenkins", onClick: () => {
       void edit(sel);
     } }, "\u7F16\u8F91"), issue && canWriteBack(issue) && /* @__PURE__ */ React8.createElement("button", { className: "wb-btn", title: "\u7ED9\u7985\u9053\u4E0A\u7684 Bug \u52A0\u8BC4\u8BBA\u5E76\u6539\u4E3A\u5DF2\u89E3\u51B3\uFF0C\u53D1\u9001\u524D\u53EF\u4FEE\u6539\u8BC4\u8BBA", onClick: () => setWritingBack(true) }, "\u56DE\u5199\u7985\u9053"), issue?.status === "done" && !issue.timesheet && /* @__PURE__ */ React8.createElement("button", { className: "wb-btn", onClick: () => setReporting(true) }, "\u586B\u62A5 Sparkin \u5DE5\u65F6"), /* @__PURE__ */ React8.createElement("button", { className: "wb-btn", disabled: issue?.status === "in_progress", title: issue?.status === "in_progress" ? "\u8FDB\u884C\u4E2D\u7684\u4EFB\u52A1\u4E0D\u80FD\u5F52\u6863" : "\u5F52\u6863\u540E\u9ED8\u8BA4\u9690\u85CF\uFF0C\u53EF\u5728\u300C\u663E\u793A\u5DF2\u5F52\u6863\u300D\u91CC\u627E\u56DE", onClick: () => {
@@ -1443,6 +1685,24 @@ ${r.description}`.toLowerCase().includes(w)));
       void run(cur, "clear");
     } }, "\u6E05\u9664\u51ED\u636E")), msg[cur.id] && /* @__PURE__ */ React12.createElement("div", { className: "wb-banner", style: { margin: "12px 0 0", ...msg[cur.id].ok ? { background: "color-mix(in srgb, var(--wb-green) 12%, transparent)", borderColor: "color-mix(in srgb, var(--wb-green) 35%, transparent)" } : { background: "color-mix(in srgb, var(--wb-red) 10%, transparent)", borderColor: "color-mix(in srgb, var(--wb-red) 35%, transparent)" } } }, msg[cur.id].text), /* @__PURE__ */ React12.createElement("div", { className: "wb-sub", style: { marginTop: 22 } }, "\u8D26\u53F7\u3001\u5BC6\u7801\u548C Token \u4FDD\u5B58\u5728 DSH \u7684\u51ED\u636E\u5E93\uFF08", /* @__PURE__ */ React12.createElement("code", null, "~/.dsh/.credentials.yaml"), "\uFF0C\u4EC5\u672C\u673A\u7528\u6237\u53EF\u8BFB\uFF09\uFF0C\u4E0D\u4F1A\u51FA\u73B0\u5728\u9875\u9762\u3001\u63D0\u793A\u8BCD\u6216\u65E5\u5FD7\u91CC\uFF1BToken / \u5BC6\u7801\u680F\u7559\u7A7A\u8868\u793A\u4E0D\u4FEE\u6539\u3002\u914D\u7F6E\u597D\u540E\u300C\u6211\u7684\u5F85\u529E\u300D\u81EA\u52A8\u62C9\u53D6\u771F\u5B9E\u6570\u636E\uFF0C\u6BCF\u5206\u949F\u5237\u65B0\u4E00\u6B21\u3002")) : /* @__PURE__ */ React12.createElement(React12.Fragment, null, /* @__PURE__ */ React12.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React12.createElement("h3", { style: { margin: 0 } }, "Sparkin\uFF08\u5DE5\u65F6\u7CFB\u7EDF\uFF09"), /* @__PURE__ */ React12.createElement("span", { className: "wb-pill demo" }, "\u6F14\u793A\u6A21\u5F0F")), /* @__PURE__ */ React12.createElement("div", { className: "wb-sub", style: { margin: "8px 0" } }, "Sparkin \u7684\u63A5\u53E3\u6587\u6863\u8FD8\u6CA1\u63D0\u4F9B\uFF0C\u6240\u4EE5\u300C\u6211\u7684\u5F85\u529E\u300D\u91CC\u7684 Sparkin \u4EFB\u52A1\u662F\u6F14\u793A\u6570\u636E\uFF0C\u300C\u586B\u62A5 Sparkin \u5DE5\u65F6\u300D\u4E5F\u53EA\u628A\u5DE5\u65F6\u8BB0\u5F55\u5728\u5DE5\u4F5C\u53F0\u91CC\uFF0C\u4E0D\u4F1A\u5199\u5165 Sparkin\u3002\u62FF\u5230\u6587\u6863\u540E\u5728\u8FD9\u91CC\u589E\u52A0\u5730\u5740\u548C Token \u5373\u53EF\u63A5\u5165\uFF0C\u586B\u62A5\u6D41\u7A0B\u4E0D\u53D8\u3002 \u9879\u76EE\u4E0E Sparkin \u9879\u76EE\u7684\u5BF9\u5E94\u5173\u7CFB\u5728\u300C\u9879\u76EE\u300D\u91CC\u7F16\u8F91\u9879\u76EE\u65F6\u8BBE\u7F6E\u3002"))));
   }
+  function DemoCards({ p }) {
+    const left = p.state.demoLeft ?? [];
+    if (!left.length) return null;
+    const mine = left.map((id) => p.state.issues.find((i) => i.id === id)).filter(Boolean);
+    const used = mine.filter((i) => i.status === "in_progress").length;
+    async function clean() {
+      if (!confirm(`\u6E05\u7406 ${left.length - used} \u5F20\u6F14\u793A\u5361\u7247\uFF1F\u5B83\u4EEC\u6765\u81EA\u5DF2\u63A5\u5165\u771F\u5B9E\u6570\u636E\u7684\u7CFB\u7EDF\uFF0C\u5176\u4E2D\u53EF\u80FD\u6709\u4F60\u5F00\u8FC7\u5DE5\u6216\u7F16\u8F91\u8FC7\u7684\uFF0C\u5220\u9664\u540E\u4E0D\u53EF\u6062\u590D\u3002\u6B63\u5728\u8FDB\u884C\u4E2D\u7684\u4E0D\u4F1A\u88AB\u6E05\u7406\u3002`)) return;
+      try {
+        p.notify(`\u5DF2\u6E05\u7406 ${await rpc("demo.clean")} \u5F20\u6F14\u793A\u5361\u7247`);
+        await p.refresh();
+      } catch (e) {
+        p.notify(e.message);
+      }
+    }
+    return /* @__PURE__ */ React12.createElement(React12.Fragment, null, /* @__PURE__ */ React12.createElement("h4", { className: "wb-sec" }, "\u6F14\u793A\u5361\u7247"), /* @__PURE__ */ React12.createElement("div", { className: "wb-sub", style: { marginBottom: 6 } }, "\u770B\u677F\u4E0A\u8FD8\u6709 ", left.length, " \u5F20\u6765\u81EA\u6F14\u793A\u6570\u636E\u7684\u5361\u7247\uFF08", mine.map((i) => i.key).join("\u3001"), "\uFF09\uFF0C\u5B83\u4EEC\u7684\u7CFB\u7EDF\u5DF2\u7ECF\u63A5\u5165\u771F\u5B9E\u6570\u636E\u3002\u6CA1\u5F00\u8FC7\u5DE5\u3001\u6CA1\u7F16\u8F91\u8FC7\u7684\u6F14\u793A\u5361\u7247\u5DF2\u7ECF\u81EA\u52A8\u6E05\u7406\uFF1B\u8FD9\u4E9B\u662F\u5F00\u8FC7\u5DE5\u6216\u7F16\u8F91\u8FC7\u7684\uFF0C\u4FDD\u7559\u5E76\u5E26\u300C\u6F14\u793A\u300D\u6807\u8BB0\u3002"), /* @__PURE__ */ React12.createElement("button", { className: "wb-btn", disabled: left.length === used, onClick: () => {
+      void clean();
+    } }, "\u6E05\u7406\u6F14\u793A\u5361\u7247"));
+  }
   var AGENT_SOURCES = [["zentao", "\u7985\u9053"], ["gitlab", "GitLab"], ["jenkins", "Jenkins"], ["sparkin", "Sparkin"], ["manual", "\u624B\u5DE5\u4EFB\u52A1"]];
   function General({ p }) {
     const saved = p.state.settings;
@@ -1465,7 +1725,7 @@ ${r.description}`.toLowerCase().includes(w)));
         setMsg(e.message);
       }
     }
-    return /* @__PURE__ */ React12.createElement(React12.Fragment, null, /* @__PURE__ */ React12.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React12.createElement("h3", { style: { margin: 0 } }, "\u63D2\u4EF6\u8BBE\u7F6E")), /* @__PURE__ */ React12.createElement("div", { className: "wb-sub", style: { margin: "6px 0 14px" } }, "\u8FD9\u4E9B\u503C\u539F\u6765\u5199\u5728\u4EE3\u7801\u91CC\uFF0C\u73B0\u5728\u90FD\u80FD\u5728\u8FD9\u91CC\u8C03\u6574\uFF1B\u4FDD\u5B58\u540E\u7ACB\u5373\u751F\u6548\uFF0C\u5E76\u4FDD\u5B58\u5728\u5DE5\u4F5C\u53F0\u7684\u6570\u636E\u6587\u4EF6\u91CC\u3002"), /* @__PURE__ */ React12.createElement("h4", { className: "wb-sec" }, "\u81EA\u52A8\u8FD0\u884C"), n("autoRunConcurrency", "\u540C\u65F6\u8FD0\u884C\u7684\u667A\u80FD\u4F53\u6570", "\u770B\u677F\u300C\u81EA\u52A8\u8FD0\u884C\u300D\u65F6\uFF0C\u4E00\u6B21\u8BA9\u51E0\u4E2A\u667A\u80FD\u4F53\u540C\u65F6\u5DE5\u4F5C\uFF1B1 \u8868\u793A\u4E25\u683C\u6309\u987A\u5E8F\u4E00\u4E2A\u4E00\u4E2A\u6765", 1, 5), n("autoRunPollSeconds", "\u961F\u5217\u68C0\u67E5\u95F4\u9694\uFF08\u79D2\uFF09", "\u81EA\u52A8\u8FD0\u884C\u65F6\u591A\u4E45\u68C0\u67E5\u4E00\u6B21\u5F85\u529E\u961F\u5217\uFF08\u4F1A\u8BDD\u7ED3\u675F\u548C\u62D6\u52A8\u5361\u7247\u65F6\u4F1A\u7ACB\u5373\u68C0\u67E5\uFF09", 2, 60), /* @__PURE__ */ React12.createElement("h4", { className: "wb-sec" }, "\u5F85\u529E\u4E0E\u667A\u80FD\u4F53"), n("todoRefreshSeconds", "\u5F85\u529E\u81EA\u52A8\u62C9\u53D6\u95F4\u9694\uFF08\u79D2\uFF09", "\u300C\u6211\u7684\u5F85\u529E\u300D\u591A\u4E45\u91CD\u65B0\u62C9\u53D6\u7985\u9053 / GitLab / Jenkins", 15, 3600), check("syncTodosToBoard", "\u5F85\u529E\u540C\u6B65\u5230\u770B\u677F", "\u7985\u9053 / GitLab / Jenkins / Sparkin \u7684\u5F85\u529E\u4F1A\u81EA\u52A8\u5728\u770B\u677F\u7684\u300C\u5F85\u89C4\u5212\u300D\u5217\u5EFA\u4E00\u5F20\u5361\u7247\uFF1B\u4F60\u5220\u9664\u7684\u5361\u7247\u4E0D\u4F1A\u518D\u56DE\u6765\u3002\u5173\u95ED\u540E\u53EA\u6709\u5F00\u5DE5 / \u7F16\u8F91\u8FC7\u7684\u5F85\u529E\u624D\u6709\u5361\u7247"), /* @__PURE__ */ React12.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React12.createElement("label", null, "\u5404\u6765\u6E90\u9ED8\u8BA4\u6307\u6D3E\u7684\u667A\u80FD\u4F53"), /* @__PURE__ */ React12.createElement("div", { className: "wb-row", style: { flexWrap: "wrap" } }, AGENT_SOURCES.map(([k, label]) => /* @__PURE__ */ React12.createElement("div", { key: k, style: { minWidth: 150 } }, /* @__PURE__ */ React12.createElement("div", { className: "wb-sub" }, label), /* @__PURE__ */ React12.createElement("select", { className: "wb-select", value: f.defaultAgents[k], onChange: (e) => set("defaultAgents", { ...f.defaultAgents, [k]: e.target.value }) }, p.state.agents.map((a) => /* @__PURE__ */ React12.createElement("option", { key: a.id, value: a.id }, a.name))))))), /* @__PURE__ */ React12.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React12.createElement("label", null, "\u65B0\u4F1A\u8BDD\u7684\u6743\u9650\u9884\u8BBE"), /* @__PURE__ */ React12.createElement("select", { className: "wb-select", value: f.permissionPreset, onChange: (e) => set("permissionPreset", e.target.value) }, /* @__PURE__ */ React12.createElement("option", { value: "workspace-write" }, "\u5DE5\u4F5C\u533A\u5185\u4FEE\u6539\uFF08\u63A8\u8350\uFF1A\u53EA\u80FD\u6539\u5DE5\u4F5C\u76EE\u5F55\uFF0C\u8D8A\u754C\u64CD\u4F5C\u9700\u8981\u4F60\u6279\u51C6\uFF09"), /* @__PURE__ */ React12.createElement("option", { value: "danger-full-access" }, "\u5B8C\u5168\u8BBF\u95EE\uFF08\u667A\u80FD\u4F53\u53EF\u6539\u52A8\u4EFB\u4F55\u4F4D\u7F6E\uFF0C\u81EA\u52A8\u8FD0\u884C\u65F6\u8BF7\u614E\u7528\uFF09"))), /* @__PURE__ */ React12.createElement("h4", { className: "wb-sec" }, "\u5206\u652F\u4E0E\u9A8C\u8BC1"), check("isolateByDefault", "\u6BCF\u4E2A\u4EFB\u52A1\u4F7F\u7528\u72EC\u7ACB\u7684 git \u5206\u652F\u548C\u5DE5\u4F5C\u6811", "\u9879\u76EE\u662F git \u4ED3\u5E93\u65F6\uFF0C\u5F00\u5DE5\u4F1A\u5728\u5DE5\u4F5C\u53F0\u6570\u636E\u76EE\u5F55\u4E0B\u4E3A\u4EFB\u52A1\u5EFA\u5206\u652F\u548C\u5DE5\u4F5C\u6811\uFF0C\u667A\u80FD\u4F53\u53EA\u5728\u91CC\u9762\u6539\uFF0C\u4E92\u4E0D\u5E72\u6270\u3001\u6539\u52A8\u53EF\u5BA1\u67E5\uFF1B\u5355\u4E2A\u9879\u76EE\u53EF\u5728\u300C\u9879\u76EE \u2192 \u7F16\u8F91\u300D\u91CC\u5355\u72EC\u5173\u95ED"), /* @__PURE__ */ React12.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React12.createElement("label", null, "\u4EFB\u52A1\u5206\u652F\u524D\u7F00"), /* @__PURE__ */ React12.createElement("input", { className: "wb-input", value: f.branchPrefix, onChange: (e) => set("branchPrefix", e.target.value) }), /* @__PURE__ */ React12.createElement("div", { className: "wb-sub", style: { marginTop: 3 } }, "\u4F8B\u5982 wb/ \u5F97\u5230 wb/wb-12-fix-callback\uFF1B\u53EA\u80FD\u5305\u542B\u5B57\u6BCD\u6570\u5B57\u548C / _ . -")), check("autoTestOnReview", "\u667A\u80FD\u4F53\u5B8C\u6210\u540E\u81EA\u52A8\u8FD0\u884C\u9879\u76EE\u7684\u6D4B\u8BD5\u547D\u4EE4", "\u9879\u76EE\u914D\u7F6E\u4E86\u6D4B\u8BD5\u547D\u4EE4\u65F6\uFF0C\u4F1A\u8BDD\u7ED3\u675F\u8FDB\u5165\u300C\u5F85\u5BA1\u6838\u300D\u540E\u81EA\u52A8\u5728\u4EFB\u52A1\u5DE5\u4F5C\u6811\u91CC\u8FD0\u884C\uFF0C\u7ED3\u679C\u663E\u793A\u5728\u5361\u7247\u4E0A"), n("testTimeoutSeconds", "\u6D4B\u8BD5\u8D85\u65F6\uFF08\u79D2\uFF09", "\u8D85\u8FC7\u540E\u5F3A\u5236\u7ED3\u675F\u5E76\u8BB0\u4E3A\u5931\u8D25", 10, 3600), check("autoDoneOnPass", "\u6D4B\u8BD5\u901A\u8FC7\u540E\u81EA\u52A8\u5B8C\u6210", "\u9ED8\u8BA4\u5173\u95ED\u3002\u5F00\u542F\u540E\uFF0C\u300C\u5F85\u5BA1\u6838\u300D\u7684\u4EFB\u52A1\u5728\u6D4B\u8BD5\u901A\u8FC7\u3001\u5E76\u4E14\u4EFB\u52A1\u5206\u652F\u786E\u6709\u4EE3\u7801\u6539\u52A8\u65F6\u81EA\u52A8\u8FDB\u5165\u300C\u5DF2\u5B8C\u6210\u300D\uFF1B\u6CA1\u6709\u6D4B\u8BD5\u547D\u4EE4\u3001\u6D4B\u8BD5\u672A\u901A\u8FC7\u3001\u667A\u80FD\u4F53\u6CA1\u6709\u6539\u4EFB\u4F55\u6587\u4EF6\uFF08\u6BD4\u5982\u53EA\u56DE\u590D\u4E86\u4E00\u4E2A\u95EE\u9898\uFF09\u65F6\uFF0C\u4ECD\u7531\u4F60\u9A8C\u6536\u540E\u62D6\u5230\u300C\u5DF2\u5B8C\u6210\u300D\u3002"), /* @__PURE__ */ React12.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React12.createElement("label", null, "\u7985\u9053 Bug \u5B8C\u6210\u540E\u56DE\u5199"), /* @__PURE__ */ React12.createElement("select", { className: "wb-select", value: f.zentaoWriteBack, onChange: (e) => set("zentaoWriteBack", e.target.value) }, /* @__PURE__ */ React12.createElement("option", { value: "confirm" }, "\u786E\u8BA4\u540E\u56DE\u5199\uFF08\u63A8\u8350\uFF1A\u663E\u793A\u8BC4\u8BBA\u8349\u7A3F\uFF0C\u4F60\u70B9\u4E86\u624D\u53D1\u9001\uFF09"), /* @__PURE__ */ React12.createElement("option", { value: "auto" }, "\u81EA\u52A8\u56DE\u5199\uFF08\u5DF2\u5B8C\u6210\u5373\u8BC4\u8BBA\u5E76\u6539\u4E3A\u5DF2\u89E3\u51B3\uFF0C\u4E0D\u518D\u786E\u8BA4\uFF09")), /* @__PURE__ */ React12.createElement("div", { className: "wb-sub", style: { marginTop: 3 } }, "\u56DE\u5199 = \u7ED9\u7985\u9053 Bug \u52A0\u8BC4\u8BBA\u5E76\u6539\u4E3A\u300C\u5DF2\u89E3\u51B3\u300D\uFF1B\u53EA\u5BF9 Bug \u751F\u6548\uFF0C\u9700\u8981\u5148\u914D\u7F6E\u7985\u9053\u8D26\u53F7\u3002")), /* @__PURE__ */ React12.createElement("h4", { className: "wb-sec" }, "\u5173\u4E8E\u4E0E\u66F4\u65B0"), /* @__PURE__ */ React12.createElement("div", { className: "wb-sub", style: { marginBottom: 6 } }, "\u7814\u53D1\u5DE5\u4F5C\u53F0 ", p.state.version ?? "\u5F00\u53D1\u7248", "\u3000\xB7\u3000\u6570\u636E\u6587\u4EF6\u7248\u672C\u7531\u63D2\u4EF6\u81EA\u52A8\u5347\u7EA7\uFF0C\u5347\u7EA7\u524D\u4F1A\u5907\u4EFD\u4E3A ", /* @__PURE__ */ React12.createElement("code", null, "workbench.json.v<\u65E7\u7248\u672C>.bak")), /* @__PURE__ */ React12.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React12.createElement("label", null, "\u66F4\u65B0\u5730\u5740"), /* @__PURE__ */ React12.createElement("input", { className: "wb-input", value: f.updateCheckUrl, onChange: (e) => set("updateCheckUrl", e.target.value), placeholder: '\u7559\u7A7A = \u4E0D\u68C0\u67E5\u3002\u8FD4\u56DE {"version":"0.3.0","url":"https://\u2026/workbench-plugin-0.3.0.zip","notes":"\u2026"}' }), /* @__PURE__ */ React12.createElement("div", { className: "wb-sub", style: { marginTop: 3 } }, "\u586B\u5199\u5E76\u4FDD\u5B58\u540E\uFF0C\u6BCF\u5929\u68C0\u67E5\u4E00\u6B21\uFF0C\u6709\u65B0\u7248\u672C\u65F6\u5728\u5DE5\u4F5C\u53F0\u9876\u90E8\u63D0\u793A\u3002")), /* @__PURE__ */ React12.createElement(Update, { p, dirty: f.updateCheckUrl !== saved?.updateCheckUrl }), /* @__PURE__ */ React12.createElement(SkillRoots, { f, set, example: p.state.exampleSkillRoot, saved }), /* @__PURE__ */ React12.createElement("h4", { className: "wb-sec" }, "\u684C\u9762\u901A\u77E5"), check("desktopNotify", "\u5361\u7247\u9700\u8981\u4F60\u65F6\u5F39\u684C\u9762\u901A\u77E5", "\u4EFB\u52A1\u8FDB\u5165\u300C\u5F85\u5BA1\u6838\u300D\u300C\u5DF2\u963B\u585E\u300D\u6216\u7985\u9053\u56DE\u5199\u5B8C\u6210\u65F6\u63D0\u9192\uFF1B\u4F60\u6B63\u5728\u770B\u5DE5\u4F5C\u53F0\u9875\u9762\u65F6\u4E0D\u5F39\u3002\u70B9\u51FB\u901A\u77E5\u4F1A\u6253\u5F00\u5BF9\u5E94\u5361\u7247"), /* @__PURE__ */ React12.createElement("div", { className: "wb-row", style: { margin: "4px 0 8px" } }, /* @__PURE__ */ React12.createElement("button", { className: "wb-btn", onClick: () => {
+    return /* @__PURE__ */ React12.createElement(React12.Fragment, null, /* @__PURE__ */ React12.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React12.createElement("h3", { style: { margin: 0 } }, "\u63D2\u4EF6\u8BBE\u7F6E")), /* @__PURE__ */ React12.createElement("div", { className: "wb-sub", style: { margin: "6px 0 14px" } }, "\u8FD9\u4E9B\u503C\u539F\u6765\u5199\u5728\u4EE3\u7801\u91CC\uFF0C\u73B0\u5728\u90FD\u80FD\u5728\u8FD9\u91CC\u8C03\u6574\uFF1B\u4FDD\u5B58\u540E\u7ACB\u5373\u751F\u6548\uFF0C\u5E76\u4FDD\u5B58\u5728\u5DE5\u4F5C\u53F0\u7684\u6570\u636E\u6587\u4EF6\u91CC\u3002"), /* @__PURE__ */ React12.createElement(DemoCards, { p }), /* @__PURE__ */ React12.createElement("h4", { className: "wb-sec" }, "\u81EA\u52A8\u8FD0\u884C"), n("autoRunConcurrency", "\u540C\u65F6\u8FD0\u884C\u7684\u667A\u80FD\u4F53\u6570", "\u770B\u677F\u300C\u81EA\u52A8\u8FD0\u884C\u300D\u65F6\uFF0C\u4E00\u6B21\u8BA9\u51E0\u4E2A\u667A\u80FD\u4F53\u540C\u65F6\u5DE5\u4F5C\uFF1B1 \u8868\u793A\u4E25\u683C\u6309\u987A\u5E8F\u4E00\u4E2A\u4E00\u4E2A\u6765", 1, 5), n("autoRunPollSeconds", "\u961F\u5217\u68C0\u67E5\u95F4\u9694\uFF08\u79D2\uFF09", "\u81EA\u52A8\u8FD0\u884C\u65F6\u591A\u4E45\u68C0\u67E5\u4E00\u6B21\u5F85\u529E\u961F\u5217\uFF08\u4F1A\u8BDD\u7ED3\u675F\u548C\u62D6\u52A8\u5361\u7247\u65F6\u4F1A\u7ACB\u5373\u68C0\u67E5\uFF09", 2, 60), /* @__PURE__ */ React12.createElement("h4", { className: "wb-sec" }, "\u5F85\u529E\u4E0E\u667A\u80FD\u4F53"), n("todoRefreshSeconds", "\u5F85\u529E\u81EA\u52A8\u62C9\u53D6\u95F4\u9694\uFF08\u79D2\uFF09", "\u300C\u6211\u7684\u5F85\u529E\u300D\u591A\u4E45\u91CD\u65B0\u62C9\u53D6\u7985\u9053 / GitLab / Jenkins", 15, 3600), check("syncTodosToBoard", "\u5F85\u529E\u540C\u6B65\u5230\u770B\u677F", "\u7985\u9053 / GitLab / Jenkins / Sparkin \u7684\u5F85\u529E\u4F1A\u81EA\u52A8\u5728\u770B\u677F\u7684\u300C\u5F85\u89C4\u5212\u300D\u5217\u5EFA\u4E00\u5F20\u5361\u7247\uFF1B\u4F60\u5220\u9664\u7684\u5361\u7247\u4E0D\u4F1A\u518D\u56DE\u6765\u3002\u5173\u95ED\u540E\u53EA\u6709\u5F00\u5DE5 / \u7F16\u8F91\u8FC7\u7684\u5F85\u529E\u624D\u6709\u5361\u7247"), /* @__PURE__ */ React12.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React12.createElement("label", null, "\u5404\u6765\u6E90\u9ED8\u8BA4\u6307\u6D3E\u7684\u667A\u80FD\u4F53"), /* @__PURE__ */ React12.createElement("div", { className: "wb-row", style: { flexWrap: "wrap" } }, AGENT_SOURCES.map(([k, label]) => /* @__PURE__ */ React12.createElement("div", { key: k, style: { minWidth: 150 } }, /* @__PURE__ */ React12.createElement("div", { className: "wb-sub" }, label), /* @__PURE__ */ React12.createElement("select", { className: "wb-select", value: f.defaultAgents[k], onChange: (e) => set("defaultAgents", { ...f.defaultAgents, [k]: e.target.value }) }, p.state.agents.map((a) => /* @__PURE__ */ React12.createElement("option", { key: a.id, value: a.id }, a.name))))))), /* @__PURE__ */ React12.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React12.createElement("label", null, "\u65B0\u4F1A\u8BDD\u7684\u6743\u9650\u9884\u8BBE"), /* @__PURE__ */ React12.createElement("select", { className: "wb-select", value: f.permissionPreset, onChange: (e) => set("permissionPreset", e.target.value) }, /* @__PURE__ */ React12.createElement("option", { value: "workspace-write" }, "\u5DE5\u4F5C\u533A\u5185\u4FEE\u6539\uFF08\u63A8\u8350\uFF1A\u53EA\u80FD\u6539\u5DE5\u4F5C\u76EE\u5F55\uFF0C\u8D8A\u754C\u64CD\u4F5C\u9700\u8981\u4F60\u6279\u51C6\uFF09"), /* @__PURE__ */ React12.createElement("option", { value: "danger-full-access" }, "\u5B8C\u5168\u8BBF\u95EE\uFF08\u667A\u80FD\u4F53\u53EF\u6539\u52A8\u4EFB\u4F55\u4F4D\u7F6E\uFF0C\u81EA\u52A8\u8FD0\u884C\u65F6\u8BF7\u614E\u7528\uFF09"))), /* @__PURE__ */ React12.createElement("h4", { className: "wb-sec" }, "\u5206\u652F\u4E0E\u9A8C\u8BC1"), check("isolateByDefault", "\u6BCF\u4E2A\u4EFB\u52A1\u4F7F\u7528\u72EC\u7ACB\u7684 git \u5206\u652F\u548C\u5DE5\u4F5C\u6811", "\u9879\u76EE\u662F git \u4ED3\u5E93\u65F6\uFF0C\u5F00\u5DE5\u4F1A\u5728\u5DE5\u4F5C\u53F0\u6570\u636E\u76EE\u5F55\u4E0B\u4E3A\u4EFB\u52A1\u5EFA\u5206\u652F\u548C\u5DE5\u4F5C\u6811\uFF0C\u667A\u80FD\u4F53\u53EA\u5728\u91CC\u9762\u6539\uFF0C\u4E92\u4E0D\u5E72\u6270\u3001\u6539\u52A8\u53EF\u5BA1\u67E5\uFF1B\u5355\u4E2A\u9879\u76EE\u53EF\u5728\u300C\u9879\u76EE \u2192 \u7F16\u8F91\u300D\u91CC\u5355\u72EC\u5173\u95ED"), /* @__PURE__ */ React12.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React12.createElement("label", null, "\u4EFB\u52A1\u5206\u652F\u524D\u7F00"), /* @__PURE__ */ React12.createElement("input", { className: "wb-input", value: f.branchPrefix, onChange: (e) => set("branchPrefix", e.target.value) }), /* @__PURE__ */ React12.createElement("div", { className: "wb-sub", style: { marginTop: 3 } }, "\u4F8B\u5982 wb/ \u5F97\u5230 wb/wb-12-fix-callback\uFF1B\u53EA\u80FD\u5305\u542B\u5B57\u6BCD\u6570\u5B57\u548C / _ . -")), check("autoTestOnReview", "\u667A\u80FD\u4F53\u5B8C\u6210\u540E\u81EA\u52A8\u8FD0\u884C\u9879\u76EE\u7684\u6D4B\u8BD5\u547D\u4EE4", "\u9879\u76EE\u914D\u7F6E\u4E86\u6D4B\u8BD5\u547D\u4EE4\u65F6\uFF0C\u4F1A\u8BDD\u7ED3\u675F\u8FDB\u5165\u300C\u5F85\u5BA1\u6838\u300D\u540E\u81EA\u52A8\u5728\u4EFB\u52A1\u5DE5\u4F5C\u6811\u91CC\u8FD0\u884C\uFF0C\u7ED3\u679C\u663E\u793A\u5728\u5361\u7247\u4E0A"), n("testTimeoutSeconds", "\u6D4B\u8BD5\u8D85\u65F6\uFF08\u79D2\uFF09", "\u8D85\u8FC7\u540E\u5F3A\u5236\u7ED3\u675F\u5E76\u8BB0\u4E3A\u5931\u8D25", 10, 3600), check("autoDoneOnPass", "\u6D4B\u8BD5\u901A\u8FC7\u540E\u81EA\u52A8\u5B8C\u6210", "\u9ED8\u8BA4\u5173\u95ED\u3002\u5F00\u542F\u540E\uFF0C\u300C\u5F85\u5BA1\u6838\u300D\u7684\u4EFB\u52A1\u5728\u6D4B\u8BD5\u901A\u8FC7\u3001\u5E76\u4E14\u4EFB\u52A1\u5206\u652F\u786E\u6709\u4EE3\u7801\u6539\u52A8\u65F6\u81EA\u52A8\u8FDB\u5165\u300C\u5DF2\u5B8C\u6210\u300D\uFF1B\u6CA1\u6709\u6D4B\u8BD5\u547D\u4EE4\u3001\u6D4B\u8BD5\u672A\u901A\u8FC7\u3001\u667A\u80FD\u4F53\u6CA1\u6709\u6539\u4EFB\u4F55\u6587\u4EF6\uFF08\u6BD4\u5982\u53EA\u56DE\u590D\u4E86\u4E00\u4E2A\u95EE\u9898\uFF09\u65F6\uFF0C\u4ECD\u7531\u4F60\u9A8C\u6536\u540E\u62D6\u5230\u300C\u5DF2\u5B8C\u6210\u300D\u3002"), /* @__PURE__ */ React12.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React12.createElement("label", null, "\u7985\u9053 Bug \u5B8C\u6210\u540E\u56DE\u5199"), /* @__PURE__ */ React12.createElement("select", { className: "wb-select", value: f.zentaoWriteBack, onChange: (e) => set("zentaoWriteBack", e.target.value) }, /* @__PURE__ */ React12.createElement("option", { value: "confirm" }, "\u786E\u8BA4\u540E\u56DE\u5199\uFF08\u63A8\u8350\uFF1A\u663E\u793A\u8BC4\u8BBA\u8349\u7A3F\uFF0C\u4F60\u70B9\u4E86\u624D\u53D1\u9001\uFF09"), /* @__PURE__ */ React12.createElement("option", { value: "auto" }, "\u81EA\u52A8\u56DE\u5199\uFF08\u5DF2\u5B8C\u6210\u5373\u8BC4\u8BBA\u5E76\u6539\u4E3A\u5DF2\u89E3\u51B3\uFF0C\u4E0D\u518D\u786E\u8BA4\uFF09")), /* @__PURE__ */ React12.createElement("div", { className: "wb-sub", style: { marginTop: 3 } }, "\u56DE\u5199 = \u7ED9\u7985\u9053 Bug \u52A0\u8BC4\u8BBA\u5E76\u6539\u4E3A\u300C\u5DF2\u89E3\u51B3\u300D\uFF1B\u53EA\u5BF9 Bug \u751F\u6548\uFF0C\u9700\u8981\u5148\u914D\u7F6E\u7985\u9053\u8D26\u53F7\u3002")), /* @__PURE__ */ React12.createElement("h4", { className: "wb-sec" }, "\u5173\u4E8E\u4E0E\u66F4\u65B0"), /* @__PURE__ */ React12.createElement("div", { className: "wb-sub", style: { marginBottom: 6 } }, "\u7814\u53D1\u5DE5\u4F5C\u53F0 ", p.state.version ?? "\u5F00\u53D1\u7248", "\u3000\xB7\u3000\u6570\u636E\u6587\u4EF6\u7248\u672C\u7531\u63D2\u4EF6\u81EA\u52A8\u5347\u7EA7\uFF0C\u5347\u7EA7\u524D\u4F1A\u5907\u4EFD\u4E3A ", /* @__PURE__ */ React12.createElement("code", null, "workbench.json.v<\u65E7\u7248\u672C>.bak")), /* @__PURE__ */ React12.createElement("div", { className: "wb-field" }, /* @__PURE__ */ React12.createElement("label", null, "\u66F4\u65B0\u5730\u5740"), /* @__PURE__ */ React12.createElement("input", { className: "wb-input", value: f.updateCheckUrl, onChange: (e) => set("updateCheckUrl", e.target.value), placeholder: '\u7559\u7A7A = \u4E0D\u68C0\u67E5\u3002\u8FD4\u56DE {"version":"0.3.0","url":"https://\u2026/workbench-plugin-0.3.0.zip","notes":"\u2026"}' }), /* @__PURE__ */ React12.createElement("div", { className: "wb-sub", style: { marginTop: 3 } }, "\u586B\u5199\u5E76\u4FDD\u5B58\u540E\uFF0C\u6BCF\u5929\u68C0\u67E5\u4E00\u6B21\uFF0C\u6709\u65B0\u7248\u672C\u65F6\u5728\u5DE5\u4F5C\u53F0\u9876\u90E8\u63D0\u793A\u3002")), /* @__PURE__ */ React12.createElement(Update, { p, dirty: f.updateCheckUrl !== saved?.updateCheckUrl }), /* @__PURE__ */ React12.createElement(SkillRoots, { f, set, example: p.state.exampleSkillRoot, saved }), /* @__PURE__ */ React12.createElement("h4", { className: "wb-sec" }, "\u684C\u9762\u901A\u77E5"), check("desktopNotify", "\u5361\u7247\u9700\u8981\u4F60\u65F6\u5F39\u684C\u9762\u901A\u77E5", "\u4EFB\u52A1\u8FDB\u5165\u300C\u5F85\u5BA1\u6838\u300D\u300C\u5DF2\u963B\u585E\u300D\u6216\u7985\u9053\u56DE\u5199\u5B8C\u6210\u65F6\u63D0\u9192\uFF1B\u4F60\u6B63\u5728\u770B\u5DE5\u4F5C\u53F0\u9875\u9762\u65F6\u4E0D\u5F39\u3002\u70B9\u51FB\u901A\u77E5\u4F1A\u6253\u5F00\u5BF9\u5E94\u5361\u7247"), /* @__PURE__ */ React12.createElement("div", { className: "wb-row", style: { margin: "4px 0 8px" } }, /* @__PURE__ */ React12.createElement("button", { className: "wb-btn", onClick: () => {
       void testNotification().then((t) => {
         setPerm(notificationState());
         p.notify(t);
@@ -1671,8 +1931,10 @@ ${r.description}`.toLowerCase().includes(w)));
     }, []);
     const loadTodos = useCallback(async () => {
       try {
-        setTodos(await rpc("todos.list"));
+        const r = await rpc("todos.list");
+        setTodos(r);
         setTodosAt(/* @__PURE__ */ new Date());
+        if (r.cleanedDemo) notify(`\u5DF2\u6E05\u7406 ${r.cleanedDemo} \u5F20\u6F14\u793A\u5361\u7247\uFF08\u8FD9\u4E2A\u7CFB\u7EDF\u5DF2\u63A5\u5165\u771F\u5B9E\u6570\u636E\uFF1B\u5F00\u8FC7\u5DE5\u6216\u7F16\u8F91\u8FC7\u7684\u6F14\u793A\u5361\u7247\u4FDD\u7559\uFF0C\u5E26\u300C\u6F14\u793A\u300D\u6807\u8BB0\uFF09`);
       } catch (e) {
         setError(e.message);
       }

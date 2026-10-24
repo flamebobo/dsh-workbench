@@ -46,7 +46,7 @@ export function apply(ctx: Ctx) {
   ctx.effect(() => () => { stopped = true; clearTimeout(timer); wb.dispose(); return driver.disposePresets() })
 
   const state = async () => ({
-    version: wb.version, update: wb.updateInfo(), exampleSkillRoot: existsSync(exampleSkillRoot) ? exampleSkillRoot : undefined, issues: wb.listIssues(), runs: wb.listRuns(), agents: wb.listAgents(), projects: wb.listProjects(), builds: await wb.refreshBuilds(), autoRun: wb.autoRun, working: wb.workingCount(), settings: wb.settings(),
+    version: wb.version, update: wb.updateInfo(), exampleSkillRoot: existsSync(exampleSkillRoot) ? exampleSkillRoot : undefined, issues: wb.listIssues(), runs: wb.listRuns(), agents: wb.listAgents(), projects: wb.listProjects(), builds: await wb.refreshBuilds(), autoRun: wb.autoRun, working: wb.workingCount(), settings: wb.settings(), demoLeft: wb.demoLeftovers(),
   })
 
   async function dispatch(endpoint: string, p: any): Promise<unknown> {
@@ -64,6 +64,7 @@ export function apply(ctx: Ctx) {
       case 'issue.followup': return wb.createFollowUp(p.id, { title: p.title, description: p.description })
       case 'issue.archive': return wb.archiveIssue(p.id, !!p.archived)
       case 'issues.archiveDone': return wb.archiveDone()
+      case 'demo.clean': return wb.cleanDemoCards()
       case 'todos.archive': return wb.archiveTodo(p.source, p.ref, !!p.archived)
       case 'issue.writeback.draft': return { ...(await wb.writeBackDraft(p.id)), allowed: wb.canWriteBack(p.id) }
       case 'issue.writeback': return await wb.writeBackZentao(p.id, p.comment) // outward-facing: only from an explicit click

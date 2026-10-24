@@ -10,131 +10,6 @@ var STATUSES = ["backlog", "todo", "in_progress", "in_review", "done", "blocked"
 import { copyFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-var dataDir = () => process.env.WORKBENCH_HOME || join(homedir(), ".workbench");
-var defaultDataPath = () => join(dataDir(), "workbench.json");
-var DATA_VERSION = 3;
-var migrations = {
-  // 1 -> 2: the arrays and fields that later releases read without checking are always present
-  1: (d) => {
-    d.builds ??= [];
-    d.hiddenTodos ??= [];
-    d.issueSeq ??= d.issues.length;
-    for (const i of d.issues) {
-      i.acceptance ??= [];
-      i.attachments ??= [];
-    }
-  },
-  // 2 -> 3: 完成时间. Nothing recorded when old cards were finished, so their last update stands in for it. That is an
-  // approximation: a finished card edited afterwards (or given an MR) is dated by that later change, which is the very
-  // inaccuracy doneAt exists to end for cards finished from now on.
-  2: (d) => {
-    for (const i of d.issues) if (i.status === "done") i.doneAt ??= i.updatedAt;
-    d.settings = { ...d.settings, autoDoneOnPass: d.settings?.autoDoneOnPass ?? true };
-  }
-};
-var DataVersionError = class extends Error {
-};
-var empty = () => ({ version: DATA_VERSION, seq: 0, projects: [], issues: [], agents: [], runs: [] });
-var Store = class {
-  data;
-  path;
-  /** Called after every persisted change with the data before and after; the workbench derives notifications from it. */
-  onChange;
-  constructor(path = defaultDataPath()) {
-    this.path = path;
-    try {
-      const raw = JSON.parse(readFileSync(path, "utf8"));
-      this.data = { ...empty(), ...raw, version: Number(raw.version) || 1 };
-    } catch (e) {
-      if (e.code !== "ENOENT") throw e;
-      this.data = empty();
-      return;
-    }
-    this.upgrade();
-  }
-  upgrade() {
-    const from = Number(this.data.version) || 1;
-    if (from > DATA_VERSION) throw new DataVersionError(`\u6570\u636E\u6587\u4EF6 ${this.path} \u6765\u81EA\u66F4\u65B0\u7684\u7248\u672C\uFF08\u6570\u636E\u7248\u672C ${from}\uFF0C\u5F53\u524D\u63D2\u4EF6\u53EA\u8BA4\u8BC6\u5230 ${DATA_VERSION}\uFF09\u3002\u8BF7\u5148\u628A\u63D2\u4EF6\u66F4\u65B0\u5230\u6700\u65B0\u7248\uFF0C\u6570\u636E\u6CA1\u6709\u88AB\u6539\u52A8\u3002`);
-    if (from === DATA_VERSION) return;
-    copyFileSync(this.path, `${this.path}.v${from}.bak`);
-    const draft = structuredClone(this.data);
-    for (let v = from; v < DATA_VERSION; v++) migrations[v]?.(draft);
-    draft.version = DATA_VERSION;
-    this.write(draft);
-    this.data = draft;
-  }
-  /** Apply a mutation and persist it. The mutator may throw to abort; nothing is written then. */
-  update(fn) {
-    const draft = structuredClone(this.data);
-    const result = fn(draft);
-    this.write(draft);
-    const before = this.data;
-    this.data = draft;
-    try {
-      this.onChange?.(before, draft);
-    } catch {
-    }
-    return result;
-  }
-  write(d) {
-    mkdirSync(dirname(this.path), { recursive: true });
-    const tmp = `${this.path}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(d, null, 2));
-    renameSync(tmp, this.path);
-  }
-};
-
-// core/src/workbench.ts
-import { execFileSync } from "node:child_process";
-import { existsSync as existsSync5, mkdirSync as mkdirSync2, rmSync, writeFileSync as writeFileSync2 } from "node:fs";
-import { dirname as dirname2, isAbsolute, resolve as resolve4 } from "node:path";
-import { randomUUID } from "node:crypto";
-import { join as join5 } from "node:path";
-
-// core/fixtures/demo-repo.ts
-var paymentCoreFiles = {
-  "README.md": `# payment-core\uFF08\u6F14\u793A\u7528\uFF09
-
-\u652F\u4ED8\u6838\u5FC3\u670D\u52A1\u7684\u6700\u5C0F\u6F14\u793A\u4ED3\u5E93\u3002BUG-4821\uFF1A\u6E20\u9053\u56DE\u8C03\u91CD\u8BD5\u4F1A\u8BA9\u540C\u4E00\u7B14\u652F\u4ED8\u91CD\u590D\u5165\u8D26\u3002
-\u8FD0\u884C\u6D4B\u8BD5\uFF1A\`node --test\`
-`,
-  "package.json": JSON.stringify({ name: "payment-core-demo", private: true, type: "module", scripts: { test: "node --test" } }, null, 2) + "\n",
-  "src/ledger.js": `// \u5185\u5B58\u6D41\u6C34\u8868\uFF0C\u751F\u4EA7\u73AF\u5883\u5BF9\u5E94 t_pay_ledger\u3002
-export const ledger = []
-export function resetLedger() { ledger.length = 0 }
-export function writeLedger(entry) { ledger.push({ ...entry, at: Date.now() }) }
-`,
-  "src/pay-callback.js": `import { writeLedger } from './ledger.js'
-
-/**
- * \u5904\u7406\u6E20\u9053\u652F\u4ED8\u56DE\u8C03\u3002\u6E20\u9053\u5728\u8D85\u65F6\u672A\u6536\u5230\u5E94\u7B54\u65F6\u4F1A\u91CD\u8BD5\u540C\u4E00\u7B14\u56DE\u8C03\uFF08\u76F8\u540C callbackNo\uFF09\u3002
- * \u8FD4\u56DE { status: 'ok' } \u8868\u793A\u5DF2\u5904\u7406\u3002
- */
-export function handlePayCallback({ callbackNo, orderNo, amount }) {
-  // BUG-4821\uFF1A\u8FD9\u91CC\u6CA1\u6709\u4EFB\u4F55\u5E42\u7B49\u5224\u65AD\uFF0C\u91CD\u8BD5\u7684\u56DE\u8C03\u4F1A\u518D\u6B21\u5199\u5165\u6D41\u6C34\u3002
-  writeLedger({ callbackNo, orderNo, amount })
-  return { status: 'ok' }
-}
-`,
-  "test/pay-callback.test.js": `import assert from 'node:assert/strict'
-import { beforeEach, test } from 'node:test'
-import { ledger, resetLedger } from '../src/ledger.js'
-import { handlePayCallback } from '../src/pay-callback.js'
-
-beforeEach(resetLedger)
-
-test('\u6B63\u5E38\u56DE\u8C03\u5165\u8D26\u4E00\u6B21', () => {
-  handlePayCallback({ callbackNo: 'cb-1', orderNo: 'o-1', amount: 100 })
-  assert.equal(ledger.length, 1)
-})
-
-test('\u540C\u4E00\u56DE\u8C03\u91CD\u8BD5\u4E0D\u91CD\u590D\u5165\u8D26\uFF08BUG-4821\uFF09', () => {
-  handlePayCallback({ callbackNo: 'cb-2', orderNo: 'o-2', amount: 100 })
-  handlePayCallback({ callbackNo: 'cb-2', orderNo: 'o-2', amount: 100 })
-  assert.equal(ledger.length, 1)
-})
-`
-};
 
 // core/fixtures/demo.ts
 var demoZentao = [
@@ -376,6 +251,136 @@ var demoSparkin = [
     url: "https://sparkin.example.com/task/SPK-2045"
   }
 ];
+var DEMO_ITEMS = [...demoZentao, ...demoGitlab, ...demoJenkins, ...demoSparkin];
+var isDemoItem = (x) => DEMO_ITEMS.some((d) => d.source === x.source && d.ref === x.ref && (d.title === x.title || d.description === x.description));
+
+// core/src/store.ts
+var dataDir = () => process.env.WORKBENCH_HOME || join(homedir(), ".workbench");
+var defaultDataPath = () => join(dataDir(), "workbench.json");
+var DATA_VERSION = 3;
+var migrations = {
+  // 1 -> 2: the arrays and fields that later releases read without checking are always present
+  1: (d) => {
+    d.builds ??= [];
+    d.hiddenTodos ??= [];
+    d.issueSeq ??= d.issues.length;
+    for (const i of d.issues) {
+      i.acceptance ??= [];
+      i.attachments ??= [];
+    }
+  },
+  // 2 -> 3: 完成时间. Nothing recorded when old cards were finished, so their last update stands in for it. That is an
+  // approximation: a finished card edited afterwards (or given an MR) is dated by that later change, which is the very
+  // inaccuracy doneAt exists to end for cards finished from now on.
+  2: (d) => {
+    for (const i of d.issues) if (i.status === "done") i.doneAt ??= i.updatedAt;
+    for (const i of d.issues) if (i.sourceRef && isDemoItem({ ...i.sourceRef, title: i.title, description: i.description })) i.demo = true;
+    d.settings = { ...d.settings, autoDoneOnPass: d.settings?.autoDoneOnPass ?? true };
+  }
+};
+var DataVersionError = class extends Error {
+};
+var empty = () => ({ version: DATA_VERSION, seq: 0, projects: [], issues: [], agents: [], runs: [] });
+var Store = class {
+  data;
+  path;
+  /** Called after every persisted change with the data before and after; the workbench derives notifications from it. */
+  onChange;
+  constructor(path = defaultDataPath()) {
+    this.path = path;
+    try {
+      const raw = JSON.parse(readFileSync(path, "utf8"));
+      this.data = { ...empty(), ...raw, version: Number(raw.version) || 1 };
+    } catch (e) {
+      if (e.code !== "ENOENT") throw e;
+      this.data = empty();
+      return;
+    }
+    this.upgrade();
+  }
+  upgrade() {
+    const from = Number(this.data.version) || 1;
+    if (from > DATA_VERSION) throw new DataVersionError(`\u6570\u636E\u6587\u4EF6 ${this.path} \u6765\u81EA\u66F4\u65B0\u7684\u7248\u672C\uFF08\u6570\u636E\u7248\u672C ${from}\uFF0C\u5F53\u524D\u63D2\u4EF6\u53EA\u8BA4\u8BC6\u5230 ${DATA_VERSION}\uFF09\u3002\u8BF7\u5148\u628A\u63D2\u4EF6\u66F4\u65B0\u5230\u6700\u65B0\u7248\uFF0C\u6570\u636E\u6CA1\u6709\u88AB\u6539\u52A8\u3002`);
+    if (from === DATA_VERSION) return;
+    copyFileSync(this.path, `${this.path}.v${from}.bak`);
+    const draft = structuredClone(this.data);
+    for (let v = from; v < DATA_VERSION; v++) migrations[v]?.(draft);
+    draft.version = DATA_VERSION;
+    this.write(draft);
+    this.data = draft;
+  }
+  /** Apply a mutation and persist it. The mutator may throw to abort; nothing is written then. */
+  update(fn) {
+    const draft = structuredClone(this.data);
+    const result = fn(draft);
+    this.write(draft);
+    const before = this.data;
+    this.data = draft;
+    try {
+      this.onChange?.(before, draft);
+    } catch {
+    }
+    return result;
+  }
+  write(d) {
+    mkdirSync(dirname(this.path), { recursive: true });
+    const tmp = `${this.path}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(d, null, 2));
+    renameSync(tmp, this.path);
+  }
+};
+
+// core/src/workbench.ts
+import { execFileSync } from "node:child_process";
+import { existsSync as existsSync5, mkdirSync as mkdirSync2, rmSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { dirname as dirname2, isAbsolute, resolve as resolve4 } from "node:path";
+import { randomUUID } from "node:crypto";
+import { join as join5 } from "node:path";
+
+// core/fixtures/demo-repo.ts
+var paymentCoreFiles = {
+  "README.md": `# payment-core\uFF08\u6F14\u793A\u7528\uFF09
+
+\u652F\u4ED8\u6838\u5FC3\u670D\u52A1\u7684\u6700\u5C0F\u6F14\u793A\u4ED3\u5E93\u3002BUG-4821\uFF1A\u6E20\u9053\u56DE\u8C03\u91CD\u8BD5\u4F1A\u8BA9\u540C\u4E00\u7B14\u652F\u4ED8\u91CD\u590D\u5165\u8D26\u3002
+\u8FD0\u884C\u6D4B\u8BD5\uFF1A\`node --test\`
+`,
+  "package.json": JSON.stringify({ name: "payment-core-demo", private: true, type: "module", scripts: { test: "node --test" } }, null, 2) + "\n",
+  "src/ledger.js": `// \u5185\u5B58\u6D41\u6C34\u8868\uFF0C\u751F\u4EA7\u73AF\u5883\u5BF9\u5E94 t_pay_ledger\u3002
+export const ledger = []
+export function resetLedger() { ledger.length = 0 }
+export function writeLedger(entry) { ledger.push({ ...entry, at: Date.now() }) }
+`,
+  "src/pay-callback.js": `import { writeLedger } from './ledger.js'
+
+/**
+ * \u5904\u7406\u6E20\u9053\u652F\u4ED8\u56DE\u8C03\u3002\u6E20\u9053\u5728\u8D85\u65F6\u672A\u6536\u5230\u5E94\u7B54\u65F6\u4F1A\u91CD\u8BD5\u540C\u4E00\u7B14\u56DE\u8C03\uFF08\u76F8\u540C callbackNo\uFF09\u3002
+ * \u8FD4\u56DE { status: 'ok' } \u8868\u793A\u5DF2\u5904\u7406\u3002
+ */
+export function handlePayCallback({ callbackNo, orderNo, amount }) {
+  // BUG-4821\uFF1A\u8FD9\u91CC\u6CA1\u6709\u4EFB\u4F55\u5E42\u7B49\u5224\u65AD\uFF0C\u91CD\u8BD5\u7684\u56DE\u8C03\u4F1A\u518D\u6B21\u5199\u5165\u6D41\u6C34\u3002
+  writeLedger({ callbackNo, orderNo, amount })
+  return { status: 'ok' }
+}
+`,
+  "test/pay-callback.test.js": `import assert from 'node:assert/strict'
+import { beforeEach, test } from 'node:test'
+import { ledger, resetLedger } from '../src/ledger.js'
+import { handlePayCallback } from '../src/pay-callback.js'
+
+beforeEach(resetLedger)
+
+test('\u6B63\u5E38\u56DE\u8C03\u5165\u8D26\u4E00\u6B21', () => {
+  handlePayCallback({ callbackNo: 'cb-1', orderNo: 'o-1', amount: 100 })
+  assert.equal(ledger.length, 1)
+})
+
+test('\u540C\u4E00\u56DE\u8C03\u91CD\u8BD5\u4E0D\u91CD\u590D\u5165\u8D26\uFF08BUG-4821\uFF09', () => {
+  handlePayCallback({ callbackNo: 'cb-2', orderNo: 'o-2', amount: 100 })
+  handlePayCallback({ callbackNo: 'cb-2', orderNo: 'o-2', amount: 100 })
+  assert.equal(ledger.length, 1)
+})
+`
+};
 
 // core/src/connectors/http.ts
 async function getJson(fetchImpl, url, init = {}) {
@@ -1253,7 +1258,6 @@ function cleanDue(v) {
 }
 var cleanRelated = (l) => (l ?? []).map((r) => ({ label: String(r.label ?? "").trim().slice(0, 200), detail: String(r.detail ?? "").trim().slice(0, 500) || void 0 })).filter((r) => r.label).slice(0, 20);
 var POLL_GIVE_UP = 10;
-var DEMO_ITEMS = [...demoZentao, ...demoGitlab, ...demoJenkins, ...demoSparkin];
 var COMMANDS = ["plan", "goal"];
 var Workbench = class {
   store;
@@ -1382,6 +1386,8 @@ var Workbench = class {
       due: i.due || void 0
     }));
     const sorted = [...lists.flat(), ...manual].sort((a, b) => rank[a.priority] - rank[b.priority]);
+    for (const k of Object.keys(sources)) this.sourceMode[k] = sources[k].mode;
+    const cleanedDemo = this.autoCleanDemo();
     this.syncBoard(sorted.filter((w) => w.source === "manual" || sources[w.source].mode !== "error"), sources);
     const items = sorted.map((w) => {
       const issue = this.issueForSource(w.source, w.ref);
@@ -1389,7 +1395,41 @@ var Workbench = class {
       const edited = issue?.sourceRef ? { title: issue.title, priority: issue.priority ?? w.priority, description: issue.description, acceptance: issue.acceptance, project: issue.projectId ? projectName(issue.projectId) : w.project, due: issue.due === void 0 ? w.due : issue.due || void 0, related: issue.related ?? w.related } : {};
       return { ...w, ...edited, issueId: issue?.id, issueStatus: issue?.status, archived: hidden || !!issue?.archivedAt };
     });
-    return { items, sources };
+    return { items, sources, cleanedDemo: cleanedDemo || void 0 };
+  }
+  sourceMode = {};
+  /** Demo cards whose system is now connected for real (nothing to do with the demo any more): the ones the user could still be using. */
+  demoLeftovers() {
+    return this.store.data.issues.filter((i) => i.demo && i.sourceRef && this.sourceMode[i.sourceRef.source] === "live").map((i) => i.id);
+  }
+  /** A system just turned live: its demo cards that were never started, edited or finished are noise, so they go (once, silently). */
+  autoCleanDemo() {
+    const d = this.store.data;
+    const ids = this.demoLeftovers().filter((id) => {
+      const i = d.issues.find((x) => x.id === id);
+      return i.status !== "done" && i.updatedAt === i.createdAt && !d.runs.some((r) => r.issueId === id);
+    });
+    return this.removeCards(ids);
+  }
+  /** The 清理演示卡片 button: every leftover demo card, except one with a session working right now. */
+  cleanDemoCards() {
+    const d = this.store.data;
+    return this.removeCards(this.demoLeftovers().filter((id) => !d.runs.some((r) => r.issueId === id && r.status === "running")));
+  }
+  /** Remove cards for good. Unlike a delete by the user this does not remember the item as "deleted on purpose". */
+  removeCards(ids) {
+    if (!ids.length) return 0;
+    const gone = this.store.data.issues.filter((i) => ids.includes(i.id));
+    for (const i of gone) {
+      void this.releaseWorktree(i);
+      for (const a of i.attachments ?? []) rmSync(this.uploadPath(a), { force: true });
+    }
+    this.store.update((d) => {
+      d.issues = d.issues.filter((i) => !ids.includes(i.id));
+      d.runs = d.runs.filter((r) => !ids.includes(r.issueId));
+      for (const i of d.issues) if (i.nextId && ids.includes(i.nextId)) i.nextId = void 0;
+    });
+    return gone.length;
   }
   /**
    * Put every to-do on the board (待规划) so the board shows everything on your plate, not only what was started. Source items
@@ -1465,6 +1505,7 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
       priority: item.priority,
       sourceRef: { source: item.source, ref: item.ref },
       sparkinTaskId: item.sparkinTaskId,
+      ...isDemoItem(item) ? { demo: true } : {},
       // copied so they can be edited on the card; the source's own values are only the starting point
       due: item.due ?? "",
       related: item.related,
@@ -1714,8 +1755,7 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
   }
   /** The card was made from one of the built-in demo to-dos (same source, number and text), not from the user's real system. */
   fromDemo(i) {
-    const r = i.sourceRef;
-    return !!r && DEMO_ITEMS.some((d) => d.source === r.source && d.ref === r.ref && (d.title === i.title || d.description === i.description));
+    return i.demo === true;
   }
   /** The comment that will be posted: what was done, how it was verified, where the change is. The human can edit it first. */
   async writeBackDraft(id) {
@@ -3031,7 +3071,8 @@ function apply(ctx) {
     builds: await wb.refreshBuilds(),
     autoRun: wb.autoRun,
     working: wb.workingCount(),
-    settings: wb.settings()
+    settings: wb.settings(),
+    demoLeft: wb.demoLeftovers()
   });
   async function dispatch(endpoint, p) {
     switch (endpoint) {
@@ -3061,6 +3102,8 @@ function apply(ctx) {
         return wb.archiveIssue(p.id, !!p.archived);
       case "issues.archiveDone":
         return wb.archiveDone();
+      case "demo.clean":
+        return wb.cleanDemoCards();
       case "todos.archive":
         return wb.archiveTodo(p.source, p.ref, !!p.archived);
       case "issue.writeback.draft":

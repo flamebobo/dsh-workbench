@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { AgentDriver, DriverEvent } from './driver.ts'
 import { paymentCoreFiles } from '../fixtures/demo-repo.ts'
-import { demoGitlab, demoJenkins, demoSparkin, demoZentao } from '../fixtures/demo.ts'
+import { demoGitlab, demoJenkins, demoSparkin, demoZentao, isDemoItem } from '../fixtures/demo.ts'
 import { createMergeRequest, fetchGitlab } from './connectors/gitlab.ts'
 import { fetchJenkins, jenkinsBuildState, listJenkinsJobs, triggerJenkinsBuild } from './connectors/jenkins.ts'
 import { CONNECTIONS, testConnection, type SystemId } from './connectors/connections.ts'
@@ -29,6 +29,8 @@ export interface TodoResult {
   items: (WorkItem & { issueId?: string; issueStatus?: Status; archived?: boolean })[]
   /** Per system: live data, demo fixtures (never configured), or an error (configured but the read failed: no rows, with the reason). */
   sources: Record<'zentao' | 'gitlab' | 'jenkins' | 'sparkin', { mode: 'live' | 'demo' | 'error'; error?: string }>
+  /** How many untouched demo cards were cleared by this pull (a source just turned live); the page says so once. */
+  cleanedDemo?: number
 }
 
 /** Something worth interrupting the user for. Kept in memory only; the page asks for what is new since the last id it saw. */
@@ -72,7 +74,6 @@ function cleanDue(v: string): string {
 const cleanRelated = (l?: { label?: string; detail?: string }[]) =>
   (l ?? []).map((r) => ({ label: String(r.label ?? '').trim().slice(0, 200), detail: String(r.detail ?? '').trim().slice(0, 500) || undefined })).filter((r) => r.label).slice(0, 20)
 const POLL_GIVE_UP = 10
-const DEMO_ITEMS: WorkItem[] = [...demoZentao, ...demoGitlab, ...demoJenkins, ...demoSparkin]
 const COMMANDS: CommandName[] = ['plan', 'goal']
 const ACTIVE: Status[] = ['todo', 'in_progress', 'in_review', 'blocked', 'backlog']
 
@@ -196,6 +197,8 @@ export class Workbench {
       statusText: '手工任务', description: i.description, acceptance: i.acceptance, related: i.related ?? [], due: i.due || undefined,
     }))
     const sorted = [...lists.flat(), ...manual].sort((a, b) => rank[a.priority] - rank[b.priority])
+    for (const k of Object.keys(sources) as (keyof typeof sources)[]) this.sourceMode[k] = sources[k].mode
+    const cleanedDemo = this.autoCleanDemo()
     this.syncBoard(sorted.filter((w) => w.source === 'manual' || sources[w.source].mode !== 'error'), sources)
     const items = sorted.map((w) => {
       const issue = this.issueForSource(w.source, w.ref)
@@ -204,7 +207,42 @@ export class Workbench {
       const edited = issue?.sourceRef ? { title: issue.title, priority: issue.priority ?? w.priority, description: issue.description, acceptance: issue.acceptance, project: issue.projectId ? projectName(issue.projectId) : w.project, due: issue.due === undefined ? w.due : issue.due || undefined, related: issue.related ?? w.related } : {}
       return { ...w, ...edited, issueId: issue?.id, issueStatus: issue?.status, archived: hidden || !!issue?.archivedAt }
     })
-    return { items, sources }
+    return { items, sources, cleanedDemo: cleanedDemo || undefined }
+  }
+
+  private sourceMode: Partial<Record<Source, 'live' | 'demo' | 'error'>> = {}
+
+  /** Demo cards whose system is now connected for real (nothing to do with the demo any more): the ones the user could still be using. */
+  demoLeftovers(): string[] {
+    return this.store.data.issues.filter((i) => i.demo && i.sourceRef && this.sourceMode[i.sourceRef.source] === 'live').map((i) => i.id)
+  }
+
+  /** A system just turned live: its demo cards that were never started, edited or finished are noise, so they go (once, silently). */
+  private autoCleanDemo(): number {
+    const d = this.store.data
+    const ids = this.demoLeftovers().filter((id) => {
+      const i = d.issues.find((x) => x.id === id)!
+      return i.status !== 'done' && i.updatedAt === i.createdAt && !d.runs.some((r) => r.issueId === id)
+    })
+    return this.removeCards(ids)
+  }
+
+  /** The 清理演示卡片 button: every leftover demo card, except one with a session working right now. */
+  cleanDemoCards(): number {
+    const d = this.store.data
+    return this.removeCards(this.demoLeftovers().filter((id) => !d.runs.some((r) => r.issueId === id && r.status === 'running')))
+  }
+
+  /** Remove cards for good. Unlike a delete by the user this does not remember the item as "deleted on purpose". */
+  private removeCards(ids: string[]): number {
+    if (!ids.length) return 0
+    const gone = this.store.data.issues.filter((i) => ids.includes(i.id))
+    for (const i of gone) { void this.releaseWorktree(i); for (const a of i.attachments ?? []) rmSync(this.uploadPath(a), { force: true }) }
+    this.store.update((d) => {
+      d.issues = d.issues.filter((i) => !ids.includes(i.id)); d.runs = d.runs.filter((r) => !ids.includes(r.issueId))
+      for (const i of d.issues) if (i.nextId && ids.includes(i.nextId)) i.nextId = undefined
+    })
+    return gone.length
   }
 
   /**
@@ -276,7 +314,7 @@ export class Workbench {
     const issue: Issue = {
       id: `iss_${d.seq}`, key: `WB-${d.issueSeq}`, title: item.title, description: item.description,
       acceptance: item.acceptance, status, agentId, projectId, priority: item.priority,
-      sourceRef: { source: item.source, ref: item.ref }, sparkinTaskId: item.sparkinTaskId,
+      sourceRef: { source: item.source, ref: item.ref }, sparkinTaskId: item.sparkinTaskId, ...(isDemoItem(item) ? { demo: true } : {}),
       // copied so they can be edited on the card; the source's own values are only the starting point
       due: item.due ?? '', related: item.related, createdAt: t, updatedAt: t,
     }
@@ -512,10 +550,7 @@ export class Workbench {
   }
 
   /** The card was made from one of the built-in demo to-dos (same source, number and text), not from the user's real system. */
-  private fromDemo(i: Issue): boolean {
-    const r = i.sourceRef
-    return !!r && DEMO_ITEMS.some((d) => d.source === r.source && d.ref === r.ref && (d.title === i.title || d.description === i.description))
-  }
+  private fromDemo(i: Issue): boolean { return i.demo === true }
 
   /** The comment that will be posted: what was done, how it was verified, where the change is. The human can edit it first. */
   async writeBackDraft(id: string): Promise<{ comment: string; mode: 'live' | 'demo' }> {

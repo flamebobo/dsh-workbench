@@ -102,7 +102,7 @@ export function Board(p: PageProps) {
                     onClick={() => setOpenId(i.id)}>
                     <div className="k">
                       {running.has(i.id) && <span className="wb-spin" title="会话运行中" />}{auto && col === 'todo' && <span className="wb-pill" title="自动运行的顺序">#{n + 1}</span>}
-                      <span>{i.key}</span>{i.sourceRef && <span>· {i.sourceRef.ref}</span>}{i.archivedAt && <span className="wb-pill">已归档</span>}
+                      <span>{i.key}</span>{i.sourceRef && <span>· {i.sourceRef.ref}</span>}{state.demoLeft?.includes(i.id) && <span className="wb-pill demo" title="来自演示数据；该系统已接入真实数据，可在「设置 → 插件设置」里清理">演示</span>}{i.archivedAt && <span className="wb-pill">已归档</span>}
                     </div>
                     <div className="t">{i.title}</div>
                     {i.due && <div className="wb-bld wb-muted" style={{ color: i.status !== 'done' && i.due < new Date().toISOString().slice(0, 10) ? 'var(--wb-red)' : undefined }} title="截止日期">截止 {i.due.slice(5)}</div>}

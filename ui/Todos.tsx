@@ -146,7 +146,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
               return (
                 <tr key={key} className={`row ${key === selected ? 'sel' : ''} ${r.archived ? 'arch' : ''}`} onClick={() => setSelected(key)}>
                   <td><span className={`wb-pri ${r.priority}`}>{r.priority}</span></td>
-                  <td>{r.title}{r.issueId && <span className="wb-pill" style={{ marginLeft: 8 }}>{state.issues.find((i) => i.id === r.issueId)?.key}</span>}</td>
+                  <td>{r.title}{r.issueId && <span className="wb-pill" style={{ marginLeft: 8 }}>{state.issues.find((i) => i.id === r.issueId)?.key}</span>}{r.issueId && state.demoLeft?.includes(r.issueId) && <span className="wb-pill demo" style={{ marginLeft: 4 }} title="这张卡片来自演示数据；该系统已接入真实数据，可在「设置 → 插件设置」里清理演示卡片">演示</span>}</td>
                   <td><span className="wb-src"><i className={r.source} />{r.ref}</span></td>
                   <td className="wb-muted wb-ellipsis" style={{ maxWidth: 190 }}>{r.project}</td>
                   <td>{r.issueStatus ? <span className="wb-pill">{statusText(r)}</span> : <span className="wb-muted">{r.statusText}</span>}</td>

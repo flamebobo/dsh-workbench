@@ -137,6 +137,8 @@ export interface Issue {
   mr?: MergeRequest
   agentId: string
   projectId?: string
+  /** Made from one of the built-in demo to-dos (shown while a system has no credentials). Marked 演示 and cleaned up once the real system is connected. */
+  demo?: boolean
   /** Set when the card was created from a work item; at most one card per (source, ref). */
   sourceRef?: { source: Source; ref: string }
   sessionId?: string
