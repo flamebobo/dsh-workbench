@@ -179,6 +179,8 @@ codex plugin add workbench@workbench-local       # 把 codex-plugin/ 装进 Code
 | 功能 | DSH 版 | Codex 版 |
 | --- | --- | --- |
 | 数据目录 | `~/.workbench`（`WORKBENCH_HOME`） | `~/.workbench-codex`（`WORKBENCH_CODEX_HOME`），两边**不共用看板** |
+| 初始内容 | 预置 7 个演示项目、演示待办和卡片 | **空**：没有演示项目、卡片、待办；项目在首次引导里勾选 Codex 自己的 git 项目 |
+| 演示模式 | 默认开 | 新数据目录默认关；「设置 → 插件设置 → 演示模式」可打开（补建演示项目，没连接的系统显示演示待办、Jenkins 构建模拟），关闭后可「清理演示项目和卡片」 |
 | 凭据 | DSH 凭据库 `~/.dsh/.credentials.yaml` | `~/.workbench-codex/credentials.json`（0600），缺的读 `WORKBENCH_*` 环境变量 |
 | 智能体 | 注册为 DSH 智能体预设 | 不注册；模型、强度、指令随线程传入 |
 | 技能 | DSH 技能注册表；技能包目录注册给 DSH | 列表来自 Codex 的 `skills/list`；智能体 / 项目选的技能和技能包里的技能作为 `skill` 输入随首条消息传入 |
@@ -188,7 +190,13 @@ codex plugin add workbench@workbench-local       # 把 codex-plugin/ 装进 Code
 | 新会话的权限预设 | DSH 权限预设，越界操作等你批准 | 直接作为 Codex 线程的 sandbox，越界操作失败、不等审批 |
 | 桌面通知、更新检查 | 有 | 隐藏；更新 = 重新运行安装脚本 |
 
-### 截图（真实 Codex 桌面端，10/24）
+### 空白开始与 Codex 自己的项目
+- 新建的 `~/.workbench-codex` 里 `demoMode` 为关：我的待办、看板、项目都是空的，没配置的系统只显示「未配置」；Jenkins 未配置时不能模拟构建。已有数据的目录不会被改动。
+- 首次引导第 2 步直接列出 Codex 自己的 git 项目（读 `~/.codex/config.toml` 的 `[projects."…"]`，只读；临时聊天目录和工作台自己的数据目录不算），已勾选，一键创建；还可以再扫描别的目录。「添加项目」里的工作目录用目录选择器，上方同样有这些快捷入口。
+- 待办要等配置了禅道 / GitLab / Jenkins（设置里填，凭据存 `~/.workbench-codex/credentials.json`）才会有；Sparkin 还没有接口文档，Codex 版暂时没有 Sparkin 待办。
+- 想看演示：设置里打开「演示模式」。
+
+### 截图（真实 Codex 桌面端，10/24；截图 01–06 是演示模式下拍的）
 | 截图 | 内容 |
 | --- | --- |
 | `docs/demo/codex-01-sidebar.jpg` | 左侧栏的「研发工作台」入口，打开是整页 |

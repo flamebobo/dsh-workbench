@@ -66,3 +66,10 @@
 - 数据目录里的 `workbench.lock` 记录占用者的 PID 和进程启动时间（`core/src/lock.ts`）。DSH Host 在 `apply` 时获取、卸载时释放；Codex 版的本地服务启动时获取。
 - 占用者还活着 → 第二个进程拿不到锁：DSH 版的页面接口直接返回「数据目录正被另一个进程使用（PID …）」；进程已退出、PID 被别的进程复用（启动时间对不上，`ps -o lstart=`）、锁文件损坏，或同一进程重新加载插件 → 直接接管。Windows 上只比较 PID。
 - 影响：`scripts/dev-web.sh` 用的是默认 `~/.workbench`，桌面端开着时它会拿不到锁，需要像 `qa-web.sh` 那样设 `WORKBENCH_HOME`。
+
+## 演示模式与 Codex 版的初始数据（2026-10-24）
+- `PluginSettings.demoMode`（默认 true，DSH 行为不变）。关闭时：`listTodos` 没配置的来源返回空且 `mode: 'none'`；`jenkinsJobs` 不给演示 Job、`triggerBuild` 在 Jenkins 未配置时按失败处理而不是模拟；打开时补建演示项目（`seedDemoProjects(dir, false)`，与已有项目并存）。`removeDemoData()` 清掉演示卡片（进行中的除外）、模拟构建和没被别的卡片用到的演示项目。
+- Codex 服务启动时如果数据文件不存在就把 `demoMode` 设为 false，已有数据的目录不动。
+- 引导第 2 步在 Codex 下用 `onboarding.scan {hints: true}`：除扫描目录外，把 `config.toml` 里的 Codex 项目（git 仓库）直接当候选。
+- 踩坑：**服务运行时不要搬/删它的数据目录**——进程还握着旧路径的文件，页面一轮询又会在原路径重建，出现两个服务写同一个目录。要重置就先 `node codex-plugin/server.mjs stop`，再搬目录；Codex 里开着的页面会立刻按新版本拉起新服务。
+- 踩坑：Codex 里已打开的页面不会自动换成新构建的 board.html，要在侧栏切走再切回（或重启 Codex）。
