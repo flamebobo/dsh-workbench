@@ -71,7 +71,7 @@ export function Settings(p: PageProps & { reloadTodos: () => Promise<void> }) {
           <div className="wb-muted" style={{ fontSize: 12 }}>演示模式 · 待对接</div>
         </button>
       </nav>
-      <div className="wb-pane" style={{ maxWidth: 720 }}>
+      <div className="wb-pane">
         {sel === 'general' ? <General p={p} /> : cur ? (
           <>
             <div className="wb-row"><h3 style={{ margin: 0 }}>{cur.label}</h3>
