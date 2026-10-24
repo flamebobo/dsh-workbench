@@ -213,3 +213,14 @@ test('Q12 a mistyped update / report address is refused out loud instead of bein
   assert.equal(wb.saveSettings({ updateCheckUrl: ' https://u.example.com/latest.json ' }).updateCheckUrl, 'https://u.example.com/latest.json')
   assert.equal(wb.saveSettings({ updateCheckUrl: '' }).updateCheckUrl, '') // empty still means "off"
 })
+
+test('Q13 the report task picks the project of the cards it lists, not of cards whose key merely starts the same (WB-1 vs WB-12)', async () => {
+  const { wb } = setup()
+  const [a, b] = wb.listProjects()
+  for (let n = 0; n < 9; n++) wb.createIssue({ title: `填充 ${n}`, projectId: a!.id }) // WB-1 … WB-9: project a, not in the report
+  const done = (title: string, projectId: string) => { const i = wb.createIssue({ title, projectId }); wb.setStatus(i.id, 'done'); return i }
+  const x = done('b 项目甲', b!.id), y = done('a 项目', a!.id), z = done('b 项目乙', b!.id)
+  assert.deepEqual([x.key, y.key, z.key], ['WB-10', 'WB-11', 'WB-12'])
+  // the report lists WB-10, WB-11, WB-12: two for project b, one for a. (The text "WB-1x" also contains "WB-1", a card of project a.)
+  assert.equal((await wb.createReportTask('week')).projectId, b!.id)
+})

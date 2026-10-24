@@ -1102,7 +1102,7 @@ export class Workbench {
     if (this.store.data.issues.some((i) => i.title === r.title && !i.archivedAt)) throw new WorkbenchError('duplicate', `「${r.title}」已经生成过`)
     // the project most of the listed work belongs to: the report agent reads its commits
     const count = new Map<string, number>()
-    for (const i of this.store.data.issues) if (i.projectId && r.text.includes(`${i.key}`)) count.set(i.projectId, (count.get(i.projectId) ?? 0) + 1)
+    for (const i of this.store.data.issues) if (i.projectId && new RegExp(`${i.key}(?!\\d)`).test(r.text)) count.set(i.projectId, (count.get(i.projectId) ?? 0) + 1)
     const projectId = [...count].sort((a, b) => b[1] - a[1])[0]?.[0]
     return this.createIssue({
       title: r.title, description: text?.trim() || r.text, priority: 'P2', agentId: 'weekly', projectId, status: 'backlog',
