@@ -110,6 +110,9 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
         {fallbacks.map(([k, s]) => (
           <div className="wb-banner err" key={k}>{SOURCE_LABEL[k as 'zentao']} 实时数据不可用，已降级为演示数据：{s.error}</div>
         ))}
+        {Object.entries(todos.sources).filter(([, s]) => s.mode === 'live' && s.error).map(([k, s]) => (
+          <div className="wb-banner" key={k}>{SOURCE_LABEL[k as 'zentao']}：{s.error}</div>
+        ))}
         <div className="wb-toolbar">
           <button className="wb-chip" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>全部 {todos.items.filter((r) => showArchived || !r.archived).length}</button>
           {(['zentao', 'gitlab', 'jenkins', 'sparkin', 'manual'] as const).filter((s) => s !== 'manual' || count('manual') > 0).map((s) => (

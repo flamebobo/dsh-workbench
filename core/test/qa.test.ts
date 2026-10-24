@@ -70,3 +70,39 @@ test('Q3b a double click on 提交 MR pushes and opens one merge request', async
   assert.equal(posts, 1)
   assert.deepEqual(r.map((x) => x.status).sort(), ['fulfilled', 'rejected'])
 })
+
+/** Zentao stand-in: products listed in `bad` answer 403, product 12 has one bug assigned to `a`. */
+const zentaoFetch = (bad: number[]) => (async (u: string) => {
+  if (u.endsWith('/tokens')) return Response.json({ token: 't' })
+  const m = /products\/(\d+)\/bugs/.exec(u)
+  if (m) return bad.includes(Number(m[1])) ? new Response('no', { status: 403 }) : Response.json({ bugs: Number(m[1]) === 12 ? [{ id: 9, title: '真实缺陷', pri: 2, status: 'active', assignedTo: 'a', steps: '' }] : [] })
+  return Response.json({ executions: [], tasks: [] })
+}) as typeof fetch
+
+test('Q1 one Zentao product the account cannot read does not turn the whole source into demo data', async () => {
+  const { wb } = setup(zentaoCreds, zentaoFetch([5]))
+  const t = await wb.listTodos()
+  assert.equal(t.sources.zentao.mode, 'live')
+  assert.match(t.sources.zentao.error!, /产品 5/) // said out loud, not hidden
+  assert.deepEqual(t.items.filter((i) => i.source === 'zentao').map((i) => i.ref), ['BUG-9'])
+})
+
+test('Q1b a source that fell back to demo data does not put the demo to-dos on the board as real cards', async () => {
+  const { wb } = setup(zentaoCreds, zentaoFetch([12, 5, 8, 9]))
+  const t = await wb.listTodos()
+  assert.equal(t.sources.zentao.mode, 'fallback')
+  assert.ok(t.items.some((i) => i.ref === 'BUG-4821')) // still shown, with the red banner
+  assert.equal(wb.listIssues().filter((i) => i.sourceRef?.source === 'zentao').length, 0)
+})
+
+test('Q1c a card is not flagged "gone from the source" while part of that source could not be read', async () => {
+  const bad: number[] = []
+  const { wb } = setup(zentaoCreds, zentaoFetch(bad))
+  await wb.listTodos()
+  const card = wb.listIssues().find((i) => i.sourceRef?.ref === 'BUG-9')!
+  assert.ok(card)
+  bad.push(12) // product 12 stops answering; BUG-9 is not in the list this time, but only because the read failed
+  bad.push(5)
+  await wb.listTodos()
+  assert.equal(wb.listIssues().find((i) => i.id === card.id)!.note, undefined)
+})

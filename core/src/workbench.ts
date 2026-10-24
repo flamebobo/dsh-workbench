@@ -160,10 +160,11 @@ export class Workbench {
       zentaoProductIds: this.store.data.projects.flatMap((p) => (p.zentaoProductId ? [p.zentaoProductId] : [])),
     }
     const sources = {} as TodoResult['sources']
-    const pick = async (name: keyof TodoResult['sources'], live: () => Promise<WorkItem[] | undefined>, demo: WorkItem[]) => {
+    const pick = async (name: keyof TodoResult['sources'], live: (c: ConnectorContext) => Promise<WorkItem[] | undefined>, demo: WorkItem[]) => {
+      const warnings: string[] = []
       try {
-        const items = await live()
-        if (items) { sources[name] = { mode: 'live' }; return items }
+        const items = await live({ ...ctx, warn: (m) => warnings.push(m) })
+        if (items) { sources[name] = { mode: 'live', error: warnings.join('；') || undefined }; return items }
         sources[name] = { mode: 'demo' }
       } catch (e) {
         sources[name] = { mode: 'fallback', error: String((e as Error).message ?? e) }
@@ -171,9 +172,9 @@ export class Workbench {
       return demo
     }
     const lists = await Promise.all([
-      pick('zentao', () => fetchZentao(ctx), demoZentao),
-      pick('gitlab', () => fetchGitlab(ctx), demoGitlab),
-      pick('jenkins', () => fetchJenkins(ctx), demoJenkins),
+      pick('zentao', fetchZentao, demoZentao),
+      pick('gitlab', fetchGitlab, demoGitlab),
+      pick('jenkins', fetchJenkins, demoJenkins),
       pick('sparkin', async () => (this.sparkin.mode === 'live' ? await this.sparkin.assigned() : undefined), demoSparkin),
     ])
     const rank = { P0: 0, P1: 1, P2: 2, P3: 3 }
@@ -183,7 +184,8 @@ export class Workbench {
       statusText: '手工任务', description: i.description, acceptance: i.acceptance, related: i.related ?? [], due: i.due || undefined,
     }))
     const sorted = [...lists.flat(), ...manual].sort((a, b) => rank[a.priority] - rank[b.priority])
-    this.syncBoard(sorted, sources)
+    // demo rows shown because a live source failed are not real to-dos: they must not become cards
+    this.syncBoard(sorted.filter((w) => w.source === 'manual' || sources[w.source].mode !== 'fallback'), sources)
     const items = sorted.map((w) => {
       const issue = this.issueForSource(w.source, w.ref)
       const hidden = (this.store.data.hiddenTodos ?? []).some((h) => h.source === w.source && h.ref === w.ref)
@@ -206,7 +208,7 @@ export class Workbench {
     const fresh = items.filter((w) => w.source !== 'manual' && !this.issueForSource(w.source, w.ref) && !hidden(w.source, w.ref) && !gone(w.source, w.ref))
     const present = new Set(items.map((w) => `${w.source}:${w.ref}`))
     const MISSING = '来源系统里已不在你的待办中（可能已解决或改派）'
-    const stale = d0.issues.filter((i) => i.sourceRef && i.status === 'backlog' && !present.has(`${i.sourceRef.source}:${i.sourceRef.ref}`) && sources[i.sourceRef.source as keyof typeof sources]?.mode === 'live' && i.note !== MISSING)
+    const stale = d0.issues.filter((i) => i.sourceRef && i.status === 'backlog' && !present.has(`${i.sourceRef.source}:${i.sourceRef.ref}`) && sources[i.sourceRef.source as keyof typeof sources]?.mode === 'live' && !sources[i.sourceRef.source as keyof typeof sources]?.error && i.note !== MISSING)
     const back = d0.issues.filter((i) => i.note === MISSING && i.sourceRef && present.has(`${i.sourceRef.source}:${i.sourceRef.ref}`))
     if (!fresh.length && !stale.length && !back.length) return
     this.store.update((d) => {

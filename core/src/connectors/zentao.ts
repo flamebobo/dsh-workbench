@@ -101,11 +101,16 @@ export async function fetchZentao(c: ConnectorContext): Promise<WorkItem[] | und
     c.zentaoProductIds.length ? c.zentaoProductIds : discover('products', 'products'),
     configured.length ? configured : discover('executions', 'executions'),
   ])
-  const lists = await Promise.all([
-    ...productIds.map(async (id) =>
-      parseBugs(await getJson(c.fetch, `${base}/api.php/v1/products/${id}/bugs?limit=200`, { headers }), acct, id, base)),
-    ...executions.map(async (id) =>
-      parseTasks(await getJson(c.fetch, `${base}/api.php/v1/executions/${id}/tasks?limit=200`, { headers }), acct, id, base)),
-  ])
-  return lists.flat()
+  // One product or execution the account may not read must not take the others down with it: keep what loaded and say what did not.
+  const jobs = [
+    ...productIds.map((id) => ({ label: `产品 ${id}`, run: async () =>
+      parseBugs(await getJson(c.fetch, `${base}/api.php/v1/products/${id}/bugs?limit=200`, { headers }), acct, id, base) })),
+    ...executions.map((id) => ({ label: `执行 ${id}`, run: async () =>
+      parseTasks(await getJson(c.fetch, `${base}/api.php/v1/executions/${id}/tasks?limit=200`, { headers }), acct, id, base) })),
+  ]
+  const settled = await Promise.allSettled(jobs.map((j) => j.run()))
+  const failed = settled.flatMap((r, n) => (r.status === 'rejected' ? [`${jobs[n]!.label}（${String((r.reason as Error).message ?? r.reason)}）`] : []))
+  if (failed.length && failed.length === jobs.length) throw new Error(`禅道${failed.slice(0, 3).join('；')}`)
+  if (failed.length) c.warn?.(`${failed.length} 个禅道产品 / 执行读取失败，这部分待办没有显示：${failed.slice(0, 3).join('；')}${failed.length > 3 ? '…' : ''}`)
+  return settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
 }

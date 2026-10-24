@@ -7,6 +7,8 @@ export interface ConnectorContext {
   fetch: FetchLike
   /** Ids from the Projects page, used to know which Zentao products to read. */
   zentaoProductIds: number[]
+  /** A source that still returned data but could not read part of it says so here (shown next to the 实时 label). */
+  warn?: (message: string) => void
 }
 
 export async function getJson<T>(fetchImpl: FetchLike, url: string, init: RequestInit = {}): Promise<T> {

@@ -630,11 +630,15 @@ async function fetchZentao(c) {
     c.zentaoProductIds.length ? c.zentaoProductIds : discover("products", "products"),
     configured.length ? configured : discover("executions", "executions")
   ]);
-  const lists = await Promise.all([
-    ...productIds.map(async (id) => parseBugs(await getJson(c.fetch, `${base}/api.php/v1/products/${id}/bugs?limit=200`, { headers }), acct, id, base)),
-    ...executions.map(async (id) => parseTasks(await getJson(c.fetch, `${base}/api.php/v1/executions/${id}/tasks?limit=200`, { headers }), acct, id, base))
-  ]);
-  return lists.flat();
+  const jobs = [
+    ...productIds.map((id) => ({ label: `\u4EA7\u54C1 ${id}`, run: async () => parseBugs(await getJson(c.fetch, `${base}/api.php/v1/products/${id}/bugs?limit=200`, { headers }), acct, id, base) })),
+    ...executions.map((id) => ({ label: `\u6267\u884C ${id}`, run: async () => parseTasks(await getJson(c.fetch, `${base}/api.php/v1/executions/${id}/tasks?limit=200`, { headers }), acct, id, base) }))
+  ];
+  const settled = await Promise.allSettled(jobs.map((j) => j.run()));
+  const failed = settled.flatMap((r, n) => r.status === "rejected" ? [`${jobs[n].label}\uFF08${String(r.reason.message ?? r.reason)}\uFF09`] : []);
+  if (failed.length && failed.length === jobs.length) throw new Error(`\u7985\u9053${failed.slice(0, 3).join("\uFF1B")}`);
+  if (failed.length) c.warn?.(`${failed.length} \u4E2A\u7985\u9053\u4EA7\u54C1 / \u6267\u884C\u8BFB\u53D6\u5931\u8D25\uFF0C\u8FD9\u90E8\u5206\u5F85\u529E\u6CA1\u6709\u663E\u793A\uFF1A${failed.slice(0, 3).join("\uFF1B")}${failed.length > 3 ? "\u2026" : ""}`);
+  return settled.flatMap((r) => r.status === "fulfilled" ? r.value : []);
 }
 
 // core/src/files.ts
@@ -1265,6 +1269,17 @@ var Workbench = class {
   dispose() {
     this.off();
   }
+  busy = /* @__PURE__ */ new Set();
+  /** Calls that write to an outside system must not overlap: a double click would otherwise write twice (two comments, two time entries). */
+  async once(key, what, fn) {
+    if (this.busy.has(key)) throw new WorkbenchError("invalid", `${what}\u6B63\u5728\u8FDB\u884C\uFF0C\u8BF7\u7A0D\u5019`);
+    this.busy.add(key);
+    try {
+      return await fn();
+    } finally {
+      this.busy.delete(key);
+    }
+  }
   /** Cards saved before ordering existed get a position by age, once. */
   normalizeOrders() {
     if (this.store.data.issues.every((i) => i.order != null)) return;
@@ -1308,10 +1323,11 @@ var Workbench = class {
     };
     const sources = {};
     const pick = async (name, live, demo) => {
+      const warnings = [];
       try {
-        const items2 = await live();
+        const items2 = await live({ ...ctx, warn: (m) => warnings.push(m) });
         if (items2) {
-          sources[name] = { mode: "live" };
+          sources[name] = { mode: "live", error: warnings.join("\uFF1B") || void 0 };
           return items2;
         }
         sources[name] = { mode: "demo" };
@@ -1321,9 +1337,9 @@ var Workbench = class {
       return demo;
     };
     const lists = await Promise.all([
-      pick("zentao", () => fetchZentao(ctx), demoZentao),
-      pick("gitlab", () => fetchGitlab(ctx), demoGitlab),
-      pick("jenkins", () => fetchJenkins(ctx), demoJenkins),
+      pick("zentao", fetchZentao, demoZentao),
+      pick("gitlab", fetchGitlab, demoGitlab),
+      pick("jenkins", fetchJenkins, demoJenkins),
       pick("sparkin", async () => this.sparkin.mode === "live" ? await this.sparkin.assigned() : void 0, demoSparkin)
     ]);
     const rank = { P0: 0, P1: 1, P2: 2, P3: 3 };
@@ -1341,7 +1357,7 @@ var Workbench = class {
       due: i.due || void 0
     }));
     const sorted = [...lists.flat(), ...manual].sort((a, b) => rank[a.priority] - rank[b.priority]);
-    this.syncBoard(sorted, sources);
+    this.syncBoard(sorted.filter((w) => w.source === "manual" || sources[w.source].mode !== "fallback"), sources);
     const items = sorted.map((w) => {
       const issue = this.issueForSource(w.source, w.ref);
       const hidden = (this.store.data.hiddenTodos ?? []).some((h) => h.source === w.source && h.ref === w.ref);
@@ -1362,7 +1378,7 @@ var Workbench = class {
     const fresh = items.filter((w) => w.source !== "manual" && !this.issueForSource(w.source, w.ref) && !hidden(w.source, w.ref) && !gone(w.source, w.ref));
     const present = new Set(items.map((w) => `${w.source}:${w.ref}`));
     const MISSING = "\u6765\u6E90\u7CFB\u7EDF\u91CC\u5DF2\u4E0D\u5728\u4F60\u7684\u5F85\u529E\u4E2D\uFF08\u53EF\u80FD\u5DF2\u89E3\u51B3\u6216\u6539\u6D3E\uFF09";
-    const stale = d0.issues.filter((i) => i.sourceRef && i.status === "backlog" && !present.has(`${i.sourceRef.source}:${i.sourceRef.ref}`) && sources[i.sourceRef.source]?.mode === "live" && i.note !== MISSING);
+    const stale = d0.issues.filter((i) => i.sourceRef && i.status === "backlog" && !present.has(`${i.sourceRef.source}:${i.sourceRef.ref}`) && sources[i.sourceRef.source]?.mode === "live" && !sources[i.sourceRef.source]?.error && i.note !== MISSING);
     const back = d0.issues.filter((i) => i.note === MISSING && i.sourceRef && present.has(`${i.sourceRef.source}:${i.sourceRef.ref}`));
     if (!fresh.length && !stale.length && !back.length) return;
     this.store.update((d) => {
@@ -1667,7 +1683,10 @@ ${summary.slice(0, 1500)}`,
    * Resolve the bug in Zentao (status 已解决, resolution 已修复) with a comment. Outward-facing: runs from an explicit click,
    * or automatically only if the 回写 setting says so. Without Zentao credentials nothing is sent and the record says 演示.
    */
-  async writeBackZentao(id, comment) {
+  writeBackZentao(id, comment) {
+    return this.once(`writeback:${id}`, "\u56DE\u5199\u7985\u9053", () => this.doWriteBackZentao(id, comment));
+  }
+  async doWriteBackZentao(id, comment) {
     const issue = this.store.data.issues.find((i) => i.id === id);
     if (!issue) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
     if (issue.writeBack) throw new WorkbenchError("invalid", `${issue.key} \u5DF2\u7ECF\u56DE\u5199\u8FC7\u7985\u9053`);
@@ -2074,7 +2093,10 @@ ${r.output}` : r.output;
    * Commit the task's work, push its branch and open a GitLab merge request. Outward-facing: only called from an explicit click.
    * Pushing uses the git credentials already on this machine; the GitLab token is only used for the API call.
    */
-  async submitMergeRequest(id) {
+  submitMergeRequest(id) {
+    return this.once(`mr:${id}`, "\u63D0\u4EA4\u5408\u5E76\u8BF7\u6C42", () => this.doSubmitMergeRequest(id));
+  }
+  async doSubmitMergeRequest(id) {
     const { issue, project } = this.ctxOf(id);
     if (issue.mr) throw new WorkbenchError("invalid", `${issue.key} \u5DF2\u7ECF\u63D0\u4EA4\u8FC7\u5408\u5E76\u8BF7\u6C42\uFF1A${issue.mr.url}`);
     if (!issue.branch || !issue.worktree || !existsSync5(issue.worktree) || !issue.baseSha) {
@@ -2227,7 +2249,7 @@ ${summary.slice(0, 4e3)}`,
       }
       try {
         const note = e.note?.trim() || `${issue.key} ${issue.title}${issue.sourceRef ? `\uFF08${issue.sourceRef.ref}\uFF09` : ""}`;
-        const { entryId } = await this.sparkin.submit({ taskId: task.id, date: input.date, hours: e.hours, note });
+        const { entryId } = await this.once(`timesheet:${issue.id}`, "\u5DE5\u65F6\u586B\u62A5", () => this.sparkin.submit({ taskId: task.id, date: input.date, hours: e.hours, note }));
         this.store.update((d) => {
           d.issues.find((i) => i.id === issue.id).timesheet = {
             hours: e.hours,
