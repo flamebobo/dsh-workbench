@@ -44,6 +44,29 @@ const fetchTransport: Transport = {
 let transport = fetchTransport
 export function setTransport(t: Transport) { transport = t }
 
+/**
+ * A yes/no question before an action. DSH: the browser's confirm(), as before. Codex shows the page in a sandboxed frame where
+ * confirm() is blocked (it returns false at once), so there the question is drawn in the page (styled by codex-plugin/board.html).
+ */
+export function ask(message: string): Promise<boolean> {
+  if (HOST !== 'codex') return Promise.resolve(confirm(message))
+  return new Promise((resolve) => {
+    const mask = document.createElement('div')
+    mask.className = 'wb-ask'
+    mask.innerHTML = '<div role="alertdialog" aria-modal="true"><p></p><div><button type="button" data-v="0">取消</button><button type="button" data-v="1" class="primary">确定</button></div></div>'
+    mask.querySelector('p')!.textContent = message
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false) } }
+    const done = (v: boolean) => { mask.remove(); document.removeEventListener('keydown', key, true); resolve(v) }
+    mask.addEventListener('click', (e) => {
+      const v = (e.target as HTMLElement).dataset.v
+      if (v) done(v === '1'); else if (e.target === mask) done(false)
+    })
+    document.addEventListener('keydown', key, true)
+    document.body.append(mask)
+    mask.querySelector<HTMLButtonElement>('.primary')!.focus()
+  })
+}
+
 export async function rpc<T>(endpoint: string, payload: unknown = {}): Promise<T> {
   const j = await transport.rpc(endpoint, payload)
   if (!j.ok) throw Object.assign(new RpcError(j.error), { code: j.code, issueId: j.issueId })

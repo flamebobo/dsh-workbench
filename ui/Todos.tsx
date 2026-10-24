@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { canWriteBack, fmtSize, rpc, STATUS_LABEL, type Issue, type RpcError, type TodoResult, type WorkItem } from './api.ts'
+import { ask, canWriteBack, fmtSize, rpc, STATUS_LABEL, type Issue, type RpcError, type TodoResult, type WorkItem } from './api.ts'
 import { TimesheetModal } from './Timesheet.tsx'
 import { IssueModal } from './Board.tsx'
 import { WriteBackModal } from './WriteBack.tsx'
@@ -69,7 +69,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
 
   async function archiveDone() {
     const n = (todos?.items ?? []).filter((r) => r.issueStatus === 'done' && !r.archived).length
-    if (!n || !confirm(`归档全部 ${n} 个已完成的任务？（可在「显示已归档」里找回）`)) return
+    if (!n || !(await ask(`归档全部 ${n} 个已完成的任务？（可在「显示已归档」里找回）`))) return
     try { p.notify(`已归档 ${await rpc<number>('issues.archiveDone')} 个`); await p.refresh(); await p.reloadTodos() } catch (e) { p.notify((e as Error).message) }
   }
   async function archive(r: Row, archived: boolean) {
@@ -83,7 +83,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
     } catch (e) { p.notify((e as Error).message) }
   }
   async function remove(r: Row) {
-    if (!r.issueId || !confirm(`删除任务 ${r.ref}？删除后不可恢复（只想收起的话请用「归档」）。`)) return
+    if (!r.issueId || !(await ask(`删除任务 ${r.ref}？删除后不可恢复（只想收起的话请用「归档」）。`))) return
     try { await rpc('issue.delete', { id: r.issueId }); p.notify(`已删除 ${r.ref}`); await p.refresh(); await p.reloadTodos() } catch (e) { p.notify((e as Error).message) }
   }
 

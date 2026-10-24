@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ago, BUILD_LABEL, HOST_NAME, buildColor, rpc, STATUS_LABEL, type Issue, type Project, type Status } from './api.ts'
+import { ask, ago, BUILD_LABEL, HOST_NAME, buildColor, rpc, STATUS_LABEL, type Issue, type Project, type Status } from './api.ts'
 import { SkillPicker } from './SkillPicker.tsx'
 import type { PageProps } from './App.tsx'
 
@@ -28,7 +28,7 @@ export function Projects(p: PageProps) {
     try { await rpc('project.save', draft); setDraft(undefined); await p.refresh() } catch (e) { p.notify((e as Error).message) }
   }
   async function remove(x: Project) {
-    if (!confirm(`删除项目「${x.name}」？卡片不会被删除，但没有项目的卡片不能开工。`)) return
+    if (!(await ask(`删除项目「${x.name}」？卡片不会被删除，但没有项目的卡片不能开工。`))) return
     await rpc('project.delete', { id: x.id }); setOpenId(undefined); await p.refresh()
   }
   const f = (k: keyof Draft, label: string, ph = '') => (

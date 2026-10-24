@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ago, BUILD_LABEL, buildColor, canWriteBack, rpc, STATUS_LABEL, type Attachment, type Issue, type Status } from './api.ts'
+import { ask, ago, BUILD_LABEL, buildColor, canWriteBack, rpc, STATUS_LABEL, type Attachment, type Issue, type Status } from './api.ts'
 import { Composer } from './Composer.tsx'
 import { BuildModal } from './Builds.tsx'
 import { TimesheetModal } from './Timesheet.tsx'
@@ -20,7 +20,7 @@ async function stopCard(issue: Issue, p: PageProps, busy: (b: boolean) => void) 
   try { await stopConfirmed(issue, p, busy) } finally { stopping.delete(issue.id) }
 }
 async function stopConfirmed(issue: Issue, p: PageProps, busy: (b: boolean) => void) {
-  if (!confirm(`停止 ${issue.key} 的智能体？当前这一轮会被中断，卡片进入「已阻塞」（已手动停止），之后可以点「重试」重新开工。已经做出的改动会保留在任务分支里。`)) return
+  if (!(await ask(`停止 ${issue.key} 的智能体？当前这一轮会被中断，卡片进入「已阻塞」（已手动停止），之后可以点「重试」重新开工。已经做出的改动会保留在任务分支里。`))) return
   busy(true)
   try { await rpc('issue.stop', { id: issue.id }); p.notify(`已停止 ${issue.key}，可以重试`) } catch (e) { p.notify((e as Error).message) } finally { busy(false); await p.refresh() }
 }
@@ -67,7 +67,7 @@ export function Board(p: PageProps) {
   }
   async function archiveDone() {
     const n = state.issues.filter((i) => i.status === 'done' && !i.archivedAt).length
-    if (!n || !confirm(`归档全部 ${n} 张已完成的卡片？（可在「显示已归档」里找回）`)) return
+    if (!n || !(await ask(`归档全部 ${n} 张已完成的卡片？（可在「显示已归档」里找回）`))) return
     try { p.notify(`已归档 ${await rpc<number>('issues.archiveDone')} 张`); await p.refresh() } catch (e) { p.notify((e as Error).message) }
   }
   const archivedCount = state.issues.filter((i) => i.archivedAt).length
@@ -211,7 +211,7 @@ export function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue
     try { await rpc('issue.archive', { id: issue.id, archived: !issue.archivedAt }); p.notify(issue.archivedAt ? `已取消归档 ${issue.key}` : `已归档 ${issue.key}`); await p.refresh(); onClose() } catch (e) { p.notify((e as Error).message) }
   }
   async function remove() {
-    if (!issue || !confirm(`删除卡片 ${issue.key}？删除后不可恢复（只想收起的话请用「归档」）。`)) return
+    if (!issue || !(await ask(`删除卡片 ${issue.key}？删除后不可恢复（只想收起的话请用「归档」）。`))) return
     await rpc('issue.delete', { id: issue.id }); await p.refresh(); onClose()
   }
 
@@ -321,7 +321,7 @@ function CodeField({ issue, p, onChanges }: { issue: Issue; p: PageProps; onChan
   const [open, setOpen] = useState(false)
   if (!project || (issue.status === 'backlog' && !issue.branch)) return null
   const act = async (kind: 'test' | 'mr') => {
-    if (kind === 'mr' && !confirm(`将提交 ${issue.key} 的改动并把分支「${issue.branch}」推送到 origin，然后在 GitLab 创建合并请求（目标分支 ${issue.baseBranch}）。继续？`)) return
+    if (kind === 'mr' && !(await ask(`将提交 ${issue.key} 的改动并把分支「${issue.branch}」推送到 origin，然后在 GitLab 创建合并请求（目标分支 ${issue.baseBranch}）。继续？`))) return
     setBusy(kind)
     try {
       if (kind === 'test') { await rpc('issue.test', { id: issue.id }); p.notify('已开始运行测试') } else { const r = await rpc<Issue>('issue.mr', { id: issue.id }); p.notify(`已创建合并请求 !${r.mr?.iid}`) }

@@ -1,4 +1,4 @@
-import { rpc, type Issue, type State } from './api.ts'
+import { ask, rpc, type Issue, type State } from './api.ts'
 
 /** Does a card match the search box (key, title, description, source number, agent, project)? */
 export function matchesIssue(i: Issue, q: string, s: State): boolean {
@@ -13,6 +13,6 @@ export async function offerNext(id: string, s: State, notify: (m: string) => voi
   const cur = s.issues.find((i) => i.id === id)
   const next = cur?.nextId ? s.issues.find((i) => i.id === cur.nextId) : undefined
   if (!cur || !next || !['backlog', 'todo', 'blocked'].includes(next.status) || next.archivedAt) return
-  if (!confirm(`${cur.key} 已完成。接着开工下一个任务「${next.key} ${next.title}」吗？`)) return
+  if (!(await ask(`${cur.key} 已完成。接着开工下一个任务「${next.key} ${next.title}」吗？`))) return
   try { await rpc('issue.start', { id: next.id }); notify(`已开工下一个任务：${next.key}`) } catch (e) { notify((e as Error).message) }
 }

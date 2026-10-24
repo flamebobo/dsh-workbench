@@ -12,6 +12,14 @@ const theme = (t?: string) => { if (t) document.documentElement.dataset.theme = 
 const app = new McpApp({ name: '研发工作台', version: typeof __WB_VERSION__ === 'string' ? __WB_VERSION__ : 'dev' })
 app.onhostcontextchanged = (c) => theme(c.theme)
 setTransport(mcpTransport(app))
+// links (MR, Jenkins build) open through the host: a sandboxed frame may not open windows itself. Capture phase, so a link whose
+// React handler stops propagation is still caught.
+document.addEventListener('click', (e) => {
+  const a = (e.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null
+  if (!a || !/^https?:/.test(a.href)) return
+  e.preventDefault()
+  void app.openLink({ url: a.href })
+}, true)
 
 app.connect().then(() => {
   theme(app.getHostContext()?.theme)

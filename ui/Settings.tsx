@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { notificationState, testNotification } from './notify.ts'
-import { HOST, rpc, type ConnectionView, type Issue, type PluginSettings } from './api.ts'
+import { ask, HOST, rpc, type ConnectionView, type Issue, type PluginSettings } from './api.ts'
 import type { PageProps } from './App.tsx'
 
 const { useState, useEffect } = React
@@ -27,7 +27,7 @@ export function Settings(p: PageProps & { reloadTodos: () => Promise<void> }) {
     setBusy(`${c.id}:${action}`)
     try {
       if (action === 'clear') {
-        if (!confirm(`清除${c.label}的全部凭据？`)) return
+        if (!(await ask(`清除${c.label}的全部凭据？`))) return
         setConns(await rpc<ConnectionView[]>('connections.clear', { id: c.id }))
         setEdits((e) => Object.fromEntries(Object.entries(e).filter(([k]) => !c.fields.some((f) => f.key === k))))
         say(c.id, true, '已清除，待办回到演示数据')
@@ -115,7 +115,7 @@ function DemoCards({ p }: { p: PageProps }) {
   const mine = left.map((id) => p.state.issues.find((i) => i.id === id)).filter(Boolean) as Issue[]
   const used = mine.filter((i) => i.status === 'in_progress').length
   async function clean() {
-    if (!confirm(`清理 ${left.length - used} 张演示卡片？它们来自已接入真实数据的系统，其中可能有你开过工或编辑过的，删除后不可恢复。正在进行中的不会被清理。`)) return
+    if (!(await ask(`清理 ${left.length - used} 张演示卡片？它们来自已接入真实数据的系统，其中可能有你开过工或编辑过的，删除后不可恢复。正在进行中的不会被清理。`))) return
     try { p.notify(`已清理 ${await rpc<number>('demo.clean')} 张演示卡片`); await p.refresh() } catch (e) { p.notify((e as Error).message) }
   }
   return (

@@ -125,7 +125,7 @@ export function Composer(p: {
         <button className="wb-plus" aria-label="添加图片或文档" title="添加图片或文档" onClick={() => picker.current?.click()}>＋</button>
         {uploading > 0 && <span className="wb-muted">正在上传 {uploading} 个…</span>}
         <span className="wb-grow" />
-        <span className="wb-muted">输入 / 选择指令 · @ 引用项目文件 · 可粘贴或拖入图片、文档</span>
+        <span className="wb-muted">{COMMANDS.length ? '输入 / 选择指令 · ' : ''}@ 引用项目文件 · 可粘贴或拖入图片、文档</span>
       </div>
     </div>
   )
