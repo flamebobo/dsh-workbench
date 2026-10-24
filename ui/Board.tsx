@@ -2,6 +2,8 @@ import * as React from 'react'
 import { ago, BUILD_LABEL, buildColor, rpc, STATUS_LABEL, type Attachment, type Issue, type Status } from './api.ts'
 import { Composer } from './Composer.tsx'
 import { BuildModal } from './Builds.tsx'
+import { TimesheetModal } from './Timesheet.tsx'
+import { matchesIssue, offerNext } from './chain.ts'
 import type { PageProps } from './App.tsx'
 
 const { useState, useEffect } = React
@@ -14,6 +16,9 @@ export function Board(p: PageProps) {
   const [openId, setOpenId] = useState<string | undefined>(p.focusIssue)
   const [creating, setCreating] = useState<Status>()
   const [building, setBuilding] = useState(false)
+  const [reporting, setReporting] = useState(false)
+  const [q, setQ] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
   useEffect(() => { if (p.focusIssue) setOpenId(p.focusIssue) }, [p.focusIssue])
 
   const running = new Set(state.runs.filter((r) => r.status === 'running').map((r) => r.issueId))
@@ -22,18 +27,34 @@ export function Board(p: PageProps) {
   async function move(id: string, status: Status) {
     const cur = state.issues.find((i) => i.id === id)
     if (!cur || cur.status === status) return
-    try { await rpc('issue.status', { id, status }); await p.refresh() } catch (e) { p.notify((e as Error).message) }
+    try {
+      await rpc('issue.status', { id, status }); await p.refresh()
+      if (status === 'done') await offerNext(id, state, p.notify)
+    } catch (e) { p.notify((e as Error).message) }
   }
+  async function archiveDone() {
+    const n = state.issues.filter((i) => i.status === 'done' && !i.archivedAt).length
+    if (!n || !confirm(`归档全部 ${n} 张已完成的卡片？（可在「显示已归档」里找回）`)) return
+    try { p.notify(`已归档 ${await rpc<number>('issues.archiveDone')} 张`); await p.refresh() } catch (e) { p.notify((e as Error).message) }
+  }
+  const archivedCount = state.issues.filter((i) => i.archivedAt).length
+  const visible = state.issues.filter((i) => (showArchived || !i.archivedAt) && matchesIssue(i, q, state))
+  const keyOf = (id?: string) => state.issues.find((i) => i.id === id)?.key
   const open = state.issues.find((i) => i.id === openId)
   return (
     <div className="wb-main" style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
       <div className="wb-toolbar" style={{ paddingBottom: 0 }}>
-        <span className="wb-sub">拖拽卡片改变状态；修完一批后，勾选待审核的卡片，选对应环境的 Jenkins Job 构建验证</span><span className="wb-grow" />
-        <button className="wb-btn" onClick={() => setBuilding(true)}>构建验证</button>
+        <input className="wb-input" style={{ width: 240 }} type="search" placeholder="搜索 编号 / 标题 / 描述 / 智能体 / 项目" aria-label="搜索任务" value={q} onChange={(e) => setQ(e.target.value)} />
+        <label className="wb-pick" style={{ padding: 0 }}><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />显示已归档{archivedCount ? `（${archivedCount}）` : ''}</label>
+        {q && <span className="wb-muted">匹配 {visible.length} 张</span>}
+        <span className="wb-grow" />
+        <button className="wb-btn" title="把「已完成」的卡片全部归档，看板更清爽" onClick={() => { void archiveDone() }}>归档已完成</button>
+        <button className="wb-btn" title="把已完成的任务和工时填到 Sparkin 对应的项目任务上" onClick={() => setReporting(true)}>填报 Sparkin 工时</button>
+        <button className="wb-btn" title="选择 Jenkins Job 构建一次，验证这批修复" onClick={() => setBuilding(true)}>构建验证</button>
       </div>
       <div className="wb-board" style={{ flex: 1, minHeight: 0, height: 'auto' }}>
         {COLUMNS.map((col) => {
-          const items = state.issues.filter((i) => i.status === col).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+          const items = visible.filter((i) => i.status === col).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
           return (
             <section key={col} className={`wb-col ${over === col ? 'over' : ''}`} aria-label={STATUS_LABEL[col]}
               onDragOver={(e) => { e.preventDefault(); setOver(col) }} onDragLeave={() => setOver((o) => (o === col ? undefined : o))}
@@ -42,16 +63,18 @@ export function Board(p: PageProps) {
                 <button className="wb-btn" style={{ padding: '0 8px' }} aria-label={`在${STATUS_LABEL[col]}新建`} onClick={() => setCreating(col)}>+</button></div>
               <div className="wb-col-b">
                 {items.map((i) => (
-                  <article key={i.id} className={`wb-card ${dragging === i.id ? 'drag' : ''}`} draggable
+                  <article key={i.id} className={`wb-card ${dragging === i.id ? 'drag' : ''} ${i.archivedAt ? 'arch' : ''}`} draggable
                     onDragStart={(e) => { e.dataTransfer.setData('text/plain', i.id); setDragging(i.id) }} onDragEnd={() => { setDragging(undefined); setOver(undefined) }}
                     onClick={() => setOpenId(i.id)}>
                     <div className="k">
                       {running.has(i.id) && <span className="wb-spin" title="会话运行中" />}
-                      <span>{i.key}</span>{i.sourceRef && <span>· {i.sourceRef.ref}</span>}
+                      <span>{i.key}</span>{i.sourceRef && <span>· {i.sourceRef.ref}</span>}{i.archivedAt && <span className="wb-pill">已归档</span>}
                     </div>
                     <div className="t">{i.title}</div>
                     {i.note && <div className="wb-ellipsis" style={{ color: i.status === 'blocked' ? 'var(--wb-red)' : 'var(--wb-amber)', fontSize: 11, marginBottom: 4 }} title={i.note}>{i.note}</div>}
                     {lastBuild(state.builds, i.id) && <div className="wb-bld" style={{ color: buildColor(lastBuild(state.builds, i.id)!.state) }}>构建 {lastBuild(state.builds, i.id)!.job}{lastBuild(state.builds, i.id)!.number ? ` #${lastBuild(state.builds, i.id)!.number}` : ''} · {BUILD_LABEL[lastBuild(state.builds, i.id)!.state]}</div>}
+                    {(i.nextId || state.issues.some((x) => x.nextId === i.id)) && <div className="wb-bld wb-muted">{state.issues.some((x) => x.nextId === i.id) ? `← ${state.issues.filter((x) => x.nextId === i.id).map((x) => x.key).join(' ')}` : ''}{i.nextId ? `  → ${keyOf(i.nextId)}` : ''}</div>}
+                    {i.timesheet && <div className="wb-bld" style={{ color: 'var(--wb-green)' }}>已填报工时 {i.timesheet.hours}h · {i.timesheet.sparkinTaskName}</div>}
                     <div className="m"><span className="wb-pill">{agentName(i.agentId)}</span><span style={{ marginLeft: 'auto' }}>{ago(i.updatedAt)}</span></div>
                   </article>
                 ))}
@@ -63,6 +86,7 @@ export function Board(p: PageProps) {
       {open && <IssueModal issue={open} p={p} onClose={() => setOpenId(undefined)} />}
       {creating && <IssueModal initialStatus={creating} p={p} onClose={() => setCreating(undefined)} />}
       {building && <BuildModal p={p} onClose={() => setBuilding(false)} />}
+      {reporting && <TimesheetModal p={p} onClose={() => setReporting(false)} />}
     </div>
   )
 }
@@ -85,6 +109,7 @@ function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue; initi
   const [status, setStatus] = useState<Status>(issue?.status ?? initialStatus ?? 'backlog')
   const [files, setFiles] = useState<Attachment[]>(issue?.attachments ?? [])
   const [busy, setBusy] = useState(false)
+  const [reporting, setReporting] = useState(false)
   useEffect(() => { if (issue) setStatus(issue.status) }, [issue?.status]) // a session ending changes it under us
   const runs = issue ? state.runs.filter((r) => r.issueId === issue.id).reverse() : []
   const canStart = !issue || STARTABLE.includes(issue.status)
@@ -102,7 +127,10 @@ function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue; initi
       let id = issue?.id
       if (issue) {
         await rpc('issue.update', { id: issue.id, patch: fields() })
-        if (!start && status !== issue.status) await rpc('issue.status', { id: issue.id, status })
+        if (!start && status !== issue.status) {
+          await rpc('issue.status', { id: issue.id, status })
+          if (status === 'done') { await p.refresh(); await offerNext(issue.id, { ...state, issues: state.issues.map((x) => (x.id === issue.id ? { ...x, status } : x)) }, p.notify) }
+        }
       } else {
         id = (await rpc<Issue>('issue.create', { ...fields(), status })).id
       }
@@ -113,13 +141,18 @@ function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue; initi
       await p.refresh(); onClose()
     } catch (e) { p.notify((e as Error).message); await p.refresh() } finally { setBusy(false) }
   }
+  async function archive() {
+    if (!issue) return
+    try { await rpc('issue.archive', { id: issue.id, archived: !issue.archivedAt }); p.notify(issue.archivedAt ? `已取消归档 ${issue.key}` : `已归档 ${issue.key}`); await p.refresh(); onClose() } catch (e) { p.notify((e as Error).message) }
+  }
   async function remove() {
-    if (!issue || !confirm(`删除卡片 ${issue.key}？`)) return
+    if (!issue || !confirm(`删除卡片 ${issue.key}？删除后不可恢复（只想收起的话请用「归档」）。`)) return
     await rpc('issue.delete', { id: issue.id }); await p.refresh(); onClose()
   }
 
   return (
     <div className="wb-modal-mask" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      {reporting && issue && <TimesheetModal p={p} only={[issue.id]} onClose={() => setReporting(false)} />}
       <div className="wb-modal" role="dialog" aria-label={issue?.key ?? '新建任务'}>
         <div className="wb-row"><span className="wb-sub">{issue ? `${issue.key}${issue.sourceRef ? ` · ${issue.sourceRef.source} ${issue.sourceRef.ref}` : ' · 手工任务'}` : '新建任务'}</span><span className="wb-grow" />
           {issue?.sessionId && <button className="wb-btn" onClick={() => p.openSession(issue.sessionId!)}>打开关联会话 ↗</button>}
@@ -142,6 +175,8 @@ function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue; initi
           <div className="wb-field wb-grow"><label>状态（已完成只能由你设置）</label>
             <select className="wb-select" value={status} onChange={(e) => setStatus(e.target.value as Status)}>{COLUMNS.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}</select></div>
         </div>
+        {issue && <ChainField issue={issue} p={p} />}
+        {issue?.timesheet && <div className="wb-field"><label>工时</label><div className="wb-rel">已填报 <b>{issue.timesheet.hours}h</b> · {issue.timesheet.date} · Sparkin「{issue.timesheet.sparkinTaskName}」<span className="wb-muted"> · 记录 {issue.timesheet.entryId}{issue.timesheet.demo ? ' · 演示，未写入 Sparkin' : ''}</span></div></div>}
         {issue?.note && <div className={`wb-banner ${issue.status === 'blocked' ? 'err' : ''}`} style={{ margin: '4px 0' }}>{issue.note}</div>}
         {issue && (state.builds ?? []).some((b) => b.issueIds.includes(issue.id)) && <div className="wb-field"><label>构建验证</label>
           {(state.builds ?? []).filter((b) => b.issueIds.includes(issue.id)).reverse().map((b) => (
@@ -156,7 +191,10 @@ function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue; initi
               {r.finalText && <div className="wb-muted" style={{ whiteSpace: 'pre-wrap', maxHeight: 120, overflow: 'auto', marginTop: 4 }}>{r.finalText}</div>}
             </div>
           )) : <div className="wb-muted">暂无执行记录</div>}</div>}
-        <div className="wb-row">{issue && <button className="wb-btn danger" onClick={() => { void remove() }}>删除</button>}<span className="wb-grow" />
+        <div className="wb-row">{issue && <button className="wb-btn danger" onClick={() => { void remove() }}>删除</button>}
+          {issue && <button className="wb-btn" disabled={issue.status === 'in_progress'} title={issue.status === 'in_progress' ? '进行中的卡片不能归档' : '归档后默认从看板和待办隐藏，可在「显示已归档」里找回'} onClick={() => { void archive() }}>{issue.archivedAt ? '取消归档' : '归档'}</button>}
+          {issue?.status === 'done' && !issue.timesheet && <button className="wb-btn" onClick={() => setReporting(true)}>填报 Sparkin 工时</button>}
+          <span className="wb-grow" />
           <button className="wb-btn" onClick={onClose}>取消</button>
           <button className="wb-btn" disabled={busy} onClick={() => { void save(false) }}>{issue ? '保存' : '创建'}</button>
           {canStart && <button className="wb-btn primary" disabled={busy} onClick={() => { void save(true) }}>{issue ? '保存并开工' : '创建并开工'}</button>}</div>
@@ -166,3 +204,34 @@ function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue; initi
 }
 
 const agentName = (s: PageProps['state'], id: string) => s.agents.find((a) => a.id === id)?.name ?? id
+
+/** Task chain: who comes before / after this card. Changes apply immediately. */
+function ChainField({ issue, p }: { issue: Issue; p: PageProps }) {
+  const { state } = p
+  const [title, setTitle] = useState('')
+  const [adding, setAdding] = useState(false)
+  const before = state.issues.filter((i) => i.nextId === issue.id)
+  const next = state.issues.find((i) => i.id === issue.nextId)
+  const options = state.issues.filter((i) => i.id !== issue.id && !i.archivedAt)
+  const act = async (fn: () => Promise<unknown>) => { try { await fn(); await p.refresh() } catch (e) { p.notify((e as Error).message) } }
+  const startNext = async () => { if (next) await act(async () => { await rpc('issue.start', { id: next.id }); p.notify(`已开工下一个任务：${next.key}`) }) }
+
+  return (
+    <div className="wb-field"><label>任务链（做完这个，下一个做什么）</label>
+      {before.length > 0 && <div className="wb-sub" style={{ marginBottom: 4 }}>前置任务：{before.map((b) => `${b.key} ${b.title}`).join('；')}（它的结论会带进本任务的首条消息）</div>}
+      <div className="wb-row">
+        <select className="wb-select" value={issue.nextId ?? ''} onChange={(e) => { void act(() => rpc('issue.next', { id: issue.id, nextId: e.target.value })) }}>
+          <option value="">没有后续任务</option>
+          {options.map((i) => <option key={i.id} value={i.id}>{i.key} {i.title}</option>)}
+        </select>
+        <button className="wb-btn" style={{ whiteSpace: 'nowrap' }} onClick={() => setAdding(!adding)}>＋ 新建后续任务</button>
+        {next && ['backlog', 'todo', 'blocked'].includes(next.status) && ['in_review', 'done'].includes(issue.status) &&
+          <button className="wb-btn primary" style={{ whiteSpace: 'nowrap' }} onClick={() => { void startNext() }}>开工下一个</button>}
+      </div>
+      {adding && <div className="wb-row" style={{ marginTop: 6 }}>
+        <input className="wb-input" autoFocus placeholder="后续任务标题（继承本任务的项目和智能体）" value={title} onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && title.trim()) { void act(async () => { await rpc('issue.followup', { id: issue.id, title }); setTitle(''); setAdding(false) }) } }} />
+        <button className="wb-btn" disabled={!title.trim()} onClick={() => { void act(async () => { await rpc('issue.followup', { id: issue.id, title }); setTitle(''); setAdding(false) }) }}>创建</button></div>}
+    </div>
+  )
+}

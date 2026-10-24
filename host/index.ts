@@ -37,6 +37,13 @@ export function apply(ctx: Ctx) {
       case 'issue.create': return wb.createIssue(p)
       case 'issue.update': return wb.updateIssue(p.id, p.patch)
       case 'issue.start': return await wb.startIssue(p.id, p.agentId)
+      case 'issue.next': return wb.setNext(p.id, p.nextId ?? '')
+      case 'issue.followup': return wb.createFollowUp(p.id, { title: p.title, description: p.description })
+      case 'issue.archive': return wb.archiveIssue(p.id, !!p.archived)
+      case 'issues.archiveDone': return wb.archiveDone()
+      case 'todos.archive': return wb.archiveTodo(p.source, p.ref, !!p.archived)
+      case 'sparkin.info': return await wb.sparkinInfo()
+      case 'timesheet.report': return await wb.reportTimesheet({ date: p.date, entries: p.entries ?? [] })
       case 'issue.status': return wb.setStatus(p.id, p.status as Status, 'human') // only the UI (a human) calls this
       case 'issue.delete': return wb.deleteIssue(p.id)
       case 'agent.save': {

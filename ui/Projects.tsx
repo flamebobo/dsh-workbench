@@ -2,13 +2,15 @@ import * as React from 'react'
 import { rpc, type Project } from './api.ts'
 import type { PageProps } from './App.tsx'
 
-const { useState } = React
+const { useState, useEffect } = React
 type Draft = Omit<Project, 'id'> & { id?: string }
 const EMPTY: Draft = { name: '', cwd: '' }
 const num = (v: string) => (v.trim() ? Number(v) : undefined)
 
 export function Projects(p: PageProps) {
   const [draft, setDraft] = useState<Draft | undefined>()
+  const [sparkin, setSparkin] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => { void rpc<{ projects: { id: string; name: string }[] }>('sparkin.info').then((i) => setSparkin(i.projects)).catch(() => {}) }, [])
 
   async function save() {
     if (!draft) return
@@ -29,11 +31,11 @@ export function Projects(p: PageProps) {
       <div className="wb-toolbar"><span className="wb-sub">开工时使用「工作目录」作为 DSH 会话的 cwd；其余字段用于把待办对应到项目。</span><span className="wb-grow" />
         <button className="wb-btn primary" onClick={() => setDraft({ ...EMPTY })}>+ 添加项目</button></div>
       <table className="wb-table">
-        <thead><tr><th>名称</th><th>工作目录</th><th style={{ width: 110 }}>GitLab 项目 ID</th><th style={{ width: 110 }}>禅道产品 ID</th><th style={{ width: 140 }}>Jenkins Job</th><th style={{ width: 150 }} /></tr></thead>
+        <thead><tr><th>名称</th><th>工作目录</th><th style={{ width: 110 }}>GitLab 项目 ID</th><th style={{ width: 110 }}>禅道产品 ID</th><th style={{ width: 140 }}>Jenkins Job</th><th style={{ width: 120 }}>Sparkin 项目</th><th style={{ width: 150 }} /></tr></thead>
         <tbody>
           {p.state.projects.map((x) => (
             <tr key={x.id}><td>{x.name}</td><td className="wb-ellipsis" style={{ maxWidth: 320 }} title={x.cwd}>{x.cwd}</td>
-              <td>{x.gitlabProjectId ?? '—'}</td><td>{x.zentaoProductId ?? '—'}</td><td>{x.jenkinsJob ?? '—'}</td>
+              <td>{x.gitlabProjectId ?? '—'}</td><td>{x.zentaoProductId ?? '—'}</td><td>{x.jenkinsJob ?? '—'}</td><td>{sparkin.find((s) => s.id === x.sparkinProjectId)?.name ?? '—'}</td>
               <td><button className="wb-btn" onClick={() => setDraft({ ...x })}>编辑</button> <button className="wb-btn danger" onClick={() => { void remove(x) }}>删除</button></td></tr>
           ))}
         </tbody>
@@ -46,6 +48,9 @@ export function Projects(p: PageProps) {
             {f('name', '名称', '云支付 / payment-core')}
             {f('cwd', '工作目录（绝对路径）', '/Users/me/code/payment-core')}
             <div className="wb-row">{f('gitlabProjectId', 'GitLab 项目 ID', '101')}{f('zentaoProductId', '禅道产品 ID', '12')}{f('jenkinsJob', 'Jenkins Job 名', 'payment-core')}</div>
+            <div className="wb-field"><label>Sparkin 项目（填报工时时对应到它的任务）</label>
+              <select className="wb-select" value={draft.sparkinProjectId ?? ''} onChange={(e) => setDraft({ ...draft, sparkinProjectId: e.target.value || undefined })}>
+                <option value="">未关联</option>{sparkin.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
             <div className="wb-row"><span className="wb-grow" /><button className="wb-btn" onClick={() => setDraft(undefined)}>取消</button><button className="wb-btn primary" onClick={() => { void save() }}>保存</button></div>
           </div>
         </div>

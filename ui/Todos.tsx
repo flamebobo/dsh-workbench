@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { fmtSize, rpc, STATUS_LABEL, type Issue, type RpcError, type TodoResult, type WorkItem } from './api.ts'
+import { TimesheetModal } from './Timesheet.tsx'
 import type { PageProps } from './App.tsx'
 
 const { useState, useMemo, useEffect } = React
@@ -14,9 +15,16 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
   const [selected, setSelected] = useState<string>()
   const [agentId, setAgentId] = useState<string>()
   const [busy, setBusy] = useState(false)
+  const [q, setQ] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
+  const [reporting, setReporting] = useState(false)
 
-  const rows = useMemo(() => (todos?.items ?? []).filter((r) => filter === 'all' || r.source === filter), [todos, filter])
-  const count = (s: WorkItem['source']) => todos?.items.filter((r) => r.source === s).length ?? 0
+  const rows = useMemo(() => {
+    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    return (todos?.items ?? []).filter((r) => (filter === 'all' || r.source === filter) && (showArchived || !r.archived) &&
+      words.every((w) => `${r.ref}\n${r.title}\n${r.project}\n${r.description}`.toLowerCase().includes(w)))
+  }, [todos, filter, q, showArchived])
+  const count = (s: WorkItem['source']) => todos?.items.filter((r) => r.source === s && (showArchived || !r.archived)).length ?? 0
   const sel: Row | undefined = rows.find((r) => `${r.source}:${r.ref}` === selected) ?? undefined
   // keep a valid selection when the filter or the list changes
   useEffect(() => { if (rows[0] && !rows.some((r) => `${r.source}:${r.ref}` === selected)) setSelected(`${rows[0].source}:${rows[0].ref}`) }, [rows, selected])
@@ -34,6 +42,19 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
   const issueAgent = issue?.agentId
   // a card that exists but has no live session (manual task, or a blocked one) can be started from here
   const startable = !issue || (!issue.sourceRef && STARTABLE.includes(issue.status))
+
+  async function archiveDone() {
+    const n = (todos?.items ?? []).filter((r) => r.issueStatus === 'done' && !r.archived).length
+    if (!n || !confirm(`归档全部 ${n} 个已完成的任务？（可在「显示已归档」里找回）`)) return
+    try { p.notify(`已归档 ${await rpc<number>('issues.archiveDone')} 个`); await p.refresh(); await p.reloadTodos() } catch (e) { p.notify((e as Error).message) }
+  }
+  async function archive(r: Row, archived: boolean) {
+    try { await rpc('todos.archive', { source: r.source, ref: r.ref, archived }); p.notify(archived ? `已归档 ${r.ref}` : `已取消归档 ${r.ref}`); await p.refresh(); await p.reloadTodos() } catch (e) { p.notify((e as Error).message) }
+  }
+  async function remove(r: Row) {
+    if (!r.issueId || !confirm(`删除任务 ${r.ref}？删除后不可恢复（只想收起的话请用「归档」）。`)) return
+    try { await rpc('issue.delete', { id: r.issueId }); p.notify(`已删除 ${r.ref}`); await p.refresh(); await p.reloadTodos() } catch (e) { p.notify((e as Error).message) }
+  }
 
   async function start() {
     if (!sel) return
@@ -59,12 +80,14 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
           <div className="wb-banner err" key={k}>{SOURCE_LABEL[k as 'zentao']} 实时数据不可用，已降级为演示数据：{s.error}</div>
         ))}
         <div className="wb-toolbar">
-          <button className="wb-chip" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>全部 {todos.items.length}</button>
+          <button className="wb-chip" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>全部 {todos.items.filter((r) => showArchived || !r.archived).length}</button>
           {(['zentao', 'gitlab', 'jenkins', 'manual'] as const).filter((s) => s !== 'manual' || count('manual') > 0).map((s) => (
             <button key={s} className="wb-chip" aria-pressed={filter === s} onClick={() => setFilter(s)}>
               {SOURCE_LABEL[s]} {count(s)}
             </button>
           ))}
+          <input className="wb-input" style={{ width: 200 }} type="search" placeholder="搜索 编号 / 标题 / 项目" aria-label="搜索待办" value={q} onChange={(e) => setQ(e.target.value)} />
+          <label className="wb-pick" style={{ padding: 0 }}><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />显示已归档{todos.items.some((r) => r.archived) ? `（${todos.items.filter((r) => r.archived).length}）` : ''}</label>
           <span className="wb-grow" />
           {(['zentao', 'gitlab', 'jenkins'] as const).map((s) => (
             <span key={s} className={`wb-pill ${todos.sources[s].mode === 'live' ? 'live' : 'demo'}`}>
@@ -72,6 +95,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
             </span>
           ))}
           {p.todosAt && <span className="wb-muted" title="每分钟自动拉取">更新于 {p.todosAt.toLocaleTimeString('zh-CN', { hour12: false })}</span>}
+          <button className="wb-btn" title="把已完成的任务全部归档" onClick={() => { void archiveDone() }}>归档已完成</button>
           <button className="wb-btn" onClick={() => { void p.reloadTodos() }}>刷新</button>
         </div>
         <table className="wb-table">
@@ -80,7 +104,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
             {rows.map((r) => {
               const key = `${r.source}:${r.ref}`
               return (
-                <tr key={key} className={`row ${key === selected ? 'sel' : ''}`} onClick={() => setSelected(key)}>
+                <tr key={key} className={`row ${key === selected ? 'sel' : ''} ${r.archived ? 'arch' : ''}`} onClick={() => setSelected(key)}>
                   <td><span className={`wb-pri ${r.priority}`}>{r.priority}</span></td>
                   <td>{r.title}{r.issueId && <span className="wb-pill" style={{ marginLeft: 8 }}>{state.issues.find((i) => i.id === r.issueId)?.key}</span>}</td>
                   <td><span className="wb-src"><i className={r.source} />{r.ref}</span></td>
@@ -113,6 +137,17 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
             {!!issue?.attachments?.length && <><h4>附件</h4>{issue.attachments.map((a) => <div className="wb-rel" key={a.id}>{a.name}<span className="wb-muted"> · {fmtSize(a.size)}</span></div>)}</>}
             {sel.related.length > 0 && <><h4>关联信息</h4>{sel.related.map((r, i) => <div className="wb-rel" key={i}>{r.label}{r.detail && <span className="wb-muted"> · {r.detail}</span>}</div>)}</>}
           </div>
+          <div className="wb-detail-body" style={{ flex: 'none', paddingTop: 0, paddingBottom: 8 }}>
+            {issue?.nextId && <div className="wb-sub">后续任务：{state.issues.find((x) => x.id === issue.nextId)?.key} {state.issues.find((x) => x.id === issue.nextId)?.title}</div>}
+            {issue && state.issues.some((x) => x.nextId === issue.id) && <div className="wb-sub">前置任务：{state.issues.filter((x) => x.nextId === issue.id).map((x) => `${x.key} ${x.title}`).join('；')}</div>}
+            {issue?.timesheet && <div className="wb-sub" style={{ color: 'var(--wb-green)' }}>已填报工时 {issue.timesheet.hours}h · {issue.timesheet.sparkinTaskName}</div>}
+            <div className="wb-row" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+              {issue?.status === 'done' && !issue.timesheet && <button className="wb-btn" onClick={() => setReporting(true)}>填报 Sparkin 工时</button>}
+              <button className="wb-btn" disabled={issue?.status === 'in_progress'} title={issue?.status === 'in_progress' ? '进行中的任务不能归档' : '归档后默认隐藏，可在「显示已归档」里找回'} onClick={() => { void archive(sel, !sel.archived) }}>{sel.archived ? '取消归档' : '归档'}</button>
+              {issue && !issue.sourceRef && <button className="wb-btn danger" onClick={() => { void remove(sel) }}>删除</button>}
+              {issue && issue.sourceRef && <button className="wb-btn danger" title="删除工作台里的卡片；禅道/GitLab/Jenkins 上的原条目不受影响，仍会出现在待办里" onClick={() => { void remove(sel) }}>删除卡片</button>}
+            </div>
+          </div>
           <div className="wb-detail-foot">
             {!startable ? (
               <>
@@ -131,6 +166,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
           </div>
         </aside>
       )}
+      {reporting && issue && <TimesheetModal p={p} only={[issue.id]} onClose={() => setReporting(false)} />}
     </>
   )
 }

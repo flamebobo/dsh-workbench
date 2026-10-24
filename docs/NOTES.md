@@ -34,3 +34,9 @@
 - 凭据读写：`ctx.credentials.resolve/set/unset(name)`（名字沿用 `WORKBENCH_*`，写进 `~/.dsh/.credentials.yaml`，已存值优先于 env）。页面经 `connections.*` 接口只拿到 `set: boolean`，密码类字段永远不回显。测试中往真实凭据库写过 mock 值，已用「清除」还原（`grep WORKBENCH ~/.dsh/.credentials.yaml` 为空）。
 - Jenkins：`POST /job/<a>/job/<b>/build|buildWithParameters?K=V`，先取 `/crumb-issuer/api/json`（失败就忽略），成功返回 201 + `Location: /queue/item/N/`；状态：`/queue/item/N/api/json`（`executable` 出现即有构建号）→ `<buildUrl>api/json?tree=building,result,number`。
 - `WORKBENCH_HOME` 环境变量可改数据目录（默认 `~/.workbench`），用于并行起第二个 DSH profile 调试而不碰桌面端的数据。
+
+## 任务链、归档、Sparkin
+
+- `Issue.nextId` 单向链（不允许成环，`setNext` 沿链检查）；开工时 `predecessorsOf` 把「指向本卡」的卡片最近一次完成的 run 的 `finalText`（≤1500 字）作为「## 前置任务」写进首条消息。
+- 归档 = `Issue.archivedAt`；connector 来源的待办（卡片可能不存在）另存 `Data.hiddenTodos`。进行中的卡片不能归档。删除会清掉别的卡片指向它的 `nextId`。
+- Sparkin：接口文档未提供（方案文档：「拿到文档前用演示数据，拿到后按文档接入」）。`SparkinClient`（projects/tasks/submit）+ `DemoSparkin`；`Project.sparkinProjectId` 是项目页上的映射；`Issue.timesheet` 记录已填报的工时。

@@ -68,6 +68,10 @@ export function Settings(p: PageProps & { reloadTodos: () => Promise<void> }) {
           </div>
         </section>
       ))}
+      <section className="wb-conn">
+        <div className="wb-row"><b style={{ fontSize: 14 }}>Sparkin（工时系统）</b><span className="wb-pill demo">演示模式</span></div>
+        <div className="wb-sub" style={{ marginTop: 6 }}>Sparkin 的接口文档还没提供，所以「填报 Sparkin 工时」目前只把工时记录在工作台里，不会写入 Sparkin。拿到文档后在这里增加地址和 Token 即可接入，填报流程不变。项目与 Sparkin 项目的对应在「项目」页设置。</div>
+      </section>
     </div></div>
   )
 }

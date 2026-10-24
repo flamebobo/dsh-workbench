@@ -249,3 +249,80 @@ test('@ file mentions: fuzzy search inside the project, and mentioned files are 
   assert.doesNotMatch(section, /passwd|missing/) // escapes and non-existent files are not listed
   assert.equal((prompt.match(/^- src\/pay-callback\.js$/gm) ?? []).length, 1)
 })
+
+test('task chain: next card, no loops, hand-over summary in the next prompt, delete clears links', async () => {
+  const { wb, driver } = setup()
+  const project = wb.listProjects().find((p) => p.name.endsWith('payment-core'))!
+  const a = wb.createIssue({ title: '先做 A', projectId: project.id })
+  const b = wb.createFollowUp(a.id, { title: '再做 B' })
+  assert.equal(wb.listIssues().find((i) => i.id === a.id)!.nextId, b.id)
+  assert.deepEqual([b.projectId, b.agentId, b.status], [project.id, a.agentId, 'todo']) // follow-up inherits project & agent
+  assert.match(b.description, /承接 WB-1「先做 A」/)
+  assert.throws(() => wb.setNext(b.id, a.id), /环/)
+  assert.throws(() => wb.setNext(a.id, a.id), /环/)
+  const c = wb.createIssue({ title: 'C' })
+  wb.setNext(b.id, c.id)
+  assert.throws(() => wb.setNext(c.id, a.id), /环/) // a -> b -> c -> a
+
+  const { run } = await wb.startIssue(a.id)
+  driver.emit({ type: 'turn.completed', runId: run.id, status: 'completed', finalText: '已把回调幂等做完，改了 src/pay-callback.js' })
+  await wb.startIssue(b.id)
+  assert.match(driver.started[1]!.prompt, /## 前置任务 WB-1 先做 A\n.*\n已把回调幂等做完/)
+
+  wb.deleteIssue(b.id)
+  assert.equal(wb.listIssues().find((i) => i.id === a.id)!.nextId, undefined)
+})
+
+test('archive: hides cards and to-do rows, restores them, refuses a running card; archive all done', async () => {
+  const { wb, driver } = setup()
+  const { issue, run } = await wb.startWork({ item: bug })
+  assert.throws(() => wb.archiveIssue(issue.id, true), /正在进行中/)
+  driver.emit({ type: 'turn.completed', runId: run.id, status: 'completed' })
+  const m = wb.createIssue({ title: '手工' })
+  wb.setStatus(issue.id, 'done'); wb.setStatus(m.id, 'done')
+  assert.equal(wb.archiveDone(), 2)
+  assert.equal(wb.archiveDone(), 0)
+  let t = await wb.listTodos()
+  assert.equal(t.items.find((i) => i.ref === 'BUG-4821')!.archived, true)
+  assert.equal(t.items.find((i) => i.ref === m.key)!.archived, true)
+  wb.archiveTodo('zentao', 'BUG-4821', false)
+  t = await wb.listTodos()
+  assert.equal(t.items.find((i) => i.ref === 'BUG-4821')!.archived, false)
+  // a connector row with no card is hidden locally and can be brought back
+  wb.archiveTodo('gitlab', '!11290', true)
+  assert.equal((await wb.listTodos()).items.find((i) => i.ref === '!11290')!.archived, true)
+  wb.archiveTodo('gitlab', '!11290', false)
+  assert.equal((await wb.listTodos()).items.find((i) => i.ref === '!11290')!.archived, false)
+  assert.deepEqual(wb.store.data.hiddenTodos, [])
+})
+
+test('Sparkin time sheet: only finished cards, once each, hours checked, entry remembered on the card', async () => {
+  const { wb } = setup()
+  const info = await wb.sparkinInfo()
+  assert.equal(info.mode, 'demo')
+  const proj = wb.listProjects().find((p) => p.name.endsWith('payment-core'))!
+  assert.equal(proj.sparkinProjectId, 'SP-PAY')
+  const tasks = info.tasks['SP-PAY']!
+  const fix = tasks.find((t) => t.name === '缺陷修复')!
+  assert.equal(wb.suggestSparkinTask({ sourceRef: { source: 'zentao', ref: 'BUG-4821' }, title: 'x' }, tasks)!.id, fix.id)
+  assert.equal(wb.suggestSparkinTask({ sourceRef: { source: 'gitlab', ref: '!1' }, title: 'x' }, tasks)!.name, '代码评审')
+
+  const a = wb.createIssue({ title: 'a', projectId: proj.id, status: 'todo' })
+  const b = wb.createIssue({ title: 'b', projectId: proj.id, status: 'todo' })
+  wb.setStatus(a.id, 'done')
+  const r = await wb.reportTimesheet({ date: '2026-10-24', entries: [
+    { issueId: a.id, hours: 2.5, taskId: fix.id },
+    { issueId: b.id, hours: 1, taskId: fix.id }, // not done
+    { issueId: 'iss_nope', hours: 1, taskId: fix.id },
+  ] })
+  assert.deepEqual(r.map((x) => x.ok), [true, false, false])
+  assert.match(r[1]!.error!, /还没有完成/)
+  const ts = wb.listIssues().find((i) => i.id === a.id)!.timesheet!
+  assert.deepEqual([ts.hours, ts.date, ts.sparkinTaskName, ts.demo], [2.5, '2026-10-24', '缺陷修复', true])
+  const again = await wb.reportTimesheet({ date: '2026-10-24', entries: [{ issueId: a.id, hours: 1, taskId: fix.id }] })
+  assert.match(again[0]!.error!, /已经填报过 2.5h/)
+  wb.setStatus(b.id, 'done')
+  const bad = await wb.reportTimesheet({ date: '2026-10-24', entries: [{ issueId: b.id, hours: 30, taskId: fix.id }, { issueId: b.id, hours: 1, taskId: 'nope' }] })
+  assert.deepEqual(bad.map((x) => x.ok), [false, false])
+  await assert.rejects(() => wb.reportTimesheet({ date: 'tomorrow', entries: [] }), /工作日期/)
+})

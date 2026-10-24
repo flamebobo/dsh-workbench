@@ -34,6 +34,7 @@ export interface Project {
   gitlabProjectId?: number
   zentaoProductId?: number
   jenkinsJob?: string
+  sparkinProjectId?: string
 }
 
 export interface AgentProfile {
@@ -56,6 +57,18 @@ export interface Attachment {
 /** DSH composer commands that make sense as the first message of a task. */
 export type CommandName = 'plan' | 'goal'
 
+/** Hours booked on a Sparkin task for a finished card. */
+export interface Timesheet {
+  hours: number
+  /** Work date, YYYY-MM-DD. */
+  date: string
+  sparkinTaskId: string
+  sparkinTaskName: string
+  entryId: string
+  reportedAt: string
+  demo?: boolean
+}
+
 export interface Issue {
   id: string
   /** Short key shown on cards, WB-1, WB-2 … */
@@ -68,6 +81,11 @@ export interface Issue {
   /** Run the first message through this command (`/plan <prompt>` ...) instead of sending it as plain text. */
   command?: CommandName
   attachments?: Attachment[]
+  /** Task chain: the card to do after this one (its summary is passed on when that card starts). */
+  nextId?: string
+  /** Hidden from the board by default; the card and its history are kept. */
+  archivedAt?: string
+  timesheet?: Timesheet
   agentId: string
   projectId?: string
   /** Set when the card was created from a work item; at most one card per (source, ref). */
@@ -121,4 +139,6 @@ export interface Data {
   agents: AgentProfile[]
   runs: Run[]
   builds?: Build[]
+  /** To-do rows from Zentao / GitLab / Jenkins the user archived (the source still lists them). */
+  hiddenTodos?: { source: Source; ref: string; at: string }[]
 }

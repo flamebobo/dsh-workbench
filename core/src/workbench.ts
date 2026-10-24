@@ -12,12 +12,13 @@ import type { ConnectorContext, Creds, FetchLike } from './connectors/http.ts'
 import { fetchZentao } from './connectors/zentao.ts'
 import { Store } from './store.ts'
 import { fuzzy, listFiles, mentionedFiles } from './files.ts'
+import { DemoSparkin, suggestTask, type SparkinClient } from './sparkin.ts'
 import type { AgentProfile, Attachment, Build, BuildState, CommandName, Issue, Priority, Project, Run, Source, Status, WorkItem } from './types.ts'
 import { STATUSES } from './types.ts'
 import { agentPersona, builtinAgents } from './agents.ts'
 
 export interface TodoResult {
-  items: (WorkItem & { issueId?: string; issueStatus?: Status })[]
+  items: (WorkItem & { issueId?: string; issueStatus?: Status; archived?: boolean })[]
   /** Per system: live data, demo fixtures, or demo fixtures after a live failure (with the error). */
   sources: Record<'zentao' | 'gitlab' | 'jenkins', { mode: 'live' | 'demo' | 'fallback'; error?: string }>
 }
@@ -45,6 +46,7 @@ export interface WorkbenchOptions {
   /** Writes (or, with undefined, removes) one stored credential; the settings page uses it. DSH: ctx.credentials.set/unset. */
   setCred?: (name: string, value: string | undefined) => Promise<void>
   fetch?: FetchLike
+  sparkin?: SparkinClient
   /** Milliseconds clock; tests move it to age simulated builds. */
   now?: () => number
 }
@@ -55,6 +57,7 @@ export class Workbench {
   private creds: Creds
   private setCred?: WorkbenchOptions['setCred']
   private clock: () => number
+  readonly sparkin: SparkinClient
   private lastPoll = 0
   private fetch: FetchLike
   private off: () => void
@@ -65,6 +68,7 @@ export class Workbench {
     this.creds = o.creds
     this.setCred = o.setCred
     this.clock = o.now ?? Date.now
+    this.sparkin = o.sparkin ?? new DemoSparkin()
     this.fetch = o.fetch ?? ((u, i) => fetch(u, i))
     this.seedAgents()
     this.reconcileOrphans()
@@ -123,7 +127,8 @@ export class Workbench {
     }))
     const items = [...lists.flat(), ...manual].sort((a, b) => rank[a.priority] - rank[b.priority]).map((w) => {
       const issue = this.issueForSource(w.source, w.ref)
-      return { ...w, issueId: issue?.id, issueStatus: issue?.status }
+      const hidden = (this.store.data.hiddenTodos ?? []).some((h) => h.source === w.source && h.ref === w.ref)
+      return { ...w, issueId: issue?.id, issueStatus: issue?.status, archived: hidden || !!issue?.archivedAt }
     })
     return { items, sources }
   }
@@ -144,7 +149,7 @@ export class Workbench {
     )
   }
 
-  buildPrompt(i: Pick<Issue, 'title' | 'description' | 'acceptance' | 'sourceRef' | 'attachments'>, w?: WorkItem, files: string[] = [], agent?: Pick<AgentProfile, 'name' | 'description'>): string {
+  buildPrompt(i: Pick<Issue, 'title' | 'description' | 'acceptance' | 'sourceRef' | 'attachments'>, w?: WorkItem, files: string[] = [], agent?: Pick<AgentProfile, 'name' | 'description'>, predecessors: { key: string; title: string; summary?: string }[] = []): string {
     const lines = [`# 任务：${i.title}`]
     if (agent) lines.push(`指派给你的角色：${agent.name}（${agent.description}）`)
     if (i.sourceRef) lines.push(`来源：${i.sourceRef.source} ${i.sourceRef.ref}${w?.url ? `（${w.url}）` : ''}`)
@@ -152,6 +157,7 @@ export class Workbench {
     lines.push('', '## 背景', i.description || '（无）')
     lines.push('', '## 验收标准', ...(i.acceptance.length ? i.acceptance.map((a, n) => `${n + 1}. ${a}`) : ['（未给出，请先与我确认再动手）']))
     if (w?.related.length) lines.push('', '## 关联信息', ...w.related.map((r) => `- ${r.label}${r.detail ? `：${r.detail}` : ''}`))
+    for (const p of predecessors) lines.push('', `## 前置任务 ${p.key} ${p.title}`, p.summary ? `它的结论（供你承接）：\n${p.summary}` : '（它没有留下文字结论，请先查看相关改动。）')
     if (files.length) lines.push('', '## 引用的项目文件（相对工作目录，请先阅读）', ...files.map((f) => `- ${f}`))
     if (i.attachments?.length) lines.push('', '## 附件（已随本消息附上）', ...i.attachments.map((a) => `- ${a.name}`))
     lines.push('', '请先阅读相关代码、说明你的方案，再实施。完成后总结改动与自测结果；不要自行判定「已完成」，由我验收。')
@@ -191,6 +197,14 @@ export class Workbench {
     return this.launch(id)
   }
 
+  /** Cards whose `nextId` is this one, with the last finished run's final message as the hand-over. */
+  private predecessorsOf(id: string) {
+    return this.store.data.issues.filter((i) => i.nextId === id).map((i) => {
+      const done = this.store.data.runs.filter((r) => r.issueId === i.id && r.status === 'completed' && r.finalText).at(-1)
+      return { key: i.key, title: i.title, summary: done?.finalText?.slice(0, 1500) }
+    })
+  }
+
   private async launch(issueId: string, item?: WorkItem): Promise<{ issue: Issue; run: Run }> {
     const before = this.store.data.issues.find((i) => i.id === issueId)!
     const agent = this.agent(before.agentId)
@@ -209,7 +223,7 @@ export class Workbench {
     try {
       const { sessionId } = await this.driver.start({
         runId: run.id, cwd: project.cwd, title: `${issue.key} ${issue.title}`,
-        prompt: this.buildPrompt(issue, item, mentionedFiles(project.cwd, issue.description), agent),
+        prompt: this.buildPrompt(issue, item, mentionedFiles(project.cwd, issue.description), agent, this.predecessorsOf(issue.id)),
         command: issue.command,
         attachments: (issue.attachments ?? []).map((a) => ({ name: a.name, mediaType: a.mediaType, path: this.uploadPath(a) })),
         profile: { presetId: agent.id, model: agent.model, instructions: agentPersona(agent) },
@@ -466,8 +480,107 @@ export class Workbench {
 
   deleteIssue(id: string) {
     for (const a of this.store.data.issues.find((i) => i.id === id)?.attachments ?? []) rmSync(this.uploadPath(a), { force: true })
-    this.store.update((d) => { d.issues = d.issues.filter((i) => i.id !== id); d.runs = d.runs.filter((r) => r.issueId !== id) })
+    this.store.update((d) => {
+      d.issues = d.issues.filter((i) => i.id !== id); d.runs = d.runs.filter((r) => r.issueId !== id)
+      for (const i of d.issues) if (i.nextId === id) i.nextId = undefined
+    })
   }
+
+  // ---------- chain, archive ----------
+  /** Point a card at the card to do after it (empty `nextId` clears it). A chain can't loop back on itself. */
+  setNext(id: string, nextId: string) {
+    const d = this.store.data
+    if (!d.issues.some((i) => i.id === id)) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
+    if (nextId) {
+      if (!d.issues.some((i) => i.id === nextId)) throw new WorkbenchError('not_found', `后续任务 ${nextId} 不存在`)
+      for (let cur: string | undefined = nextId, n = 0; cur && n < 1000; n++) {
+        if (cur === id) throw new WorkbenchError('invalid', '后续任务不能指回链路上已有的任务（会形成环）')
+        cur = d.issues.find((i) => i.id === cur)?.nextId
+      }
+    }
+    return this.store.update((x) => { const i = x.issues.find((y) => y.id === id)!; i.nextId = nextId || undefined; i.updatedAt = now(); return i })
+  }
+
+  /** Create the follow-up card (same project / agent / priority as this one) and chain it. */
+  createFollowUp(id: string, input: { title: string; description?: string }): Issue {
+    const cur = this.store.data.issues.find((i) => i.id === id)
+    if (!cur) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
+    const next = this.createIssue({
+      title: input.title, description: input.description ?? `承接 ${cur.key}「${cur.title}」`,
+      projectId: cur.projectId, agentId: cur.agentId, priority: cur.priority, status: 'todo',
+    })
+    this.setNext(id, next.id)
+    return next
+  }
+
+  archiveIssue(id: string, archived: boolean) {
+    return this.store.update((d) => {
+      const i = d.issues.find((x) => x.id === id)
+      if (!i) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
+      if (archived && i.status === 'in_progress') throw new WorkbenchError('invalid', `${i.key} 正在进行中，不能归档`)
+      i.archivedAt = archived ? now() : undefined
+      return i
+    })
+  }
+
+  /** Archive every finished card at once; returns how many. */
+  archiveDone(): number {
+    return this.store.update((d) => {
+      const done = d.issues.filter((i) => i.status === 'done' && !i.archivedAt)
+      for (const i of done) i.archivedAt = now()
+      return done.length
+    })
+  }
+
+  /** Archive / restore a to-do row. Its card (if any) follows; Zentao / GitLab / Jenkins rows are remembered locally since the source still lists them. */
+  archiveTodo(source: Source, ref: string, archived: boolean) {
+    const issue = this.issueForSource(source, ref)
+    if (issue) this.archiveIssue(issue.id, archived) // refuses a running card
+    if (source === 'manual') return
+    this.store.update((d) => {
+      const rest = (d.hiddenTodos ?? []).filter((h) => !(h.source === source && h.ref === ref))
+      d.hiddenTodos = archived ? [...rest, { source, ref, at: now() }] : rest
+    })
+  }
+
+  // ---------- Sparkin time sheet ----------
+  async sparkinInfo() {
+    const projects = await this.sparkin.projects()
+    const tasks = Object.fromEntries(await Promise.all(projects.map(async (p) => [p.id, await this.sparkin.tasks(p.id)] as const)))
+    return { mode: this.sparkin.mode, projects, tasks }
+  }
+
+  /** Book hours for finished cards. Each entry succeeds or fails on its own; a card is reported once. */
+  async reportTimesheet(input: { date: string; entries: { issueId: string; hours: number; taskId: string; note?: string }[] }) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new WorkbenchError('invalid', '请选择工作日期')
+    const info = await this.sparkinInfo()
+    const taskById = new Map(Object.values(info.tasks).flat().map((t) => [t.id, t]))
+    const results: { issueId: string; ok: boolean; error?: string; entryId?: string }[] = []
+    for (const e of input.entries) {
+      const issue = this.store.data.issues.find((i) => i.id === e.issueId)
+      const fail = (error: string) => results.push({ issueId: e.issueId, ok: false, error })
+      if (!issue) { fail('卡片不存在'); continue }
+      if (issue.status !== 'done') { fail(`${issue.key} 还没有完成（「已完成」由你设置后才能填报工时）`); continue }
+      if (issue.timesheet) { fail(`${issue.key} 已经填报过 ${issue.timesheet.hours}h`); continue }
+      const task = taskById.get(e.taskId)
+      if (!task) { fail(`${issue.key}：请选择 Sparkin 任务`); continue }
+      if (!(e.hours > 0 && e.hours <= 24)) { fail(`${issue.key}：工时需在 0–24 小时之间`); continue }
+      try {
+        const note = e.note?.trim() || `${issue.key} ${issue.title}${issue.sourceRef ? `（${issue.sourceRef.ref}）` : ''}`
+        const { entryId } = await this.sparkin.submit({ taskId: task.id, date: input.date, hours: e.hours, note })
+        this.store.update((d) => {
+          d.issues.find((i) => i.id === issue.id)!.timesheet = {
+            hours: e.hours, date: input.date, sparkinTaskId: task.id, sparkinTaskName: task.name, entryId,
+            reportedAt: new Date(this.clock()).toISOString(), demo: this.sparkin.mode === 'demo' || undefined,
+          }
+        })
+        results.push({ issueId: issue.id, ok: true, entryId })
+      } catch (err) { fail(`${issue.key}：${String((err as Error).message ?? err)}`) }
+    }
+    return results
+  }
+
+  suggestSparkinTask = suggestTask
 
   // ---------- agents & projects ----------
   listAgents() { return this.store.data.agents }
@@ -504,13 +617,13 @@ export class Workbench {
   seedDemoProjects(baseDir: string) {
     if (this.store.data.projects.length) return
     const demo: Omit<Project, 'id'>[] = [
-      { name: '云支付 / payment-core', cwd: join(baseDir, 'payment-core'), zentaoProductId: 12 },
-      { name: '订单服务 / teleone-order', cwd: join(baseDir, 'teleone-order'), gitlabProjectId: 101, zentaoProductId: 5 },
-      { name: '订单服务 / order-service', cwd: join(baseDir, 'order-service'), jenkinsJob: 'order-service' },
-      { name: '前端 / teleone-web', cwd: join(baseDir, 'teleone-web'), jenkinsJob: 'teleone-web' },
-      { name: '认证中心 / auth', cwd: join(baseDir, 'auth-center'), zentaoProductId: 8 },
-      { name: '数据中心 / report', cwd: join(baseDir, 'data-center'), zentaoProductId: 9 },
-      { name: '基础设施 / infrastructure', cwd: join(baseDir, 'infrastructure'), gitlabProjectId: 77 },
+      { name: '云支付 / payment-core', cwd: join(baseDir, 'payment-core'), zentaoProductId: 12, sparkinProjectId: 'SP-PAY' },
+      { name: '订单服务 / teleone-order', cwd: join(baseDir, 'teleone-order'), gitlabProjectId: 101, zentaoProductId: 5, sparkinProjectId: 'SP-ORDER' },
+      { name: '订单服务 / order-service', cwd: join(baseDir, 'order-service'), jenkinsJob: 'order-service', sparkinProjectId: 'SP-ORDER' },
+      { name: '前端 / teleone-web', cwd: join(baseDir, 'teleone-web'), jenkinsJob: 'teleone-web', sparkinProjectId: 'SP-WEB' },
+      { name: '认证中心 / auth', cwd: join(baseDir, 'auth-center'), zentaoProductId: 8, sparkinProjectId: 'SP-AUTH' },
+      { name: '数据中心 / report', cwd: join(baseDir, 'data-center'), zentaoProductId: 9, sparkinProjectId: 'SP-DATA' },
+      { name: '基础设施 / infrastructure', cwd: join(baseDir, 'infrastructure'), gitlabProjectId: 77, sparkinProjectId: 'SP-INFRA' },
     ]
     for (const p of demo) {
       mkdirSync(p.cwd, { recursive: true })

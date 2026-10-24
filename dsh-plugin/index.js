@@ -558,6 +558,35 @@ function mentionedFiles(root, text) {
   return [...found];
 }
 
+// core/src/sparkin.ts
+var PROJECTS = [
+  { id: "SP-PAY", name: "\u4E91\u652F\u4ED8\u5E73\u53F0" },
+  { id: "SP-ORDER", name: "\u8BA2\u5355\u4E2D\u5FC3" },
+  { id: "SP-WEB", name: "\u524D\u7AEF\u95E8\u6237" },
+  { id: "SP-AUTH", name: "\u8BA4\u8BC1\u4E2D\u5FC3" },
+  { id: "SP-DATA", name: "\u6570\u636E\u4E2D\u5FC3" },
+  { id: "SP-INFRA", name: "\u57FA\u7840\u8BBE\u65BD" }
+];
+var TASK_NAMES = ["\u7F3A\u9677\u4FEE\u590D", "\u9700\u6C42\u5F00\u53D1", "\u4EE3\u7801\u8BC4\u5BA1", "\u6784\u5EFA\u4E0E\u53D1\u5E03", "\u8054\u8C03\u4E0E\u6D4B\u8BD5", "\u6587\u6863\u4E0E\u5468\u62A5"];
+var DemoSparkin = class {
+  mode = "demo";
+  seq = 0;
+  async projects() {
+    return PROJECTS;
+  }
+  async tasks(projectId) {
+    return TASK_NAMES.map((name, i) => ({ id: `${projectId}-T${i + 1}`, projectId, name }));
+  }
+  async submit() {
+    return { entryId: `DEMO-${Date.now().toString(36)}-${++this.seq}` };
+  }
+};
+var KEYWORDS = { zentao: "\u7F3A\u9677\u4FEE\u590D", gitlab: "\u4EE3\u7801\u8BC4\u5BA1", jenkins: "\u6784\u5EFA\u4E0E\u53D1\u5E03", manual: "\u9700\u6C42\u5F00\u53D1" };
+function suggestTask(issue, tasks) {
+  const hint = /^BUG-/.test(issue.sourceRef?.ref ?? "") || /缺陷|bug|修复/i.test(issue.title) ? "\u7F3A\u9677\u4FEE\u590D" : KEYWORDS[issue.sourceRef?.source ?? "manual"];
+  return tasks.find((t) => t.name.includes(hint)) ?? tasks[0];
+}
+
 // core/src/agents.ts
 var builtinAgents = [
   {
@@ -624,6 +653,7 @@ var Workbench = class {
   creds;
   setCred;
   clock;
+  sparkin;
   lastPoll = 0;
   fetch;
   off;
@@ -633,6 +663,7 @@ var Workbench = class {
     this.creds = o.creds;
     this.setCred = o.setCred;
     this.clock = o.now ?? Date.now;
+    this.sparkin = o.sparkin ?? new DemoSparkin();
     this.fetch = o.fetch ?? ((u, i) => fetch(u, i));
     this.seedAgents();
     this.reconcileOrphans();
@@ -707,7 +738,8 @@ var Workbench = class {
     }));
     const items = [...lists.flat(), ...manual].sort((a, b) => rank[a.priority] - rank[b.priority]).map((w) => {
       const issue = this.issueForSource(w.source, w.ref);
-      return { ...w, issueId: issue?.id, issueStatus: issue?.status };
+      const hidden = (this.store.data.hiddenTodos ?? []).some((h) => h.source === w.source && h.ref === w.ref);
+      return { ...w, issueId: issue?.id, issueStatus: issue?.status, archived: hidden || !!issue?.archivedAt };
     });
     return { items, sources };
   }
@@ -720,7 +752,7 @@ var Workbench = class {
     const ps = this.store.data.projects;
     return ps.find((p) => p.gitlabProjectId != null && p.gitlabProjectId === w.gitlabProjectId) ?? ps.find((p) => p.zentaoProductId != null && p.zentaoProductId === w.zentaoProductId) ?? ps.find((p) => p.jenkinsJob && p.jenkinsJob === w.jenkinsJob) ?? ps.find((p) => p.name === w.project);
   }
-  buildPrompt(i, w, files = [], agent) {
+  buildPrompt(i, w, files = [], agent, predecessors = []) {
     const lines = [`# \u4EFB\u52A1\uFF1A${i.title}`];
     if (agent) lines.push(`\u6307\u6D3E\u7ED9\u4F60\u7684\u89D2\u8272\uFF1A${agent.name}\uFF08${agent.description}\uFF09`);
     if (i.sourceRef) lines.push(`\u6765\u6E90\uFF1A${i.sourceRef.source} ${i.sourceRef.ref}${w?.url ? `\uFF08${w.url}\uFF09` : ""}`);
@@ -728,6 +760,8 @@ var Workbench = class {
     lines.push("", "## \u80CC\u666F", i.description || "\uFF08\u65E0\uFF09");
     lines.push("", "## \u9A8C\u6536\u6807\u51C6", ...i.acceptance.length ? i.acceptance.map((a, n) => `${n + 1}. ${a}`) : ["\uFF08\u672A\u7ED9\u51FA\uFF0C\u8BF7\u5148\u4E0E\u6211\u786E\u8BA4\u518D\u52A8\u624B\uFF09"]);
     if (w?.related.length) lines.push("", "## \u5173\u8054\u4FE1\u606F", ...w.related.map((r) => `- ${r.label}${r.detail ? `\uFF1A${r.detail}` : ""}`));
+    for (const p of predecessors) lines.push("", `## \u524D\u7F6E\u4EFB\u52A1 ${p.key} ${p.title}`, p.summary ? `\u5B83\u7684\u7ED3\u8BBA\uFF08\u4F9B\u4F60\u627F\u63A5\uFF09\uFF1A
+${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uFF0C\u8BF7\u5148\u67E5\u770B\u76F8\u5173\u6539\u52A8\u3002\uFF09");
     if (files.length) lines.push("", "## \u5F15\u7528\u7684\u9879\u76EE\u6587\u4EF6\uFF08\u76F8\u5BF9\u5DE5\u4F5C\u76EE\u5F55\uFF0C\u8BF7\u5148\u9605\u8BFB\uFF09", ...files.map((f) => `- ${f}`));
     if (i.attachments?.length) lines.push("", "## \u9644\u4EF6\uFF08\u5DF2\u968F\u672C\u6D88\u606F\u9644\u4E0A\uFF09", ...i.attachments.map((a) => `- ${a.name}`));
     lines.push("", "\u8BF7\u5148\u9605\u8BFB\u76F8\u5173\u4EE3\u7801\u3001\u8BF4\u660E\u4F60\u7684\u65B9\u6848\uFF0C\u518D\u5B9E\u65BD\u3002\u5B8C\u6210\u540E\u603B\u7ED3\u6539\u52A8\u4E0E\u81EA\u6D4B\u7ED3\u679C\uFF1B\u4E0D\u8981\u81EA\u884C\u5224\u5B9A\u300C\u5DF2\u5B8C\u6210\u300D\uFF0C\u7531\u6211\u9A8C\u6536\u3002");
@@ -773,6 +807,13 @@ var Workbench = class {
     if (agentId && agentId !== issue.agentId) this.updateIssue(id, { agentId });
     return this.launch(id);
   }
+  /** Cards whose `nextId` is this one, with the last finished run's final message as the hand-over. */
+  predecessorsOf(id) {
+    return this.store.data.issues.filter((i) => i.nextId === id).map((i) => {
+      const done = this.store.data.runs.filter((r) => r.issueId === i.id && r.status === "completed" && r.finalText).at(-1);
+      return { key: i.key, title: i.title, summary: done?.finalText?.slice(0, 1500) };
+    });
+  }
   async launch(issueId, item) {
     const before = this.store.data.issues.find((i) => i.id === issueId);
     const agent = this.agent(before.agentId);
@@ -795,7 +836,7 @@ var Workbench = class {
         runId: run.id,
         cwd: project.cwd,
         title: `${issue.key} ${issue.title}`,
-        prompt: this.buildPrompt(issue, item, mentionedFiles(project.cwd, issue.description), agent),
+        prompt: this.buildPrompt(issue, item, mentionedFiles(project.cwd, issue.description), agent, this.predecessorsOf(issue.id)),
         command: issue.command,
         attachments: (issue.attachments ?? []).map((a) => ({ name: a.name, mediaType: a.mediaType, path: this.uploadPath(a) })),
         profile: { presetId: agent.id, model: agent.model, instructions: agentPersona(agent) }
@@ -1085,8 +1126,128 @@ var Workbench = class {
     this.store.update((d) => {
       d.issues = d.issues.filter((i) => i.id !== id);
       d.runs = d.runs.filter((r) => r.issueId !== id);
+      for (const i of d.issues) if (i.nextId === id) i.nextId = void 0;
     });
   }
+  // ---------- chain, archive ----------
+  /** Point a card at the card to do after it (empty `nextId` clears it). A chain can't loop back on itself. */
+  setNext(id, nextId) {
+    const d = this.store.data;
+    if (!d.issues.some((i) => i.id === id)) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
+    if (nextId) {
+      if (!d.issues.some((i) => i.id === nextId)) throw new WorkbenchError("not_found", `\u540E\u7EED\u4EFB\u52A1 ${nextId} \u4E0D\u5B58\u5728`);
+      for (let cur = nextId, n = 0; cur && n < 1e3; n++) {
+        if (cur === id) throw new WorkbenchError("invalid", "\u540E\u7EED\u4EFB\u52A1\u4E0D\u80FD\u6307\u56DE\u94FE\u8DEF\u4E0A\u5DF2\u6709\u7684\u4EFB\u52A1\uFF08\u4F1A\u5F62\u6210\u73AF\uFF09");
+        cur = d.issues.find((i) => i.id === cur)?.nextId;
+      }
+    }
+    return this.store.update((x) => {
+      const i = x.issues.find((y) => y.id === id);
+      i.nextId = nextId || void 0;
+      i.updatedAt = now();
+      return i;
+    });
+  }
+  /** Create the follow-up card (same project / agent / priority as this one) and chain it. */
+  createFollowUp(id, input) {
+    const cur = this.store.data.issues.find((i) => i.id === id);
+    if (!cur) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
+    const next = this.createIssue({
+      title: input.title,
+      description: input.description ?? `\u627F\u63A5 ${cur.key}\u300C${cur.title}\u300D`,
+      projectId: cur.projectId,
+      agentId: cur.agentId,
+      priority: cur.priority,
+      status: "todo"
+    });
+    this.setNext(id, next.id);
+    return next;
+  }
+  archiveIssue(id, archived) {
+    return this.store.update((d) => {
+      const i = d.issues.find((x) => x.id === id);
+      if (!i) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
+      if (archived && i.status === "in_progress") throw new WorkbenchError("invalid", `${i.key} \u6B63\u5728\u8FDB\u884C\u4E2D\uFF0C\u4E0D\u80FD\u5F52\u6863`);
+      i.archivedAt = archived ? now() : void 0;
+      return i;
+    });
+  }
+  /** Archive every finished card at once; returns how many. */
+  archiveDone() {
+    return this.store.update((d) => {
+      const done = d.issues.filter((i) => i.status === "done" && !i.archivedAt);
+      for (const i of done) i.archivedAt = now();
+      return done.length;
+    });
+  }
+  /** Archive / restore a to-do row. Its card (if any) follows; Zentao / GitLab / Jenkins rows are remembered locally since the source still lists them. */
+  archiveTodo(source, ref, archived) {
+    const issue = this.issueForSource(source, ref);
+    if (issue) this.archiveIssue(issue.id, archived);
+    if (source === "manual") return;
+    this.store.update((d) => {
+      const rest = (d.hiddenTodos ?? []).filter((h) => !(h.source === source && h.ref === ref));
+      d.hiddenTodos = archived ? [...rest, { source, ref, at: now() }] : rest;
+    });
+  }
+  // ---------- Sparkin time sheet ----------
+  async sparkinInfo() {
+    const projects = await this.sparkin.projects();
+    const tasks = Object.fromEntries(await Promise.all(projects.map(async (p) => [p.id, await this.sparkin.tasks(p.id)])));
+    return { mode: this.sparkin.mode, projects, tasks };
+  }
+  /** Book hours for finished cards. Each entry succeeds or fails on its own; a card is reported once. */
+  async reportTimesheet(input) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new WorkbenchError("invalid", "\u8BF7\u9009\u62E9\u5DE5\u4F5C\u65E5\u671F");
+    const info = await this.sparkinInfo();
+    const taskById = new Map(Object.values(info.tasks).flat().map((t) => [t.id, t]));
+    const results = [];
+    for (const e of input.entries) {
+      const issue = this.store.data.issues.find((i) => i.id === e.issueId);
+      const fail = (error) => results.push({ issueId: e.issueId, ok: false, error });
+      if (!issue) {
+        fail("\u5361\u7247\u4E0D\u5B58\u5728");
+        continue;
+      }
+      if (issue.status !== "done") {
+        fail(`${issue.key} \u8FD8\u6CA1\u6709\u5B8C\u6210\uFF08\u300C\u5DF2\u5B8C\u6210\u300D\u7531\u4F60\u8BBE\u7F6E\u540E\u624D\u80FD\u586B\u62A5\u5DE5\u65F6\uFF09`);
+        continue;
+      }
+      if (issue.timesheet) {
+        fail(`${issue.key} \u5DF2\u7ECF\u586B\u62A5\u8FC7 ${issue.timesheet.hours}h`);
+        continue;
+      }
+      const task = taskById.get(e.taskId);
+      if (!task) {
+        fail(`${issue.key}\uFF1A\u8BF7\u9009\u62E9 Sparkin \u4EFB\u52A1`);
+        continue;
+      }
+      if (!(e.hours > 0 && e.hours <= 24)) {
+        fail(`${issue.key}\uFF1A\u5DE5\u65F6\u9700\u5728 0\u201324 \u5C0F\u65F6\u4E4B\u95F4`);
+        continue;
+      }
+      try {
+        const note = e.note?.trim() || `${issue.key} ${issue.title}${issue.sourceRef ? `\uFF08${issue.sourceRef.ref}\uFF09` : ""}`;
+        const { entryId } = await this.sparkin.submit({ taskId: task.id, date: input.date, hours: e.hours, note });
+        this.store.update((d) => {
+          d.issues.find((i) => i.id === issue.id).timesheet = {
+            hours: e.hours,
+            date: input.date,
+            sparkinTaskId: task.id,
+            sparkinTaskName: task.name,
+            entryId,
+            reportedAt: new Date(this.clock()).toISOString(),
+            demo: this.sparkin.mode === "demo" || void 0
+          };
+        });
+        results.push({ issueId: issue.id, ok: true, entryId });
+      } catch (err) {
+        fail(`${issue.key}\uFF1A${String(err.message ?? err)}`);
+      }
+    }
+    return results;
+  }
+  suggestSparkinTask = suggestTask;
   // ---------- agents & projects ----------
   listAgents() {
     return this.store.data.agents;
@@ -1131,13 +1292,13 @@ var Workbench = class {
   seedDemoProjects(baseDir) {
     if (this.store.data.projects.length) return;
     const demo = [
-      { name: "\u4E91\u652F\u4ED8 / payment-core", cwd: join3(baseDir, "payment-core"), zentaoProductId: 12 },
-      { name: "\u8BA2\u5355\u670D\u52A1 / teleone-order", cwd: join3(baseDir, "teleone-order"), gitlabProjectId: 101, zentaoProductId: 5 },
-      { name: "\u8BA2\u5355\u670D\u52A1 / order-service", cwd: join3(baseDir, "order-service"), jenkinsJob: "order-service" },
-      { name: "\u524D\u7AEF / teleone-web", cwd: join3(baseDir, "teleone-web"), jenkinsJob: "teleone-web" },
-      { name: "\u8BA4\u8BC1\u4E2D\u5FC3 / auth", cwd: join3(baseDir, "auth-center"), zentaoProductId: 8 },
-      { name: "\u6570\u636E\u4E2D\u5FC3 / report", cwd: join3(baseDir, "data-center"), zentaoProductId: 9 },
-      { name: "\u57FA\u7840\u8BBE\u65BD / infrastructure", cwd: join3(baseDir, "infrastructure"), gitlabProjectId: 77 }
+      { name: "\u4E91\u652F\u4ED8 / payment-core", cwd: join3(baseDir, "payment-core"), zentaoProductId: 12, sparkinProjectId: "SP-PAY" },
+      { name: "\u8BA2\u5355\u670D\u52A1 / teleone-order", cwd: join3(baseDir, "teleone-order"), gitlabProjectId: 101, zentaoProductId: 5, sparkinProjectId: "SP-ORDER" },
+      { name: "\u8BA2\u5355\u670D\u52A1 / order-service", cwd: join3(baseDir, "order-service"), jenkinsJob: "order-service", sparkinProjectId: "SP-ORDER" },
+      { name: "\u524D\u7AEF / teleone-web", cwd: join3(baseDir, "teleone-web"), jenkinsJob: "teleone-web", sparkinProjectId: "SP-WEB" },
+      { name: "\u8BA4\u8BC1\u4E2D\u5FC3 / auth", cwd: join3(baseDir, "auth-center"), zentaoProductId: 8, sparkinProjectId: "SP-AUTH" },
+      { name: "\u6570\u636E\u4E2D\u5FC3 / report", cwd: join3(baseDir, "data-center"), zentaoProductId: 9, sparkinProjectId: "SP-DATA" },
+      { name: "\u57FA\u7840\u8BBE\u65BD / infrastructure", cwd: join3(baseDir, "infrastructure"), gitlabProjectId: 77, sparkinProjectId: "SP-INFRA" }
     ];
     for (const p of demo) {
       mkdirSync2(p.cwd, { recursive: true });
@@ -1434,6 +1595,20 @@ function apply(ctx) {
         return wb.updateIssue(p.id, p.patch);
       case "issue.start":
         return await wb.startIssue(p.id, p.agentId);
+      case "issue.next":
+        return wb.setNext(p.id, p.nextId ?? "");
+      case "issue.followup":
+        return wb.createFollowUp(p.id, { title: p.title, description: p.description });
+      case "issue.archive":
+        return wb.archiveIssue(p.id, !!p.archived);
+      case "issues.archiveDone":
+        return wb.archiveDone();
+      case "todos.archive":
+        return wb.archiveTodo(p.source, p.ref, !!p.archived);
+      case "sparkin.info":
+        return await wb.sparkinInfo();
+      case "timesheet.report":
+        return await wb.reportTimesheet({ date: p.date, entries: p.entries ?? [] });
       case "issue.status":
         return wb.setStatus(p.id, p.status, "human");
       // only the UI (a human) calls this
