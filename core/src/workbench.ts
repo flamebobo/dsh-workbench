@@ -28,7 +28,7 @@ import { normalizeSettings, type PluginSettings } from './settings.ts'
 export interface TodoResult {
   items: (WorkItem & { issueId?: string; issueStatus?: Status; archived?: boolean })[]
   /** Per system: live data, demo fixtures (never configured), or an error (configured but the read failed: no rows, with the reason). */
-  sources: Record<'zentao' | 'gitlab' | 'jenkins' | 'sparkin', { mode: 'live' | 'demo' | 'error'; error?: string }>
+  sources: Record<'zentao' | 'gitlab' | 'jenkins' | 'sparkin', { mode: 'live' | 'demo' | 'error' | 'none'; error?: string }>
   /** How many untouched demo cards were cleared by this pull (a source just turned live); the page says so once. */
   cleanedDemo?: number
 }
@@ -92,6 +92,8 @@ export interface WorkbenchOptions {
   now?: () => number
   /** Plugin version, shown in the UI and sent in anonymous reports. */
   version?: string
+  /** Where the demo working directories live; turning demo mode on creates the demo projects there. */
+  demoRepoDir?: string
 }
 
 export class Workbench {
@@ -107,6 +109,7 @@ export class Workbench {
   private noticeSeq = 0
   /** Changes on every Host start, so a page that remembers ids from an earlier run knows to start over. */
   readonly boot = randomUUID()
+  private demoRepoDir?: string
   private fetch: FetchLike
   private off: () => void
 
@@ -117,6 +120,7 @@ export class Workbench {
     this.setCred = o.setCred
     this.clock = o.now ?? Date.now
     this.version = o.version ?? 'dev'
+    this.demoRepoDir = o.demoRepoDir
     this.sparkin = o.sparkin ?? new DemoSparkin()
     this.fetch = o.fetch ?? ((u, i) => fetch(u, i))
     this.store.onChange = (before, after) => this.collectNotices(before, after)
@@ -174,18 +178,19 @@ export class Workbench {
       zentaoProductIds: this.store.data.projects.flatMap((p) => (p.zentaoProductId ? [p.zentaoProductId] : [])),
     }
     const sources = {} as TodoResult['sources']
+    const demoOn = this.settings().demoMode
     const pick = async (name: keyof TodoResult['sources'], live: (c: ConnectorContext) => Promise<WorkItem[] | undefined>, demo: WorkItem[]) => {
       const warnings: string[] = []
       try {
         const items = await live({ ...ctx, warn: (m) => warnings.push(m) })
         if (items) { sources[name] = { mode: 'live', error: warnings.join('；') || undefined }; return items }
-        sources[name] = { mode: 'demo' }
+        sources[name] = { mode: demoOn ? 'demo' : 'none' }
+        return demoOn ? demo : []
       } catch (e) {
         // configured but failing: show nothing rather than made-up rows next to the user's real work
         sources[name] = { mode: 'error', error: String((e as Error).message ?? e) }
         return []
       }
-      return demo
     }
     const lists = await Promise.all([
       pick('zentao', fetchZentao, demoZentao),
@@ -213,7 +218,7 @@ export class Workbench {
     return { items, sources, cleanedDemo: cleanedDemo || undefined }
   }
 
-  private sourceMode: Partial<Record<Source, 'live' | 'demo' | 'error'>> = {}
+  private sourceMode: Partial<Record<Source, 'live' | 'demo' | 'error' | 'none'>> = {}
 
   /** Demo cards whose system is now connected for real (nothing to do with the demo any more): the ones the user could still be using. */
   demoLeftovers(): string[] {
@@ -234,6 +239,24 @@ export class Workbench {
   cleanDemoCards(): number {
     const d = this.store.data
     return this.removeCards(this.demoLeftovers().filter((id) => !d.runs.some((r) => r.issueId === id && r.status === 'running')))
+  }
+
+  /**
+   * The 清理演示项目和卡片 button: every demo card (except one with a session working right now), the simulated builds, and the demo
+   * projects no remaining card uses. The demo working directories on disk stay.
+   */
+  removeDemoData(): { cards: number; projects: number } {
+    const d = this.store.data
+    const cards = this.removeCards(d.issues.filter((i) => i.demo && !d.runs.some((r) => r.issueId === i.id && r.status === 'running')).map((i) => i.id))
+    let projects = 0
+    this.store.update((x) => {
+      x.builds = (x.builds ?? []).filter((b) => !b.demo)
+      const dir = this.demoRepoDir
+      const keep = x.projects.filter((p) => !dir || !p.cwd.startsWith(dir) || x.issues.some((i) => i.projectId === p.id))
+      projects = x.projects.length - keep.length
+      x.projects = keep
+    })
+    return { cards, projects }
   }
 
   /** Remove cards for good. Unlike a delete by the user this does not remember the item as "deleted on purpose". */
@@ -608,7 +631,9 @@ export class Workbench {
       if (typeof patch[k] === 'string' && patch[k]!.trim() && !next[k]) throw new WorkbenchError('invalid', `${label}必须以 http:// 或 https:// 开头`)
     }
     for (const [src, id] of Object.entries(next.defaultAgents)) if (!this.store.data.agents.some((a) => a.id === id)) throw new WorkbenchError('invalid', `默认智能体「${id}」（${src}）不存在`)
+    const wasDemo = this.settings().demoMode
     this.store.update((d) => { d.settings = next })
+    if (next.demoMode && !wasDemo && this.demoRepoDir) this.seedDemoProjects(this.demoRepoDir, false) // demo to-dos need the demo projects
     void this.tick()
     return next
   }
@@ -659,14 +684,14 @@ export class Workbench {
 
   // ---------- Jenkins builds ----------
   /** Job names to build; the demo list is used until Jenkins is configured. */
-  async jenkinsJobs(): Promise<{ jobs: string[]; mode: 'live' | 'demo' | 'error'; error?: string }> {
+  async jenkinsJobs(): Promise<{ jobs: string[]; mode: 'live' | 'demo' | 'error' | 'none'; error?: string }> {
     const fromProjects = this.store.data.projects.flatMap((p) => (p.jenkinsJob ? [p.jenkinsJob] : []))
     const demo = [...new Set([...fromProjects.flatMap((j) => [`${j}-test`, `${j}-staging`]), ...fromProjects])].sort()
     try {
       const live = await listJenkinsJobs(this.connectorCtx())
       if (live) return { jobs: live, mode: 'live' }
     } catch (e) { return { jobs: [], mode: 'error', error: String((e as Error).message ?? e) } }
-    return { jobs: demo, mode: 'demo' }
+    return this.settings().demoMode ? { jobs: demo, mode: 'demo' } : { jobs: [], mode: 'none' }
   }
 
   listBuilds() { return this.store.data.builds ?? [] }
@@ -684,7 +709,7 @@ export class Workbench {
     let error: string | undefined
     try {
       const r = await triggerJenkinsBuild(this.connectorCtx(), job, params).catch((e: Error) => {
-        if (e.message === 'Jenkins 未配置') { demo = true; return {} as { queueUrl?: string } }
+        if (e.message === 'Jenkins 未配置' && this.settings().demoMode) { demo = true; return {} as { queueUrl?: string } }
         throw e
       })
       queueUrl = r.queueUrl
@@ -1230,8 +1255,8 @@ export class Workbench {
     })
   }
   /** First run only: create demo working directories so the demo to-dos can be started without manual setup. */
-  seedDemoProjects(baseDir: string) {
-    if (this.store.data.projects.length) return
+  seedDemoProjects(baseDir: string, onlyIfEmpty = true) {
+    if (onlyIfEmpty && this.store.data.projects.length) return
     const demo: Omit<Project, 'id'>[] = [
       { name: '云支付 / payment-core', cwd: join(baseDir, 'payment-core'), zentaoProductId: 12, sparkinProjectId: 'SP-PAY', testCmd: 'node --test' },
       { name: '订单服务 / teleone-order', cwd: join(baseDir, 'teleone-order'), gitlabProjectId: 101, zentaoProductId: 5, sparkinProjectId: 'SP-ORDER' },
@@ -1242,6 +1267,7 @@ export class Workbench {
       { name: '基础设施 / infrastructure', cwd: join(baseDir, 'infrastructure'), gitlabProjectId: 77, sparkinProjectId: 'SP-INFRA' },
     ]
     for (const p of demo) {
+      if (this.store.data.projects.some((x) => x.cwd === p.cwd)) continue
       mkdirSync(p.cwd, { recursive: true })
       const files = p.name.endsWith('payment-core')
         ? paymentCoreFiles
@@ -1364,9 +1390,11 @@ export class Workbench {
    * Find git repositories under `roots` and, where GitLab is configured and the remote points at it, look up the GitLab project id
    * from the remote path. Lookups that fail leave the repo unmatched; the scan itself never fails because of GitLab.
    */
-  async scanRepos(roots: string[]): Promise<{ repos: RepoCandidate[]; gitlab: 'matched' | 'not_configured' | 'error'; error?: string }> {
+  async scanRepos(roots: string[], extra: string[] = []): Promise<{ repos: RepoCandidate[]; gitlab: 'matched' | 'not_configured' | 'error'; error?: string }> {
     const known = new Set(this.store.data.projects.map((p) => p.cwd))
-    const repos = await Promise.all((await findRepos(roots)).map((d) => describeRepo(d, known)))
+    // `extra`: directories the host already knows are the user's projects (Codex's own); taken as they are, if they are repositories
+    const found = [...new Set([...extra.filter((d) => existsSync(join(d, '.git'))), ...(await findRepos(roots))])]
+    const repos = await Promise.all(found.map((d) => describeRepo(d, known)))
     const [url, token] = await Promise.all(['WORKBENCH_GITLAB_URL', 'WORKBENCH_GITLAB_TOKEN'].map((n) => this.creds(n)))
     if (!url || !token) return { repos, gitlab: 'not_configured' }
     const base = url.replace(/\/+$/, '')

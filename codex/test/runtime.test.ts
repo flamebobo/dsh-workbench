@@ -28,7 +28,7 @@ test('ensureServe: starts the service when none runs, reuses it, a second serve 
     assert.equal(b.token, a.token)
     const st = await callServe<{ ok: boolean; value: { projects: unknown[] } }>(a, '/rpc', { endpoint: 'state' })
     assert.equal(st.ok, true)
-    assert.ok(st.value.projects.length > 0) // demo projects seeded in the Codex data dir
+    assert.equal(st.value.projects.length, 0) // a new Codex data dir has no demo projects
     // a second resident service on the same data dir exits with the lock's explanation
     const second = await promisify(execFile)(process.execPath, [main, 'serve'], { env: { ...process.env, WORKBENCH_CODEX_HOME: dir } }).then(() => undefined, (e) => e)
     assert.equal(second?.code, 1)
@@ -42,4 +42,23 @@ test('ensureServe: starts the service when none runs, reuses it, a second serve 
   assert.equal(existsSync(serveInfoPath(dir)), false)
   assert.equal(existsSync(join(dir, 'workbench.lock')), false)
   assert.equal(await stopServe(dir), false)
+})
+
+test('codex service: a new data dir starts empty (no demo projects, cards or to-dos) while demo mode can be turned on; an existing one keeps its data', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wb-fresh-'))
+  const a = await ensureServe({ dir, version: 'dev', entry })
+  try {
+    const st = await callServe<{ value: { projects: unknown[]; issues: unknown[]; settings: { demoMode: boolean } } }>(a, '/rpc', { endpoint: 'state' })
+    assert.deepEqual([st.value.projects.length, st.value.issues.length, st.value.settings.demoMode], [0, 0, false])
+    const todos = await callServe<{ value: { items: unknown[] } }>(a, '/rpc', { endpoint: 'todos.list' })
+    assert.equal(todos.value.items.length, 0)
+    const on = await callServe<{ ok: boolean }>(a, '/rpc', { endpoint: 'settings.save', payload: { demoMode: true } })
+    assert.equal(on.ok, true)
+    assert.equal((await callServe<{ value: { projects: unknown[] } }>(a, '/rpc', { endpoint: 'state' })).value.projects.length, 7)
+  } finally { await stopServe(dir) }
+  // restarted with demo mode on and data present: nothing is wiped, nothing doubled
+  const b = await ensureServe({ dir, version: 'dev', entry })
+  try {
+    assert.equal((await callServe<{ value: { projects: unknown[]; settings: { demoMode: boolean } } }>(b, '/rpc', { endpoint: 'state' })).value.projects.length, 7)
+  } finally { await stopServe(dir) }
 })

@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { rpc, type ConnectionView, type RepoCandidate, type ScanResult } from './api.ts'
+import { HOST, rpc, type ConnectionView, type RepoCandidate, type ScanResult } from './api.ts'
 import type { PageProps } from './App.tsx'
 
 const { useState, useEffect } = React
@@ -13,20 +13,25 @@ export function Onboarding({ p, onClose }: { p: PageProps; onClose: () => void }
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
+  const demoOn = p.state.settings?.demoMode !== false
+  // Codex: its own projects (config.toml) are listed and ticked straight away; scanning other folders is optional
+  const ownProjects = HOST === 'codex'
 
   useEffect(() => {
     void rpc<ConnectionView[]>('connections.list').then(setConns).catch((e) => setError((e as Error).message))
     void rpc<string[]>('onboarding.roots').then((r) => setRoots(r.join('\n'))).catch(() => {})
   }, [])
 
+  useEffect(() => { if (ownProjects && step === 2 && !scan) void doScan(true) }, [step])
+
   async function finish() {
     try { await rpc('settings.save', { ...p.state.settings, onboarded: true }); await p.refresh() } catch (e) { p.notify((e as Error).message) }
     onClose()
   }
-  async function doScan() {
+  async function doScan(onlyOwn = false) {
     setBusy(true); setError(undefined)
     try {
-      const r = await rpc<ScanResult>('onboarding.scan', { roots: roots.split('\n').map((x) => x.trim()).filter(Boolean) })
+      const r = await rpc<ScanResult>('onboarding.scan', { roots: onlyOwn ? [] : roots.split('\n').map((x) => x.trim()).filter(Boolean), hints: ownProjects })
       setScan(r); setPicked(new Set(r.repos.filter((x) => !x.known).map((x) => x.path)))
     } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
@@ -54,10 +59,10 @@ export function Onboarding({ p, onClose }: { p: PageProps; onClose: () => void }
 
         {step === 1 && (
           <>
-            <div className="wb-sub" style={{ margin: '8px 0 10px' }}>先连接你用到的系统。没有连接的系统，「我的待办」里显示的是演示数据，连接后会自动换成你自己的待办。</div>
+            <div className="wb-sub" style={{ margin: '8px 0 10px' }}>先连接你用到的系统。{demoOn ? '没有连接的系统，「我的待办」里显示的是演示数据，连接后会自动换成你自己的待办。' : '没有连接的系统，「我的待办」里什么都没有，连接后才会出现你自己的待办。'}</div>
             {(conns ?? []).map((c) => (
               <div className="wb-rel wb-row" key={c.id}><b>{c.label}</b>
-                <span className={`wb-pill ${c.configured ? 'live' : 'demo'}`}>{c.configured ? '已配置' : '未配置 · 演示数据'}</span></div>))}
+                <span className={`wb-pill ${c.configured ? 'live' : 'demo'}`}>{c.configured ? '已配置' : demoOn ? '未配置 · 演示数据' : '未配置'}</span></div>))}
             <div className="wb-sub" style={{ margin: '10px 0' }}>账号、Token 在「设置」里填写并可以测试连接；也可以先跳过，之后随时配置。</div>
             <div className="wb-row"><button className="wb-btn" onClick={() => { onClose(); p.go('settings') }}>去设置连接</button><span className="wb-grow" />
               <button className="wb-btn primary" onClick={() => setStep(2)}>下一步：添加项目</button></div>
@@ -66,10 +71,11 @@ export function Onboarding({ p, onClose }: { p: PageProps; onClose: () => void }
 
         {step === 2 && (
           <>
+            {ownProjects && <div className="wb-sub" style={{ margin: '8px 0 10px' }}>下面先列出 Codex 里已有的 git 项目（来自 <code>~/.codex/config.toml</code>），勾选要放进工作台的；还想加别的目录，在下面填目录再点「重新扫描」。</div>}
             <div className="wb-sub" style={{ margin: '8px 0 10px' }}>在下面的目录里查找 git 仓库（每行一个目录，最多往下找两层），根据 <code>git remote</code> 自动匹配 GitLab 项目，并建好项目（工作目录、GitLab 项目 ID、测试命令）。</div>
             <div className="wb-field"><label>扫描目录</label>
               <textarea className="wb-textarea" style={{ minHeight: 64 }} value={roots} onChange={(e) => setRoots(e.target.value)} placeholder="~/code" /></div>
-            <div className="wb-row"><button className="wb-btn" disabled={busy || !roots.trim()} onClick={() => { void doScan() }}>{busy && !scan ? '扫描中…' : scan ? '重新扫描' : '扫描'}</button>
+            <div className="wb-row"><button className="wb-btn" disabled={busy || (!roots.trim() && !ownProjects)} onClick={() => { void doScan() }}>{busy && !scan ? '扫描中…' : scan ? '重新扫描' : '扫描'}</button>
               {scan && <span className="wb-muted">找到 {scan.repos.length} 个仓库{scan.gitlab === 'not_configured' ? '，未配置 GitLab，无法匹配项目 ID' : scan.gitlab === 'error' ? `，GitLab 查询出错：${scan.error}` : ''}</span>}</div>
             {scan && (
               <div style={{ maxHeight: 260, overflow: 'auto', margin: '10px 0' }}>

@@ -44,11 +44,12 @@ export function createDispatch(wb: Workbench, h: DispatchHost): Dispatch {
       case 'issue.archive': return wb.archiveIssue(p.id, !!p.archived)
       case 'issues.archiveDone': return wb.archiveDone()
       case 'demo.clean': return wb.cleanDemoCards()
+      case 'demo.remove': return wb.removeDemoData()
       case 'todos.archive': return wb.archiveTodo(p.source, p.ref, !!p.archived)
       case 'issue.writeback.draft': return { ...(await wb.writeBackDraft(p.id)), allowed: wb.canWriteBack(p.id) }
       case 'issue.writeback': return await wb.writeBackZentao(p.id, p.comment) // outward-facing: only from an explicit click
       case 'onboarding.roots': return wb.onboardingRoots()
-      case 'onboarding.scan': return await wb.scanRepos(Array.isArray(p.roots) ? p.roots.map(String) : [])
+      case 'onboarding.scan': return await wb.scanRepos(Array.isArray(p.roots) ? p.roots.map(String) : [], p.hints ? await h.projectHints?.() : [])
       case 'onboarding.import': return wb.importRepos(Array.isArray(p.items) ? p.items : [])
       case 'update.check': return await wb.checkUpdate()
       case 'notices.since': return wb.noticesSince(typeof p.after === 'number' ? p.after : undefined)

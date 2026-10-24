@@ -27,6 +27,11 @@ export interface PluginSettings {
   autoDoneOnPass: boolean
   /** Finished Zentao bugs: ask with a comment draft first, or resolve them in Zentao straight away. */
   zentaoWriteBack: 'confirm' | 'auto'
+  /**
+   * Demo mode: a system that is not connected shows built-in demo to-dos, the demo projects exist, builds are simulated. Off = what is
+   * not connected shows nothing. DSH keeps it on (the pilot demo); the Codex version starts with it off.
+   */
+  demoMode: boolean
   /** The first-run guide has been completed or skipped. */
   onboarded: boolean
   /** Every to-do from Zentao / GitLab / Jenkins / Sparkin also appears on the board (待规划), so the board is the whole picture. */
@@ -47,7 +52,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   permissionPreset: 'workspace-write',
   defaultAgents: { zentao: 'fullstack', gitlab: 'reviewer', jenkins: 'build-fixer', sparkin: 'fullstack', manual: 'fullstack' },
   isolateByDefault: true, branchPrefix: 'wb/', autoTestOnReview: true, testTimeoutSeconds: 600,
-  autoDoneOnPass: false, zentaoWriteBack: 'confirm', onboarded: false, syncTodosToBoard: true, skillRoots: [], desktopNotify: true,
+  autoDoneOnPass: false, zentaoWriteBack: 'confirm', demoMode: true, onboarded: false, syncTodosToBoard: true, skillRoots: [], desktopNotify: true,
   statsReportEnabled: false, statsReportUrl: '', updateCheckUrl: '',
 }
 
@@ -77,6 +82,7 @@ export function normalizeSettings(input: Partial<PluginSettings> | undefined): P
     testTimeoutSeconds: num(i.testTimeoutSeconds, 10, 3600, d.testTimeoutSeconds),
     autoDoneOnPass: typeof i.autoDoneOnPass === 'boolean' ? i.autoDoneOnPass : d.autoDoneOnPass,
     zentaoWriteBack: i.zentaoWriteBack === 'auto' ? 'auto' : 'confirm',
+    demoMode: typeof i.demoMode === 'boolean' ? i.demoMode : d.demoMode,
     onboarded: i.onboarded === true,
     syncTodosToBoard: typeof i.syncTodosToBoard === 'boolean' ? i.syncTodosToBoard : d.syncTodosToBoard,
     skillRoots: Array.isArray(i.skillRoots) ? [...new Set(i.skillRoots.map((x) => String(x).trim()).filter(Boolean))].slice(0, 20) : d.skillRoots,

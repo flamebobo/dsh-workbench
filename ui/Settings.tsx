@@ -16,6 +16,7 @@ export function Settings(p: PageProps & { reloadTodos: () => Promise<void> }) {
   const [busy, setBusy] = useState<string>()
   const [sel, setSel] = useState<'general' | 'zentao' | 'gitlab' | 'jenkins' | 'sparkin'>('general')
 
+  const demoOn = p.state.settings?.demoMode !== false
   const load = async () => { setConns(await rpc<ConnectionView[]>('connections.list')) }
   useEffect(() => { void load().catch((e) => p.notify((e as Error).message)) }, [])
   if (!conns) return <div className="wb-empty" style={{ flex: 1 }}>加载中…</div>
@@ -30,7 +31,7 @@ export function Settings(p: PageProps & { reloadTodos: () => Promise<void> }) {
         if (!(await ask(`清除${c.label}的全部凭据？`))) return
         setConns(await rpc<ConnectionView[]>('connections.clear', { id: c.id }))
         setEdits((e) => Object.fromEntries(Object.entries(e).filter(([k]) => !c.fields.some((f) => f.key === k))))
-        say(c.id, true, '已清除，待办回到演示数据')
+        say(c.id, true, demoOn ? '已清除，待办回到演示数据' : '已清除，这个系统的待办不再显示')
         await p.refresh(); await p.reloadTodos()
         return
       }
@@ -64,7 +65,7 @@ export function Settings(p: PageProps & { reloadTodos: () => Promise<void> }) {
           <button key={c.id} className="wb-li" aria-selected={sel === c.id} onClick={() => setSel(c.id)}>
             <div className="wb-row"><b>{c.label}</b><span className="wb-grow" />
               <span className="wb-dotx" style={{ background: c.configured ? 'var(--wb-green)' : 'var(--wb-fg3)' }} /></div>
-            <div className="wb-muted" style={{ fontSize: 12 }}>{c.configured ? '已配置 · 实时数据' : '未配置 · 演示数据'}</div>
+            <div className="wb-muted" style={{ fontSize: 12 }}>{c.configured ? '已配置 · 实时数据' : demoOn ? '未配置 · 演示数据' : '未配置'}</div>
           </button>
         ))}
         <button className="wb-li" aria-selected={sel === 'sparkin'} onClick={() => setSel('sparkin')}>
@@ -76,7 +77,7 @@ export function Settings(p: PageProps & { reloadTodos: () => Promise<void> }) {
         {sel === 'general' ? <General p={p} /> : cur ? (
           <>
             <div className="wb-row"><h3 style={{ margin: 0 }}>{cur.label}</h3>
-              <span className={`wb-pill ${cur.configured ? 'live' : 'demo'}`}>{cur.configured ? '已配置' : '未配置 · 演示数据'}</span></div>
+              <span className={`wb-pill ${cur.configured ? 'live' : 'demo'}`}>{cur.configured ? '已配置' : demoOn ? '未配置 · 演示数据' : '未配置'}</span></div>
             <div className="wb-sub" style={{ margin: '6px 0 14px' }}>{HELP[cur.id]}</div>
             {cur.fields.map((f) => (
               <div className="wb-field" key={f.key}><label>{f.label}{f.optional ? '（可选）' : ''}</label>
@@ -98,7 +99,7 @@ export function Settings(p: PageProps & { reloadTodos: () => Promise<void> }) {
           <>
             <div className="wb-row"><h3 style={{ margin: 0 }}>Sparkin（工时系统）</h3><span className="wb-pill demo">演示模式</span></div>
             <div className="wb-sub" style={{ margin: '8px 0' }}>
-              Sparkin 的接口文档还没提供，所以「我的待办」里的 Sparkin 任务是演示数据，「填报 Sparkin 工时」也只把工时记录在工作台里，不会写入 Sparkin。拿到文档后在这里增加地址和 Token 即可接入，填报流程不变。
+              Sparkin 的接口文档还没提供，所以{demoOn ? '「我的待办」里的 Sparkin 任务是演示数据' : '「我的待办」里暂时没有 Sparkin 任务'}，「填报 Sparkin 工时」也只把工时记录在工作台里，不会写入 Sparkin。拿到文档后在这里增加地址和 Token 即可接入，填报流程不变。
               项目与 Sparkin 项目的对应关系在「项目」里编辑项目时设置。
             </div>
           </>
@@ -123,6 +124,24 @@ function DemoCards({ p }: { p: PageProps }) {
       <h4 className="wb-sec">演示卡片</h4>
       <div className="wb-sub" style={{ marginBottom: 6 }}>看板上还有 {left.length} 张来自演示数据的卡片（{mine.map((i) => i.key).join('、')}），它们的系统已经接入真实数据。没开过工、没编辑过的演示卡片已经自动清理；这些是开过工或编辑过的，保留并带「演示」标记。</div>
       <button className="wb-btn" disabled={left.length === used} onClick={() => { void clean() }}>清理演示卡片</button>
+    </>
+  )
+}
+
+/** Demo mode on/off, and (while it is off) clearing the demo projects and cards that are still there. */
+function DemoMode({ p, f, set }: { p: PageProps; f: PluginSettings; set: <K extends keyof PluginSettings>(k: K, v: PluginSettings[K]) => void }) {
+  const left = p.state.issues.filter((i) => i.demo).length
+  async function remove() {
+    if (!(await ask('清理演示项目和演示卡片？没有被其他卡片用到的演示项目、所有演示卡片（进行中的除外）和模拟构建会被删除，不可恢复。你自己建的项目和卡片不受影响。'))) return
+    try { const r = await rpc<{ cards: number; projects: number }>('demo.remove'); p.notify(`已清理 ${r.cards} 张演示卡片、${r.projects} 个演示项目`); await p.refresh() } catch (e) { p.notify((e as Error).message) }
+  }
+  return (
+    <>
+      <h4 className="wb-sec">演示模式</h4>
+      <label className="wb-pick" style={{ alignItems: 'flex-start' }}><input type="checkbox" checked={f.demoMode} onChange={(e) => set('demoMode', e.target.checked)} />
+        <span><b>没连接的系统显示演示数据</b>
+          <div className="wb-sub">开启：禅道 / GitLab / Jenkins / Sparkin 没配置时显示内置的演示待办，自带演示项目可直接开工，Jenkins 构建是模拟的（保存后建出演示项目）。关闭：没配置的系统什么都不显示，待办只来自你连接的系统。</div></span></label>
+      {!f.demoMode && <button className="wb-btn" style={{ marginTop: 6 }} onClick={() => { void remove() }}>清理演示项目和卡片{left ? `（${left} 张卡片）` : ''}</button>}
     </>
   )
 }
@@ -156,6 +175,7 @@ function General({ p }: { p: PageProps }) {
       <div className="wb-sub" style={{ margin: '6px 0 14px' }}>这些值原来写在代码里，现在都能在这里调整；保存后立即生效，并保存在工作台的数据文件里。</div>
 
       <DemoCards p={p} />
+      <DemoMode p={p} f={f} set={set} />
       <h4 className="wb-sec">自动运行</h4>
       {n('autoRunConcurrency', '同时运行的智能体数', '看板「自动运行」时，一次让几个智能体同时工作；1 表示严格按顺序一个一个来', 1, 5)}
       {n('autoRunPollSeconds', '队列检查间隔（秒）', '自动运行时多久检查一次待办队列（会话结束和拖动卡片时会立即检查）', 2, 60)}

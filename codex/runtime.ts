@@ -30,14 +30,20 @@ function credentialFile(dir: string) {
 /** `workbench serve`: the resident service that owns the data dir. Exits with a message when another process already does. */
 export async function runServe(o: { dir: string; version: string; exampleSkillRoot?: string }) {
   const release = acquireLock(o.dir)
+  const file = join(o.dir, 'workbench.json')
+  const fresh = !existsSync(file)
   const driver = new CodexDriver({ version: o.version })
   const creds = credentialFile(o.dir)
-  const wb = new Workbench({ store: new Store(join(o.dir, 'workbench.json')), driver, version: o.version, creds: creds.get, setCred: creds.set })
+  const wb = new Workbench({ store: new Store(file), driver, version: o.version, creds: creds.get, setCred: creds.set, demoRepoDir: join(o.dir, 'demo-repos') })
+  // A new Codex data dir starts empty: no demo projects, cards or to-dos (设置 → 演示模式 brings them back). An existing one keeps what it has.
+  if (fresh) wb.saveSettings({ demoMode: false })
   // DSH registers the configured skill packs with its skill registry; Codex has no such hook, so they travel as skill inputs instead
   driver.permission = () => wb.settings().permissionPreset
   driver.packSkills = () => wb.packSkills().map((k) => ({ name: k.name, description: k.description, path: k.path, scope: 'workbench', enabled: true }))
-  wb.seedDemoProjects(join(o.dir, 'demo-repos'))
-  wb.upgradeDemoRepos(join(o.dir, 'demo-repos'))
+  if (wb.settings().demoMode) {
+    wb.seedDemoProjects(join(o.dir, 'demo-repos'))
+    wb.upgradeDemoRepos(join(o.dir, 'demo-repos'))
+  }
   // the same safety net as the DSH Host: auto-run queue and the daily anonymous report; no update check (that package is DSH's)
   let timer: ReturnType<typeof setTimeout>
   const loop = () => {

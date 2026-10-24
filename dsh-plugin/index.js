@@ -1219,6 +1219,7 @@ var DEFAULT_SETTINGS = {
   testTimeoutSeconds: 600,
   autoDoneOnPass: false,
   zentaoWriteBack: "confirm",
+  demoMode: true,
   onboarded: false,
   syncTodosToBoard: true,
   skillRoots: [],
@@ -1251,6 +1252,7 @@ function normalizeSettings(input) {
     testTimeoutSeconds: num(i.testTimeoutSeconds, 10, 3600, d.testTimeoutSeconds),
     autoDoneOnPass: typeof i.autoDoneOnPass === "boolean" ? i.autoDoneOnPass : d.autoDoneOnPass,
     zentaoWriteBack: i.zentaoWriteBack === "auto" ? "auto" : "confirm",
+    demoMode: typeof i.demoMode === "boolean" ? i.demoMode : d.demoMode,
     onboarded: i.onboarded === true,
     syncTodosToBoard: typeof i.syncTodosToBoard === "boolean" ? i.syncTodosToBoard : d.syncTodosToBoard,
     skillRoots: Array.isArray(i.skillRoots) ? [...new Set(i.skillRoots.map((x) => String(x).trim()).filter(Boolean))].slice(0, 20) : d.skillRoots,
@@ -1311,6 +1313,7 @@ var Workbench = class {
   noticeSeq = 0;
   /** Changes on every Host start, so a page that remembers ids from an earlier run knows to start over. */
   boot = randomUUID2();
+  demoRepoDir;
   fetch;
   off;
   constructor(o) {
@@ -1320,6 +1323,7 @@ var Workbench = class {
     this.setCred = o.setCred;
     this.clock = o.now ?? Date.now;
     this.version = o.version ?? "dev";
+    this.demoRepoDir = o.demoRepoDir;
     this.sparkin = o.sparkin ?? new DemoSparkin();
     this.fetch = o.fetch ?? ((u, i) => fetch(u, i));
     this.store.onChange = (before, after) => this.collectNotices(before, after);
@@ -1389,6 +1393,7 @@ var Workbench = class {
       zentaoProductIds: this.store.data.projects.flatMap((p) => p.zentaoProductId ? [p.zentaoProductId] : [])
     };
     const sources = {};
+    const demoOn = this.settings().demoMode;
     const pick = async (name, live, demo) => {
       const warnings = [];
       try {
@@ -1397,12 +1402,12 @@ var Workbench = class {
           sources[name] = { mode: "live", error: warnings.join("\uFF1B") || void 0 };
           return items2;
         }
-        sources[name] = { mode: "demo" };
+        sources[name] = { mode: demoOn ? "demo" : "none" };
+        return demoOn ? demo : [];
       } catch (e) {
         sources[name] = { mode: "error", error: String(e.message ?? e) };
         return [];
       }
-      return demo;
     };
     const lists = await Promise.all([
       pick("zentao", fetchZentao, demoZentao),
@@ -1454,6 +1459,23 @@ var Workbench = class {
   cleanDemoCards() {
     const d = this.store.data;
     return this.removeCards(this.demoLeftovers().filter((id) => !d.runs.some((r) => r.issueId === id && r.status === "running")));
+  }
+  /**
+   * The 清理演示项目和卡片 button: every demo card (except one with a session working right now), the simulated builds, and the demo
+   * projects no remaining card uses. The demo working directories on disk stay.
+   */
+  removeDemoData() {
+    const d = this.store.data;
+    const cards = this.removeCards(d.issues.filter((i) => i.demo && !d.runs.some((r) => r.issueId === i.id && r.status === "running")).map((i) => i.id));
+    let projects = 0;
+    this.store.update((x) => {
+      x.builds = (x.builds ?? []).filter((b) => !b.demo);
+      const dir = this.demoRepoDir;
+      const keep = x.projects.filter((p) => !dir || !p.cwd.startsWith(dir) || x.issues.some((i) => i.projectId === p.id));
+      projects = x.projects.length - keep.length;
+      x.projects = keep;
+    });
+    return { cards, projects };
   }
   /** Remove cards for good. Unlike a delete by the user this does not remember the item as "deleted on purpose". */
   removeCards(ids) {
@@ -1848,9 +1870,11 @@ ${summary.slice(0, 1500)}`,
       if (typeof patch[k] === "string" && patch[k].trim() && !next[k]) throw new WorkbenchError("invalid", `${label}\u5FC5\u987B\u4EE5 http:// \u6216 https:// \u5F00\u5934`);
     }
     for (const [src, id] of Object.entries(next.defaultAgents)) if (!this.store.data.agents.some((a) => a.id === id)) throw new WorkbenchError("invalid", `\u9ED8\u8BA4\u667A\u80FD\u4F53\u300C${id}\u300D\uFF08${src}\uFF09\u4E0D\u5B58\u5728`);
+    const wasDemo = this.settings().demoMode;
     this.store.update((d) => {
       d.settings = next;
     });
+    if (next.demoMode && !wasDemo && this.demoRepoDir) this.seedDemoProjects(this.demoRepoDir, false);
     void this.tick();
     return next;
   }
@@ -1908,7 +1932,7 @@ ${summary.slice(0, 1500)}`,
     } catch (e) {
       return { jobs: [], mode: "error", error: String(e.message ?? e) };
     }
-    return { jobs: demo, mode: "demo" };
+    return this.settings().demoMode ? { jobs: demo, mode: "demo" } : { jobs: [], mode: "none" };
   }
   listBuilds() {
     return this.store.data.builds ?? [];
@@ -1926,7 +1950,7 @@ ${summary.slice(0, 1500)}`,
     let error;
     try {
       const r = await triggerJenkinsBuild(this.connectorCtx(), job, params).catch((e) => {
-        if (e.message === "Jenkins \u672A\u914D\u7F6E") {
+        if (e.message === "Jenkins \u672A\u914D\u7F6E" && this.settings().demoMode) {
           demo = true;
           return {};
         }
@@ -2558,8 +2582,8 @@ ${summary.slice(0, 4e3)}`,
     });
   }
   /** First run only: create demo working directories so the demo to-dos can be started without manual setup. */
-  seedDemoProjects(baseDir) {
-    if (this.store.data.projects.length) return;
+  seedDemoProjects(baseDir, onlyIfEmpty = true) {
+    if (onlyIfEmpty && this.store.data.projects.length) return;
     const demo = [
       { name: "\u4E91\u652F\u4ED8 / payment-core", cwd: join6(baseDir, "payment-core"), zentaoProductId: 12, sparkinProjectId: "SP-PAY", testCmd: "node --test" },
       { name: "\u8BA2\u5355\u670D\u52A1 / teleone-order", cwd: join6(baseDir, "teleone-order"), gitlabProjectId: 101, zentaoProductId: 5, sparkinProjectId: "SP-ORDER" },
@@ -2570,6 +2594,7 @@ ${summary.slice(0, 4e3)}`,
       { name: "\u57FA\u7840\u8BBE\u65BD / infrastructure", cwd: join6(baseDir, "infrastructure"), gitlabProjectId: 77, sparkinProjectId: "SP-INFRA" }
     ];
     for (const p of demo) {
+      if (this.store.data.projects.some((x) => x.cwd === p.cwd)) continue;
       mkdirSync2(p.cwd, { recursive: true });
       const files = p.name.endsWith("payment-core") ? paymentCoreFiles : { "README.md": `# ${p.name}
 
@@ -2700,9 +2725,10 @@ ${summary.slice(0, 4e3)}`,
    * Find git repositories under `roots` and, where GitLab is configured and the remote points at it, look up the GitLab project id
    * from the remote path. Lookups that fail leave the repo unmatched; the scan itself never fails because of GitLab.
    */
-  async scanRepos(roots) {
+  async scanRepos(roots, extra = []) {
     const known = new Set(this.store.data.projects.map((p) => p.cwd));
-    const repos = await Promise.all((await findRepos(roots)).map((d) => describeRepo(d, known)));
+    const found = [.../* @__PURE__ */ new Set([...extra.filter((d) => existsSync6(join6(d, ".git"))), ...await findRepos(roots)])];
+    const repos = await Promise.all(found.map((d) => describeRepo(d, known)));
     const [url, token] = await Promise.all(["WORKBENCH_GITLAB_URL", "WORKBENCH_GITLAB_TOKEN"].map((n) => this.creds(n)));
     if (!url || !token) return { repos, gitlab: "not_configured" };
     const base = url.replace(/\/+$/, "");
@@ -2805,6 +2831,8 @@ function createDispatch(wb, h) {
         return wb.archiveDone();
       case "demo.clean":
         return wb.cleanDemoCards();
+      case "demo.remove":
+        return wb.removeDemoData();
       case "todos.archive":
         return wb.archiveTodo(p.source, p.ref, !!p.archived);
       case "issue.writeback.draft":
@@ -2815,7 +2843,7 @@ function createDispatch(wb, h) {
       case "onboarding.roots":
         return wb.onboardingRoots();
       case "onboarding.scan":
-        return await wb.scanRepos(Array.isArray(p.roots) ? p.roots.map(String) : []);
+        return await wb.scanRepos(Array.isArray(p.roots) ? p.roots.map(String) : [], p.hints ? await h.projectHints?.() : []);
       case "onboarding.import":
         return wb.importRepos(Array.isArray(p.items) ? p.items : []);
       case "update.check":

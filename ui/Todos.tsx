@@ -125,8 +125,8 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
           <label className="wb-pick" style={{ padding: 0 }}><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />显示已归档{todos.items.some((r) => r.archived) ? `（${todos.items.filter((r) => r.archived).length}）` : ''}</label>
           <span className="wb-grow" />
           {(['zentao', 'gitlab', 'jenkins', 'sparkin'] as const).map((s) => (
-            <span key={s} className={`wb-pill ${todos.sources[s].mode === 'live' ? 'live' : todos.sources[s].mode === 'error' ? 'err' : 'demo'}`}>
-              {SOURCE_LABEL[s]} {todos.sources[s].mode === 'live' ? '实时' : todos.sources[s].mode === 'error' ? '读取失败' : '演示'}
+            <span key={s} className={`wb-pill ${todos.sources[s].mode === 'live' ? 'live' : todos.sources[s].mode === 'error' ? 'err' : todos.sources[s].mode === 'none' ? '' : 'demo'}`}>
+              {SOURCE_LABEL[s]} {todos.sources[s].mode === 'live' ? '实时' : todos.sources[s].mode === 'error' ? '读取失败' : todos.sources[s].mode === 'none' ? '未配置' : '演示'}
             </span>
           ))}
           {p.todosAt && <span className="wb-muted" title="每分钟自动拉取">更新于 {p.todosAt.toLocaleTimeString('zh-CN', { hour12: false })}</span>}
@@ -156,7 +156,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
             })}
           </tbody>
         </table>
-        {!rows.length && <div className="wb-empty">没有待办。</div>}
+        {!rows.length && <div className="wb-empty">{Object.values(todos.sources).every((s) => s.mode === 'none') ? '还没有待办：到「设置」连接禅道 / GitLab / Jenkins 后这里会出现你自己的待办；也可以在「看板」上手工新建任务。' : '没有待办。'}</div>}
       </div>
       {sel && (
         <aside className="wb-detail">

@@ -1380,6 +1380,7 @@ function normalizeSettings(input2) {
     testTimeoutSeconds: num(i.testTimeoutSeconds, 10, 3600, d2.testTimeoutSeconds),
     autoDoneOnPass: typeof i.autoDoneOnPass === "boolean" ? i.autoDoneOnPass : d2.autoDoneOnPass,
     zentaoWriteBack: i.zentaoWriteBack === "auto" ? "auto" : "confirm",
+    demoMode: typeof i.demoMode === "boolean" ? i.demoMode : d2.demoMode,
     onboarded: i.onboarded === true,
     syncTodosToBoard: typeof i.syncTodosToBoard === "boolean" ? i.syncTodosToBoard : d2.syncTodosToBoard,
     skillRoots: Array.isArray(i.skillRoots) ? [...new Set(i.skillRoots.map((x) => String(x).trim()).filter(Boolean))].slice(0, 20) : d2.skillRoots,
@@ -1408,6 +1409,7 @@ var init_settings = __esm({
       testTimeoutSeconds: 600,
       autoDoneOnPass: false,
       zentaoWriteBack: "confirm",
+      demoMode: true,
       onboarded: false,
       syncTodosToBoard: true,
       skillRoots: [],
@@ -1512,6 +1514,7 @@ var init_workbench = __esm({
       noticeSeq = 0;
       /** Changes on every Host start, so a page that remembers ids from an earlier run knows to start over. */
       boot = randomUUID2();
+      demoRepoDir;
       fetch;
       off;
       constructor(o) {
@@ -1521,6 +1524,7 @@ var init_workbench = __esm({
         this.setCred = o.setCred;
         this.clock = o.now ?? Date.now;
         this.version = o.version ?? "dev";
+        this.demoRepoDir = o.demoRepoDir;
         this.sparkin = o.sparkin ?? new DemoSparkin();
         this.fetch = o.fetch ?? ((u2, i) => fetch(u2, i));
         this.store.onChange = (before, after) => this.collectNotices(before, after);
@@ -1590,6 +1594,7 @@ var init_workbench = __esm({
           zentaoProductIds: this.store.data.projects.flatMap((p2) => p2.zentaoProductId ? [p2.zentaoProductId] : [])
         };
         const sources = {};
+        const demoOn = this.settings().demoMode;
         const pick2 = async (name, live, demo) => {
           const warnings = [];
           try {
@@ -1598,12 +1603,12 @@ var init_workbench = __esm({
               sources[name] = { mode: "live", error: warnings.join("\uFF1B") || void 0 };
               return items2;
             }
-            sources[name] = { mode: "demo" };
+            sources[name] = { mode: demoOn ? "demo" : "none" };
+            return demoOn ? demo : [];
           } catch (e) {
             sources[name] = { mode: "error", error: String(e.message ?? e) };
             return [];
           }
-          return demo;
         };
         const lists = await Promise.all([
           pick2("zentao", fetchZentao, demoZentao),
@@ -1655,6 +1660,23 @@ var init_workbench = __esm({
       cleanDemoCards() {
         const d2 = this.store.data;
         return this.removeCards(this.demoLeftovers().filter((id) => !d2.runs.some((r2) => r2.issueId === id && r2.status === "running")));
+      }
+      /**
+       * The 清理演示项目和卡片 button: every demo card (except one with a session working right now), the simulated builds, and the demo
+       * projects no remaining card uses. The demo working directories on disk stay.
+       */
+      removeDemoData() {
+        const d2 = this.store.data;
+        const cards = this.removeCards(d2.issues.filter((i) => i.demo && !d2.runs.some((r2) => r2.issueId === i.id && r2.status === "running")).map((i) => i.id));
+        let projects = 0;
+        this.store.update((x) => {
+          x.builds = (x.builds ?? []).filter((b) => !b.demo);
+          const dir2 = this.demoRepoDir;
+          const keep = x.projects.filter((p2) => !dir2 || !p2.cwd.startsWith(dir2) || x.issues.some((i) => i.projectId === p2.id));
+          projects = x.projects.length - keep.length;
+          x.projects = keep;
+        });
+        return { cards, projects };
       }
       /** Remove cards for good. Unlike a delete by the user this does not remember the item as "deleted on purpose". */
       removeCards(ids) {
@@ -2049,9 +2071,11 @@ ${summary.slice(0, 1500)}`,
           if (typeof patch[k2] === "string" && patch[k2].trim() && !next[k2]) throw new WorkbenchError("invalid", `${label}\u5FC5\u987B\u4EE5 http:// \u6216 https:// \u5F00\u5934`);
         }
         for (const [src, id] of Object.entries(next.defaultAgents)) if (!this.store.data.agents.some((a) => a.id === id)) throw new WorkbenchError("invalid", `\u9ED8\u8BA4\u667A\u80FD\u4F53\u300C${id}\u300D\uFF08${src}\uFF09\u4E0D\u5B58\u5728`);
+        const wasDemo = this.settings().demoMode;
         this.store.update((d2) => {
           d2.settings = next;
         });
+        if (next.demoMode && !wasDemo && this.demoRepoDir) this.seedDemoProjects(this.demoRepoDir, false);
         void this.tick();
         return next;
       }
@@ -2109,7 +2133,7 @@ ${summary.slice(0, 1500)}`,
         } catch (e) {
           return { jobs: [], mode: "error", error: String(e.message ?? e) };
         }
-        return { jobs: demo, mode: "demo" };
+        return this.settings().demoMode ? { jobs: demo, mode: "demo" } : { jobs: [], mode: "none" };
       }
       listBuilds() {
         return this.store.data.builds ?? [];
@@ -2127,7 +2151,7 @@ ${summary.slice(0, 1500)}`,
         let error62;
         try {
           const r2 = await triggerJenkinsBuild(this.connectorCtx(), job, params).catch((e) => {
-            if (e.message === "Jenkins \u672A\u914D\u7F6E") {
+            if (e.message === "Jenkins \u672A\u914D\u7F6E" && this.settings().demoMode) {
               demo = true;
               return {};
             }
@@ -2759,8 +2783,8 @@ ${summary.slice(0, 4e3)}`,
         });
       }
       /** First run only: create demo working directories so the demo to-dos can be started without manual setup. */
-      seedDemoProjects(baseDir) {
-        if (this.store.data.projects.length) return;
+      seedDemoProjects(baseDir, onlyIfEmpty = true) {
+        if (onlyIfEmpty && this.store.data.projects.length) return;
         const demo = [
           { name: "\u4E91\u652F\u4ED8 / payment-core", cwd: join6(baseDir, "payment-core"), zentaoProductId: 12, sparkinProjectId: "SP-PAY", testCmd: "node --test" },
           { name: "\u8BA2\u5355\u670D\u52A1 / teleone-order", cwd: join6(baseDir, "teleone-order"), gitlabProjectId: 101, zentaoProductId: 5, sparkinProjectId: "SP-ORDER" },
@@ -2771,6 +2795,7 @@ ${summary.slice(0, 4e3)}`,
           { name: "\u57FA\u7840\u8BBE\u65BD / infrastructure", cwd: join6(baseDir, "infrastructure"), gitlabProjectId: 77, sparkinProjectId: "SP-INFRA" }
         ];
         for (const p2 of demo) {
+          if (this.store.data.projects.some((x) => x.cwd === p2.cwd)) continue;
           mkdirSync2(p2.cwd, { recursive: true });
           const files = p2.name.endsWith("payment-core") ? paymentCoreFiles : { "README.md": `# ${p2.name}
 
@@ -2901,9 +2926,10 @@ ${summary.slice(0, 4e3)}`,
        * Find git repositories under `roots` and, where GitLab is configured and the remote points at it, look up the GitLab project id
        * from the remote path. Lookups that fail leave the repo unmatched; the scan itself never fails because of GitLab.
        */
-      async scanRepos(roots) {
+      async scanRepos(roots, extra = []) {
         const known = new Set(this.store.data.projects.map((p2) => p2.cwd));
-        const repos = await Promise.all((await findRepos(roots)).map((d2) => describeRepo(d2, known)));
+        const found = [.../* @__PURE__ */ new Set([...extra.filter((d2) => existsSync6(join6(d2, ".git"))), ...await findRepos(roots)])];
+        const repos = await Promise.all(found.map((d2) => describeRepo(d2, known)));
         const [url2, token] = await Promise.all(["WORKBENCH_GITLAB_URL", "WORKBENCH_GITLAB_TOKEN"].map((n) => this.creds(n)));
         if (!url2 || !token) return { repos, gitlab: "not_configured" };
         const base = url2.replace(/\/+$/, "");
@@ -2995,6 +3021,8 @@ function createDispatch(wb, h2) {
         return wb.archiveDone();
       case "demo.clean":
         return wb.cleanDemoCards();
+      case "demo.remove":
+        return wb.removeDemoData();
       case "todos.archive":
         return wb.archiveTodo(p2.source, p2.ref, !!p2.archived);
       case "issue.writeback.draft":
@@ -3005,7 +3033,7 @@ function createDispatch(wb, h2) {
       case "onboarding.roots":
         return wb.onboardingRoots();
       case "onboarding.scan":
-        return await wb.scanRepos(Array.isArray(p2.roots) ? p2.roots.map(String) : []);
+        return await wb.scanRepos(Array.isArray(p2.roots) ? p2.roots.map(String) : [], p2.hints ? await h2.projectHints?.() : []);
       case "onboarding.import":
         return wb.importRepos(Array.isArray(p2.items) ? p2.items : []);
       case "update.check":
@@ -3662,13 +3690,18 @@ function credentialFile(dir2) {
 }
 async function runServe(o) {
   const release = acquireLock(o.dir);
+  const file2 = join10(o.dir, "workbench.json");
+  const fresh = !existsSync9(file2);
   const driver = new CodexDriver({ version: o.version });
   const creds = credentialFile(o.dir);
-  const wb = new Workbench({ store: new Store(join10(o.dir, "workbench.json")), driver, version: o.version, creds: creds.get, setCred: creds.set });
+  const wb = new Workbench({ store: new Store(file2), driver, version: o.version, creds: creds.get, setCred: creds.set, demoRepoDir: join10(o.dir, "demo-repos") });
+  if (fresh) wb.saveSettings({ demoMode: false });
   driver.permission = () => wb.settings().permissionPreset;
   driver.packSkills = () => wb.packSkills().map((k2) => ({ name: k2.name, description: k2.description, path: k2.path, scope: "workbench", enabled: true }));
-  wb.seedDemoProjects(join10(o.dir, "demo-repos"));
-  wb.upgradeDemoRepos(join10(o.dir, "demo-repos"));
+  if (wb.settings().demoMode) {
+    wb.seedDemoProjects(join10(o.dir, "demo-repos"));
+    wb.upgradeDemoRepos(join10(o.dir, "demo-repos"));
+  }
   let timer;
   const loop = () => {
     void wb.maybeReportStats();
