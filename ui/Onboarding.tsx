@@ -81,7 +81,7 @@ export function Onboarding({ p, onClose }: { p: PageProps; onClose: () => void }
                 {!scan.repos.length && <div className="wb-empty">没有找到仓库，换个目录试试。</div>}
               </div>)}
             <div className="wb-row"><button className="wb-btn" onClick={() => setStep(1)}>上一步</button><span className="wb-grow" />
-              <button className="wb-btn primary" disabled={busy || !scan || !picked.size} onClick={() => { void doImport() }}>创建 {picked.size || ''} 个项目并完成</button>
+              <button className="wb-btn primary" disabled={busy || !scan || !picked.size} onClick={() => { void doImport() }}>{picked.size ? `创建 ${picked.size} 个项目并完成` : '创建项目并完成'}</button>
               <button className="wb-btn" onClick={() => { void finish() }}>完成</button></div>
           </>
         )}
