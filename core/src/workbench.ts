@@ -311,6 +311,8 @@ export class Workbench {
     if (!issue) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
     if (issue.status === 'in_progress') throw new WorkbenchError('invalid', `${issue.key} 正在进行中`)
     if (issue.status === 'done') throw new WorkbenchError('invalid', `${issue.key} 已完成，不能再开工`)
+    // dragged out of 进行中 (or waiting on you in 待审核) while its session is alive: a second session would work on the same branch
+    if (this.store.data.runs.some((r) => r.issueId === id && r.status === 'running')) throw new WorkbenchError('invalid', `${issue.key} 的会话还在运行，不能重复开工；等它结束，或先在 DSH 会话里中断`)
     if (agentId && agentId !== issue.agentId) this.updateIssue(id, { agentId })
     return this.launch(id)
   }

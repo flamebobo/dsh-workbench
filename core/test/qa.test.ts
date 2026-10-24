@@ -130,3 +130,14 @@ test('Q7 a test run that was in flight when the Host restarted is closed as fail
   await wb2.runChecks(issue.id) // not refused with 「测试正在运行」
 })
 
+test('Q8 a card whose session is still running cannot be started a second time', async () => {
+  const { wb, driver } = setup()
+  const { issue } = await wb.startWork({ item: bug })
+  wb.moveIssue(issue.id, 'todo') // dragged back while the agent is still working
+  await assert.rejects(() => wb.startIssue(issue.id), /会话还在运行/)
+  assert.equal(driver.started.length, 1)
+  driver.emit({ type: 'turn.completed', runId: wb.listRuns().at(-1)!.id, status: 'completed' })
+  await wb.startIssue(issue.id) // once the session ended it can be started again
+  assert.equal(driver.started.length, 2)
+})
+
