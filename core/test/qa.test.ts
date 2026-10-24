@@ -204,3 +204,12 @@ test('Q11 passing tests alone do not complete a card whose agent changed nothing
   await until(() => wb.listIssues().find((x) => x.id === i.id)!.status === 'done')
   assert.equal(wb.listIssues().find((x) => x.id === i.id)!.status, 'done')
 })
+
+test('Q12 a mistyped update / report address is refused out loud instead of being silently emptied', () => {
+  const { wb } = setup()
+  assert.throws(() => wb.saveSettings({ updateCheckUrl: 'update.example.com/latest.json' }), /更新地址必须以 http/)
+  assert.throws(() => wb.saveSettings({ statsReportUrl: 'stats.example.com' }), /上报地址必须以 http/)
+  assert.equal(wb.settings().updateCheckUrl, '')
+  assert.equal(wb.saveSettings({ updateCheckUrl: ' https://u.example.com/latest.json ' }).updateCheckUrl, 'https://u.example.com/latest.json')
+  assert.equal(wb.saveSettings({ updateCheckUrl: '' }).updateCheckUrl, '') // empty still means "off"
+})

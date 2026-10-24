@@ -24,7 +24,7 @@ test('update check: newer / same / garbage / unreachable are all results, never 
   let reply: () => Response = () => Response.json({ version: '0.3.0', url: 'https://dl.corp/wb-0.3.0.zip', notes: '修复若干问题' })
   const wb = setup((async () => reply()) as never)
   await assert.rejects(wb.checkUpdate(), /还没有填写更新地址/)
-  assert.equal(wb.saveSettings({ updateCheckUrl: 'file:///etc/passwd' }).updateCheckUrl, '') // only http(s)
+  assert.throws(() => wb.saveSettings({ updateCheckUrl: 'file:///etc/passwd' }), /更新地址必须以 http/) // only http(s)
   wb.saveSettings({ updateCheckUrl: 'https://dl.corp/latest.json' })
 
   let u = await wb.checkUpdate()

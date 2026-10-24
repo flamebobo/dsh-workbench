@@ -545,6 +545,10 @@ export class Workbench {
 
   saveSettings(patch: Partial<PluginSettings>): PluginSettings {
     const next = normalizeSettings({ ...this.store.data.settings, ...patch, defaultAgents: { ...this.settings().defaultAgents, ...patch.defaultAgents } })
+    // normalizing drops a malformed address to '' (= off); say so instead of "saving" something the user did not type
+    for (const [k, label] of [['updateCheckUrl', '更新地址'], ['statsReportUrl', '上报地址']] as const) {
+      if (typeof patch[k] === 'string' && patch[k]!.trim() && !next[k]) throw new WorkbenchError('invalid', `${label}必须以 http:// 或 https:// 开头`)
+    }
     for (const [src, id] of Object.entries(next.defaultAgents)) if (!this.store.data.agents.some((a) => a.id === id)) throw new WorkbenchError('invalid', `默认智能体「${id}」（${src}）不存在`)
     this.store.update((d) => { d.settings = next })
     void this.tick()

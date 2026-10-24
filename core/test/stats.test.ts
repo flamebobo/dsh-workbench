@@ -61,7 +61,7 @@ test('reporting needs an address; manual report sends, the daily one only when o
   const f = (async (url: string, init?: RequestInit) => { bodies.push({ url, body: JSON.parse(String(init!.body)) }); return new Response('ok') }) as typeof fetch
   const { wb } = setup(f, () => t)
   await assert.rejects(wb.reportStats(true), /还没有填写上报地址/)
-  assert.equal(wb.saveSettings({ statsReportUrl: 'ftp://x' }).statsReportUrl, '') // only http(s) addresses are kept
+  assert.throws(() => wb.saveSettings({ statsReportUrl: 'ftp://x' }), /上报地址必须以 http/) // only http(s) addresses are kept
   wb.saveSettings({ statsReportUrl: 'https://stats.corp/in' })
   await assert.rejects(wb.reportStats(), /没有开启/) // the switch is off
   await wb.maybeReportStats()
