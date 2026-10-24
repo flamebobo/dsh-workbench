@@ -57,6 +57,17 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
     return () => { window.__wbOpen = false; window.removeEventListener('wb:open', on) }
   }, [go])
 
+  // Esc closes the top-most dialog, by the same path as clicking outside it (the first-run guide has no such handler, so it stays)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return // the @ / / menus handle (and consume) their own Esc
+      const masks = document.querySelectorAll('.wb-modal-mask')
+      masks[masks.length - 1]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+
   // The board changes by itself when a session ends, so poll the cheap `state` call while the page is open.
   useEffect(() => {
     void refresh(); void loadTodos()

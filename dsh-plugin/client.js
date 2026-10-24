@@ -1701,6 +1701,15 @@ ${r.description}`.toLowerCase().includes(w)));
       };
     }, [go]);
     useEffect15(() => {
+      const onKey = (e) => {
+        if (e.key !== "Escape" || e.defaultPrevented) return;
+        const masks = document.querySelectorAll(".wb-modal-mask");
+        masks[masks.length - 1]?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      };
+      document.addEventListener("keydown", onKey);
+      return () => document.removeEventListener("keydown", onKey);
+    }, []);
+    useEffect15(() => {
       void refresh();
       void loadTodos();
       const id = setInterval(() => {
