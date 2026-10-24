@@ -77,7 +77,7 @@ export const css = `
 .wb-split { display: flex; height: 100%; min-height: 0; } .wb-list { width: 260px; flex: none; border-right: 1px solid var(--wb-bd1); overflow: auto; padding: 10px; }
 .wb-li { display: block; width: 100%; text-align: left; border: 1px solid transparent; background: none; border-radius: 8px; padding: 8px 10px; margin-bottom: 4px; }
 .wb-li:hover { background: var(--wb-hover); } .wb-li[aria-selected=true] { background: var(--wb-l2); border-color: var(--wb-bd); }
-.wb-pane { flex: 1; overflow: auto; padding: 18px 24px; } .wb-pane > * { max-width: 720px; } /* the scroll area spans the page so its scrollbar sits at the edge; only the content is narrow */
+.wb-pane { flex: 1; overflow: auto; padding: 18px 24px; }
 .wb-toast { position: absolute; right: 20px; bottom: 20px; z-index: 30; padding: 9px 14px; border-radius: 9px; background: var(--wb-fg); color: var(--wb-bg); box-shadow: 0 6px 24px rgba(0,0,0,.25); max-width: 420px; }
 .wb-composer { position: relative; border: 1px solid var(--wb-bd); border-radius: 12px; background: var(--wb-bg); }
 .wb-composer:focus-within { border-color: var(--wb-blue); } .wb-composer.drop { outline: 2px dashed var(--wb-blue); outline-offset: 2px; }

@@ -118,7 +118,7 @@ function General({ p }: { p: PageProps }) {
   if (!f) return <div className="wb-muted">加载中…</div>
   const set = <K extends keyof PluginSettings>(k: K, v: PluginSettings[K]) => setF({ ...f, [k]: v })
   const n = (k: keyof PluginSettings, label: string, hint: string, min: number, max: number, step = 1) => (
-    <div className="wb-field" style={{ maxWidth: 360 }}><label>{label}</label>
+    <div className="wb-field"><label>{label}</label>
       <input className="wb-input" type="number" min={min} max={max} step={step} value={String(f[k] as number)} onChange={(e) => set(k, Number(e.target.value) as never)} />
       <div className="wb-sub" style={{ marginTop: 3 }}>{hint}（{min}–{max}）</div></div>
   )
@@ -147,20 +147,20 @@ function General({ p }: { p: PageProps }) {
               <select className="wb-select" value={f.defaultAgents[k]} onChange={(e) => set('defaultAgents', { ...f.defaultAgents, [k]: e.target.value })}>
                 {p.state.agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>))}
         </div></div>
-      <div className="wb-field" style={{ maxWidth: 360 }}><label>新会话的权限预设</label>
+      <div className="wb-field"><label>新会话的权限预设</label>
         <select className="wb-select" value={f.permissionPreset} onChange={(e) => set('permissionPreset', e.target.value as PluginSettings['permissionPreset'])}>
           <option value="workspace-write">工作区内修改（推荐：只能改工作目录，越界操作需要你批准）</option>
           <option value="danger-full-access">完全访问（智能体可改动任何位置，自动运行时请慎用）</option></select></div>
 
       <h4 className="wb-sec">分支与验证</h4>
       {check('isolateByDefault', '每个任务使用独立的 git 分支和工作树', '项目是 git 仓库时，开工会在工作台数据目录下为任务建分支和工作树，智能体只在里面改，互不干扰、改动可审查；单个项目可在「项目 → 编辑」里单独关闭')}
-      <div className="wb-field" style={{ maxWidth: 360 }}><label>任务分支前缀</label>
+      <div className="wb-field"><label>任务分支前缀</label>
         <input className="wb-input" value={f.branchPrefix} onChange={(e) => set('branchPrefix', e.target.value)} />
         <div className="wb-sub" style={{ marginTop: 3 }}>例如 wb/ 得到 wb/wb-12-fix-callback；只能包含字母数字和 / _ . -</div></div>
       {check('autoTestOnReview', '智能体完成后自动运行项目的测试命令', '项目配置了测试命令时，会话结束进入「待审核」后自动在任务工作树里运行，结果显示在卡片上')}
       {n('testTimeoutSeconds', '测试超时（秒）', '超过后强制结束并记为失败', 10, 3600)}
       {check('autoDoneOnPass', '测试通过后自动完成', '「待审核」的任务在测试通过后自动进入「已完成」；没有测试命令、测试未通过或你没开启时，仍由你验收后拖到「已完成」')}
-      <div className="wb-field" style={{ maxWidth: 420 }}><label>禅道 Bug 完成后回写</label>
+      <div className="wb-field"><label>禅道 Bug 完成后回写</label>
         <select className="wb-select" value={f.zentaoWriteBack} onChange={(e) => set('zentaoWriteBack', e.target.value as PluginSettings['zentaoWriteBack'])}>
           <option value="confirm">确认后回写（推荐：显示评论草稿，你点了才发送）</option>
           <option value="auto">自动回写（已完成即评论并改为已解决，不再确认）</option></select>
