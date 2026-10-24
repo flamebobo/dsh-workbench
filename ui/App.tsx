@@ -60,6 +60,7 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
   const sig = state?.issues.map((i) => i.id + i.status + i.updatedAt).join(',')
   useEffect(() => { if (todos) void loadTodos() }, [sig])
 
+  const waiting = state?.issues.filter((i) => !i.archivedAt && (i.status === 'in_review' || i.status === 'blocked')).length ?? 0
   const demo = todos && Object.entries(todos.sources).filter(([, s]) => s.mode !== 'live')
   const props = state && { state, refresh, notify, openSession, go, focusIssue }
 
@@ -73,7 +74,7 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
       </div>
       <div className="wb-tabs" role="tablist">
         {TABS.map(([k, label]) => (
-          <button key={k} className="wb-tab" role="tab" aria-selected={tab === k} onClick={() => go(k)}>{label}</button>
+          <button key={k} className="wb-tab" role="tab" aria-selected={tab === k} onClick={() => go(k)}>{label}{k === 'board' && waiting > 0 && <span className="wb-badge" title="待审核 / 已阻塞，等你处理">{waiting}</span>}</button>
         ))}
       </div>
       {error && <div className="wb-banner err">{error}</div>}

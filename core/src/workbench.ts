@@ -919,6 +919,41 @@ export class Workbench {
 
   suggestSparkinTask = suggestTask
 
+  /**
+   * 周报: a task for 周报助手 filled in from this week's cards (finished ones with the hours booked, and what is still open).
+   * Created in 待规划 so auto-run never starts it by itself; the human reviews it and clicks 开工.
+   */
+  createWeeklyReport(): Issue {
+    const t = new Date(this.clock())
+    const mon = new Date(t.getFullYear(), t.getMonth(), t.getDate() - ((t.getDay() + 6) % 7))
+    const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6)
+    const day = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const all = this.store.data.issues.filter((i) => i.agentId !== 'weekly')
+    const groups: [string, Issue[]][] = [
+      ['已完成', all.filter((i) => i.status === 'done' && new Date(i.updatedAt) >= mon)],
+      ['待审核', all.filter((i) => i.status === 'in_review' && !i.archivedAt)],
+      ['进行中', all.filter((i) => i.status === 'in_progress')],
+      ['已阻塞', all.filter((i) => i.status === 'blocked' && !i.archivedAt)],
+    ]
+    const used = groups.flatMap(([, l]) => l)
+    if (!used.length) throw new WorkbenchError('invalid', '本周还没有可汇总的任务')
+    const title = `周报 ${day(mon)} ~ ${day(sun)}`
+    if (this.store.data.issues.some((i) => i.title === title && !i.archivedAt)) throw new WorkbenchError('duplicate', `「${title}」已经生成过`)
+    const projectName = (id?: string) => this.store.data.projects.find((p) => p.id === id)?.name ?? '未选择项目'
+    const line = (i: Issue) => `- ${i.key}${i.sourceRef ? `（${i.sourceRef.ref}）` : ''} ${i.title} · ${projectName(i.projectId)}${i.timesheet ? ` · ${i.timesheet.hours}h` : ''}${i.mr ? ` · MR !${i.mr.iid}` : ''}`
+    const hours = used.reduce((n, i) => n + (i.timesheet?.hours ?? 0), 0)
+    const description = [
+      `统计区间：${day(mon)} ~ ${day(sun)}（来自研发工作台的任务）。`,
+      ...groups.filter(([, l]) => l.length).flatMap(([name, l]) => ['', `## ${name}（${l.length}）`, ...l.map(line)]),
+      '', `已填报工时合计：${hours}h`,
+    ].join('\n')
+    // the project most of the finished work belongs to: the report agent reads its commits
+    const count = new Map<string, number>()
+    for (const i of used) if (i.projectId) count.set(i.projectId, (count.get(i.projectId) ?? 0) + 1)
+    const projectId = [...count].sort((a, b) => b[1] - a[1])[0]?.[0]
+    return this.createIssue({ title, description, acceptance: ['按项目列出本周完成项，量化结果', '标注风险与阻塞', '给出下周计划', '工时合计与上面一致'], priority: 'P2', agentId: 'weekly', projectId, status: 'backlog' })
+  }
+
   // ---------- agents & projects ----------
   listAgents() { return this.store.data.agents }
   agent(id: string): AgentProfile {

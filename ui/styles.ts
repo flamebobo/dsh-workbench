@@ -36,6 +36,7 @@ export const css = `
 .wb-th { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
 .wb-th:hover, .wb-th:focus-visible { color: var(--wb-fg); }
 .wb-th-ind { font-size: 9px; min-width: 9px; }
+.wb-badge { margin-left: 5px; min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--wb-red); color: #fff; font-size: 10px; line-height: 16px; display: inline-block; text-align: center; }
 .wb-table td { padding: 9px 10px; border-bottom: 1px solid var(--wb-bd1); vertical-align: middle; }
 .wb-table td .wb-btn { white-space: nowrap; }
 .wb-table tr.arch td { opacity: .55; }
@@ -66,7 +67,7 @@ export const css = `
 .wb-card.dropb { box-shadow: 0 -3px 0 0 var(--wb-blue); } .wb-card.dropa { box-shadow: 0 3px 0 0 var(--wb-blue); }
 .wb-card.arch { opacity: .6; background: var(--wb-l1); }
 .wb-card:hover { border-color: var(--wb-fg3); } .wb-card.drag { opacity: .45; }
-.wb-card .t { font-weight: 600; margin: 3px 0 6px; word-break: break-word; } .wb-card .m { display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--wb-fg3); }
+.wb-card .t { font-weight: 600; margin: 3px 0 6px; word-break: break-word; } .wb-card .m { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 11px; color: var(--wb-fg3); } .wb-card .m .wb-btn { white-space: nowrap; }
 .wb-card .k { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--wb-fg3); }
 .wb-spin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--wb-bd); border-top-color: var(--wb-amber); animation: wbspin 0.9s linear infinite; display: inline-block; }
 @keyframes wbspin { to { transform: rotate(360deg); } }

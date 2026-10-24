@@ -48,6 +48,7 @@ export function apply(ctx: Ctx) {
       case 'issue.update': return wb.updateIssue(p.id, p.patch)
       case 'issue.start': return await wb.startIssue(p.id, p.agentId)
       case 'issue.next': return wb.setNext(p.id, p.nextId ?? '')
+      case 'issue.weekly': return wb.createWeeklyReport()
       case 'issue.followup': return wb.createFollowUp(p.id, { title: p.title, description: p.description })
       case 'issue.archive': return wb.archiveIssue(p.id, !!p.archived)
       case 'issues.archiveDone': return wb.archiveDone()

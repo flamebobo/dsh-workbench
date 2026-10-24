@@ -151,3 +151,24 @@ test('zentao write-back "auto": finishing the bug writes it back; a failure is k
   assert.match(stateOf(bad.wb, b.issue.id).note!, /回写禅道失败/)
   assert.equal(stateOf(bad.wb, b.issue.id).writeBack, undefined)
 })
+
+test('周报: this week\'s cards and hours are gathered into a backlog task for 周报助手, once', async () => {
+  const { wb } = setup()
+  assert.throws(() => wb.createWeeklyReport(), /还没有可汇总/)
+  const a = await wb.startWork({ item: bug })
+  wb.setStatus(a.issue.id, 'done')
+  wb.archiveIssue(a.issue.id, true) // archived done cards still count for the week
+  const info = await wb.sparkinInfo()
+  await wb.reportTimesheet({ date: '2026-10-24', entries: [{ issueId: a.issue.id, hours: 3, taskId: info.tasks['SP-PAY']![0]!.id }] })
+  const open = wb.createIssue({ title: '还在做', projectId: a.issue.projectId, status: 'in_progress' })
+  const r = wb.createWeeklyReport()
+  assert.equal(r.status, 'backlog') // auto-run never picks it up
+  assert.equal(r.agentId, 'weekly')
+  assert.equal(r.projectId, a.issue.projectId)
+  assert.match(r.title, /^周报 \d{4}-\d{2}-\d{2} ~ \d{4}-\d{2}-\d{2}$/)
+  assert.match(r.description, /## 已完成（1）\n- WB-1（BUG-4821） 支付回调幂等修复 .* · 3h/)
+  assert.match(r.description, /## 进行中（1）\n- WB-2 还在做/)
+  assert.match(r.description, /已填报工时合计：3h/)
+  assert.ok(open)
+  assert.throws(() => wb.createWeeklyReport(), /已经生成过/)
+})

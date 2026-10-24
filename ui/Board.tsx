@@ -36,6 +36,12 @@ export function Board(p: PageProps) {
       if (status === 'done' && cur.status !== 'done') await offerNext(id, state, p.notify)
     } catch (e) { p.notify((e as Error).message) }
   }
+  async function weekly() {
+    try { const i = await rpc<Issue>('issue.weekly'); await p.refresh(); p.notify(`已生成 ${i.key}「${i.title}」，在待规划里，确认后点开工`); setOpenId(i.id) } catch (e) { p.notify((e as Error).message) }
+  }
+  async function retry(i: Issue) {
+    try { await rpc('issue.start', { id: i.id }); p.notify(`已重新开工：${i.key}`); await p.refresh() } catch (e) { p.notify((e as Error).message); await p.refresh() }
+  }
   const auto = !!state.autoRun
   async function setAuto(enabled: boolean) {
     if (enabled === auto) return
@@ -69,6 +75,7 @@ export function Board(p: PageProps) {
         </div>
         <button className="wb-btn" title="把「已完成」的卡片全部归档，看板更清爽" onClick={() => { void archiveDone() }}>归档已完成</button>
         <button className="wb-btn" title="把已完成的任务和工时填到 Sparkin 对应的项目任务上" onClick={() => setReporting(true)}>填报 Sparkin 工时</button>
+        <button className="wb-btn" title="把本周完成的任务、进行中的事项和工时汇总成一个任务，交给周报助手" onClick={() => { void weekly() }}>生成周报</button>
         <button className="wb-btn" title="选择 Jenkins Job 构建一次，验证这批修复" onClick={() => setBuilding(true)}>构建验证</button>
       </div>
       <div className="wb-board" style={{ flex: 1, minHeight: 0, height: 'auto' }}>
@@ -104,7 +111,10 @@ export function Board(p: PageProps) {
                     {(i.nextId || state.issues.some((x) => x.nextId === i.id)) && <div className="wb-bld wb-muted">{state.issues.some((x) => x.nextId === i.id) ? `← ${state.issues.filter((x) => x.nextId === i.id).map((x) => x.key).join(' ')}` : ''}{i.nextId ? `  → ${keyOf(i.nextId)}` : ''}</div>}
                     {(i.checks?.length || i.mr) && <div className="wb-bld">{i.checks?.length ? <span style={{ color: checkColor(i.checks.at(-1)!.state) }}>测试 {checkLabel(i.checks.at(-1)!.state)}</span> : null}{i.checks?.length && i.mr ? ' · ' : ''}{i.mr && <a href={i.mr.url} target="_blank" rel="noreferrer noopener" onClick={(e) => e.stopPropagation()}>MR !{i.mr.iid} ↗</a>}</div>}
                     {i.timesheet && <div className="wb-bld" style={{ color: 'var(--wb-green)' }}>已填报工时 {i.timesheet.hours}h · {i.timesheet.sparkinTaskName}</div>}
-                    <div className="m"><span className="wb-pill">{agentName(i.agentId)}</span><span style={{ marginLeft: 'auto' }}>{ago(i.updatedAt)}</span></div>
+                    <div className="m"><span className="wb-pill">{agentName(i.agentId)}</span>
+                      {i.status === 'blocked' && i.projectId && !i.archivedAt && <button className="wb-btn" style={{ padding: '0 8px' }} title="用同一个智能体重新开工，沿用原来的分支和工作树" onClick={(e) => { e.stopPropagation(); void retry(i) }}>重试</button>}
+                      {i.status === 'in_review' && !i.archivedAt && <button className="wb-btn" style={{ padding: '0 8px' }} title="验收通过，移到已完成" onClick={(e) => { e.stopPropagation(); void move(i.id, 'done') }}>验收通过</button>}
+                      <span style={{ marginLeft: 'auto' }}>{ago(i.updatedAt)}</span></div>
                   </article>
                 ))}
               </div>
