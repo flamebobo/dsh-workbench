@@ -1,7 +1,7 @@
 // Regression tests for problems found in the full QA pass (docs/qa/README.md lists them by number).
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -223,4 +223,37 @@ test('Q13 the report task picks the project of the cards it lists, not of cards 
   assert.deepEqual([x.key, y.key, z.key], ['WB-10', 'WB-11', 'WB-12'])
   // the report lists WB-10, WB-11, WB-12: two for project b, one for a. (The text "WB-1x" also contains "WB-1", a card of project a.)
   assert.equal((await wb.createReportTask('week')).projectId, b!.id)
+})
+
+test('Q14 starting WB-1 after the data file was reset (old worktree directory still there) does not fail on the leftover directory', async () => {
+  const { wb, dir, driver } = setup()
+  wb.saveSettings({ isolateByDefault: true })
+  const project = wb.listProjects().find((p) => p.name.endsWith('payment-core'))!
+  const stale = join(dir, 'worktrees', project.id, 'WB-1') // what an earlier data file left behind
+  mkdirSync(stale, { recursive: true }); writeFileSync(join(stale, 'old.txt'), 'leftover from before the reset')
+  const i = wb.createIssue({ title: '重置后的第一个任务', projectId: project.id, status: 'todo' })
+  assert.equal(i.key, 'WB-1')
+  await wb.startIssue(i.id)
+  const card = wb.listIssues().find((x) => x.id === i.id)!
+  assert.equal(card.status, 'in_progress')
+  assert.notEqual(card.worktree, stale) // never reuse or delete a directory this card did not create
+  assert.equal(driver.started[0]!.cwd, card.worktree)
+  assert.ok(existsSync(join(stale, 'old.txt'))) // and the leftover is untouched
+})
+
+test('Q14b a new card does not adopt an old branch of the same name left in the repo (its commits would show up as this task\'s diff)', async () => {
+  const { wb, driver } = setup()
+  wb.saveSettings({ isolateByDefault: true })
+  const project = wb.listProjects().find((p) => p.name.endsWith('payment-core'))!
+  const git = (...a: string[]) => execFileSync('git', a, { cwd: project.cwd, encoding: 'utf8' })
+  git('branch', 'wb/wb-1') // what the previous WB-1 left behind (the title below has no ascii letters, so the name is just the key)
+  const i = wb.createIssue({ title: '重置后', projectId: project.id, status: 'todo' })
+  await wb.startIssue(i.id)
+  const card = wb.listIssues().find((x) => x.id === i.id)!
+  assert.equal(card.branch, 'wb/wb-1-2')
+  assert.equal(driver.started.length, 1)
+  // a retry of the same card keeps its own branch
+  driver.emit({ type: 'turn.completed', runId: wb.listRuns().at(-1)!.id, status: 'failed', error: 'x' })
+  await wb.startIssue(i.id)
+  assert.equal(wb.listIssues().find((x) => x.id === i.id)!.branch, 'wb/wb-1-2')
 })

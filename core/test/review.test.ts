@@ -92,8 +92,8 @@ test('isolation: each task gets its own branch + worktree; reuse, opt-out, non-g
 })
 
 test('isolation: a branch that cannot be created blocks the card with the reason instead of running in the main checkout', async () => {
-  const { wb, driver, project, repo } = setup()
-  sh(repo, 'branch', 'wb/wb-1-x'); sh(repo, 'checkout', '-q', 'wb/wb-1-x') // the branch is checked out in the main worktree, so a second checkout is refused
+  const { wb, driver, project } = setup()
+  wb.saveProject({ ...project, baseBranch: 'no-such-branch' }) // nothing to branch from, so git refuses to create the worktree
   const i = wb.createIssue({ title: 'x', projectId: project.id, status: 'todo' })
   await assert.rejects(() => wb.startIssue(i.id), /创建任务分支「wb\/wb-1-x」失败/)
   assert.equal(driver.started.length, 0)

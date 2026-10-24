@@ -338,8 +338,14 @@ export class Workbench {
     if (!(project.isolate ?? s.isolateByDefault) || !(await g.isGitRepo(project.cwd))) return project.cwd
     const base = project.baseBranch?.trim() || await g.defaultBase(project.cwd)
     const baseRef = (await g.branchExists(project.cwd, base)) ? base : `origin/${base}`
-    const branch = issue.branch ?? g.branchName(s.branchPrefix, issue.key, issue.title)
-    const path = join(dirname(this.store.path), 'worktrees', project.id, issue.key) // next to the data file, never a global location
+    // A card that has no branch yet never adopts a same-named one: after a data reset the keys start over at WB-1 while the repo may
+    // still hold the old WB-1's branch (and its commits). A card that already has its branch (a retry) keeps it.
+    const wanted = g.branchName(s.branchPrefix, issue.key, issue.title)
+    let branch = issue.branch ?? wanted
+    if (!issue.branch) for (let n = 2; await g.branchExists(project.cwd, branch); n++) branch = `${wanted}-${n}`
+    const root = join(dirname(this.store.path), 'worktrees', project.id, issue.key) // next to the data file, never a global location
+    let path = root
+    for (let n = 2; existsSync(path); n++) path = `${root}-${n}` // a leftover directory from an earlier data file is neither reused nor deleted
     mkdirSync(dirname(path), { recursive: true })
     try { await g.addWorktree(project.cwd, branch, path, baseRef) } catch (e) {
       throw new Error(`创建任务分支「${branch}」失败：${(e as Error).message}（可在项目里关闭「分支隔离」直接在项目目录运行）`)
