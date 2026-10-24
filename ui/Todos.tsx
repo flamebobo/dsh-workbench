@@ -1,12 +1,13 @@
 import * as React from 'react'
-import { fmtSize, rpc, STATUS_LABEL, type Issue, type RpcError, type TodoResult, type WorkItem } from './api.ts'
+import { canWriteBack, fmtSize, rpc, STATUS_LABEL, type Issue, type RpcError, type TodoResult, type WorkItem } from './api.ts'
 import { TimesheetModal } from './Timesheet.tsx'
 import { IssueModal } from './Board.tsx'
+import { WriteBackModal } from './WriteBack.tsx'
 import type { PageProps } from './App.tsx'
 
 const { useState, useMemo, useEffect } = React
 type Row = TodoResult['items'][number]
-const SOURCE_LABEL = { zentao: '禅道', gitlab: 'GitLab', jenkins: 'Jenkins', manual: '手工' }
+const SOURCE_LABEL = { zentao: '禅道', gitlab: 'GitLab', jenkins: 'Jenkins', sparkin: 'Sparkin', manual: '手工' }
 const STARTABLE = ['backlog', 'todo', 'blocked']
 const RANK = { P0: 0, P1: 1, P2: 2, P3: 3 }
 type SortKey = 'priority' | 'title' | 'source' | 'project' | 'status' | 'due'
@@ -19,7 +20,7 @@ const COLUMNS: { key: SortKey; label: string; width?: number; text: (r: Row) => 
   { key: 'status', label: '状态', width: 90, text: statusText },
   { key: 'due', label: '截止', width: 90, text: (r) => r.due ?? '' },
 ]
-const FALLBACK_AGENT = { gitlab: 'reviewer', jenkins: 'build-fixer', zentao: 'fullstack', manual: 'fullstack' }
+const FALLBACK_AGENT = { gitlab: 'reviewer', jenkins: 'build-fixer', zentao: 'fullstack', sparkin: 'fullstack', manual: 'fullstack' }
 
 export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloadTodos: () => Promise<void> }) {
   const { todos, state } = p
@@ -30,6 +31,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
   const [q, setQ] = useState('')
   const [showArchived, setShowArchived] = useState(false)
   const [reporting, setReporting] = useState(false)
+  const [writingBack, setWritingBack] = useState(false)
   const [editing, setEditing] = useState<string>() // issue id whose card form is open
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>() // none = the server's priority order
 
@@ -110,7 +112,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
         ))}
         <div className="wb-toolbar">
           <button className="wb-chip" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>全部 {todos.items.filter((r) => showArchived || !r.archived).length}</button>
-          {(['zentao', 'gitlab', 'jenkins', 'manual'] as const).filter((s) => s !== 'manual' || count('manual') > 0).map((s) => (
+          {(['zentao', 'gitlab', 'jenkins', 'sparkin', 'manual'] as const).filter((s) => s !== 'manual' || count('manual') > 0).map((s) => (
             <button key={s} className="wb-chip" aria-pressed={filter === s} onClick={() => setFilter(s)}>
               {SOURCE_LABEL[s]} {count(s)}
             </button>
@@ -118,7 +120,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
           <input className="wb-input" style={{ width: 200 }} type="search" placeholder="搜索 编号 / 标题 / 项目" aria-label="搜索待办" value={q} onChange={(e) => setQ(e.target.value)} />
           <label className="wb-pick" style={{ padding: 0 }}><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />显示已归档{todos.items.some((r) => r.archived) ? `（${todos.items.filter((r) => r.archived).length}）` : ''}</label>
           <span className="wb-grow" />
-          {(['zentao', 'gitlab', 'jenkins'] as const).map((s) => (
+          {(['zentao', 'gitlab', 'jenkins', 'sparkin'] as const).map((s) => (
             <span key={s} className={`wb-pill ${todos.sources[s].mode === 'live' ? 'live' : 'demo'}`}>
               {SOURCE_LABEL[s]} {todos.sources[s].mode === 'live' ? '实时' : '演示'}
             </span>
@@ -174,9 +176,11 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
           <div className="wb-detail-body" style={{ flex: 'none', paddingTop: 0, paddingBottom: 8 }}>
             {issue?.nextId && <div className="wb-sub">后续任务：{state.issues.find((x) => x.id === issue.nextId)?.key} {state.issues.find((x) => x.id === issue.nextId)?.title}</div>}
             {issue && state.issues.some((x) => x.nextId === issue.id) && <div className="wb-sub">前置任务：{state.issues.filter((x) => x.nextId === issue.id).map((x) => `${x.key} ${x.title}`).join('；')}</div>}
+            {issue?.writeBack && <div className="wb-sub" style={{ color: 'var(--wb-green)' }}>已回写禅道：评论已提交，状态改为已解决{issue.writeBack.demo ? '（演示，未发送）' : ''}</div>}
             {issue?.timesheet && <div className="wb-sub" style={{ color: 'var(--wb-green)' }}>已填报工时 {issue.timesheet.hours}h · {issue.timesheet.sparkinTaskName}</div>}
             <div className="wb-row" style={{ marginTop: 8, flexWrap: 'wrap' }}>
               <button className="wb-btn" disabled={issue?.status === 'in_progress'} title={issue?.status === 'in_progress' ? '进行中的任务不能修改' : sel.source === 'manual' ? '修改标题、描述、验收标准、项目、优先级、智能体' : '修改会保存在工作台的卡片里，不会写回禅道/GitLab/Jenkins'} onClick={() => { void edit(sel) }}>编辑</button>
+              {issue && canWriteBack(issue) && <button className="wb-btn" title="给禅道上的 Bug 加评论并改为已解决，发送前可修改评论" onClick={() => setWritingBack(true)}>回写禅道</button>}
               {issue?.status === 'done' && !issue.timesheet && <button className="wb-btn" onClick={() => setReporting(true)}>填报 Sparkin 工时</button>}
               <button className="wb-btn" disabled={issue?.status === 'in_progress'} title={issue?.status === 'in_progress' ? '进行中的任务不能归档' : '归档后默认隐藏，可在「显示已归档」里找回'} onClick={() => { void archive(sel, !sel.archived) }}>{sel.archived ? '取消归档' : '归档'}</button>
               {issue && !issue.sourceRef && <button className="wb-btn danger" onClick={() => { void remove(sel) }}>删除</button>}
@@ -202,6 +206,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
         </aside>
       )}
       {editing && state.issues.find((x) => x.id === editing) && <IssueModal issue={state.issues.find((x) => x.id === editing)} p={p} onClose={() => { setEditing(undefined); void p.reloadTodos() }} />}
+      {writingBack && issue && <WriteBackModal issue={issue} p={p} onClose={() => setWritingBack(false)} />}
       {reporting && issue && <TimesheetModal p={p} only={[issue.id]} onClose={() => setReporting(false)} />}
     </>
   )

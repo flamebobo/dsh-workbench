@@ -97,7 +97,7 @@ export function Settings(p: PageProps & { reloadTodos: () => Promise<void> }) {
           <>
             <div className="wb-row"><h3 style={{ margin: 0 }}>Sparkin（工时系统）</h3><span className="wb-pill demo">演示模式</span></div>
             <div className="wb-sub" style={{ margin: '8px 0' }}>
-              Sparkin 的接口文档还没提供，所以「填报 Sparkin 工时」目前只把工时记录在工作台里，不会写入 Sparkin。拿到文档后在这里增加地址和 Token 即可接入，填报流程不变。
+              Sparkin 的接口文档还没提供，所以「我的待办」里的 Sparkin 任务是演示数据，「填报 Sparkin 工时」也只把工时记录在工作台里，不会写入 Sparkin。拿到文档后在这里增加地址和 Token 即可接入，填报流程不变。
               项目与 Sparkin 项目的对应关系在「项目」里编辑项目时设置。
             </div>
           </>
@@ -107,7 +107,7 @@ export function Settings(p: PageProps & { reloadTodos: () => Promise<void> }) {
   )
 }
 
-const AGENT_SOURCES = [['zentao', '禅道'], ['gitlab', 'GitLab'], ['jenkins', 'Jenkins'], ['manual', '手工任务']] as const
+const AGENT_SOURCES = [['zentao', '禅道'], ['gitlab', 'GitLab'], ['jenkins', 'Jenkins'], ['sparkin', 'Sparkin'], ['manual', '手工任务']] as const
 
 /** Everything tunable about the plugin itself; saved in the data file and applied immediately. */
 function General({ p }: { p: PageProps }) {
@@ -122,7 +122,7 @@ function General({ p }: { p: PageProps }) {
       <input className="wb-input" type="number" min={min} max={max} step={step} value={String(f[k] as number)} onChange={(e) => set(k, Number(e.target.value) as never)} />
       <div className="wb-sub" style={{ marginTop: 3 }}>{hint}（{min}–{max}）</div></div>
   )
-  const check = (k: 'isolateByDefault' | 'autoTestOnReview', label: string, hint: string) => (
+  const check = (k: 'isolateByDefault' | 'autoTestOnReview' | 'autoDoneOnPass', label: string, hint: string) => (
     <label className="wb-pick" style={{ alignItems: 'flex-start' }}><input type="checkbox" checked={f[k]} onChange={(e) => set(k, e.target.checked)} />
       <span><b>{label}</b><div className="wb-sub">{hint}</div></span></label>
   )
@@ -159,6 +159,12 @@ function General({ p }: { p: PageProps }) {
         <div className="wb-sub" style={{ marginTop: 3 }}>例如 wb/ 得到 wb/wb-12-fix-callback；只能包含字母数字和 / _ . -</div></div>
       {check('autoTestOnReview', '智能体完成后自动运行项目的测试命令', '项目配置了测试命令时，会话结束进入「待审核」后自动在任务工作树里运行，结果显示在卡片上')}
       {n('testTimeoutSeconds', '测试超时（秒）', '超过后强制结束并记为失败', 10, 3600)}
+      {check('autoDoneOnPass', '测试通过后自动完成', '「待审核」的任务在测试通过后自动进入「已完成」；没有测试命令、测试未通过或你没开启时，仍由你验收后拖到「已完成」')}
+      <div className="wb-field" style={{ maxWidth: 420 }}><label>禅道 Bug 完成后回写</label>
+        <select className="wb-select" value={f.zentaoWriteBack} onChange={(e) => set('zentaoWriteBack', e.target.value as PluginSettings['zentaoWriteBack'])}>
+          <option value="confirm">确认后回写（推荐：显示评论草稿，你点了才发送）</option>
+          <option value="auto">自动回写（已完成即评论并改为已解决，不再确认）</option></select>
+        <div className="wb-sub" style={{ marginTop: 3 }}>回写 = 给禅道 Bug 加评论并改为「已解决」；只对 Bug 生效，需要先配置禅道账号。</div></div>
 
       <h4 className="wb-sec">附件、搜索与工时</h4>
       {n('maxUploadMB', '附件大小上限（MB）', '任务描述里上传的图片和文档，单个文件的上限', 1, 200)}

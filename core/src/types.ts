@@ -1,7 +1,7 @@
 export const STATUSES = ['backlog', 'todo', 'in_progress', 'in_review', 'done', 'blocked'] as const
 export type Status = (typeof STATUSES)[number]
 
-export type Source = 'zentao' | 'gitlab' | 'jenkins' | 'manual'
+export type Source = 'zentao' | 'gitlab' | 'jenkins' | 'sparkin' | 'manual'
 export type Priority = 'P0' | 'P1' | 'P2' | 'P3'
 
 /** One row of 我的待办, as produced by a connector (or the demo fixtures). */
@@ -17,6 +17,9 @@ export interface WorkItem {
   gitlabProjectId?: number
   zentaoProductId?: number
   jenkinsJob?: string
+  /** Sparkin project / task this item is booked on (Sparkin items only). */
+  sparkinProjectId?: string
+  sparkinTaskId?: string
   /** Display status from the source system (已激活, 待评审, 失败…). */
   statusText: string
   due?: string
@@ -90,6 +93,9 @@ export interface Check {
   ms?: number
 }
 
+/** A Zentao bug resolved from the workbench: the comment that was posted and the status it was moved to. */
+export interface ZentaoWriteBack { at: string; comment: string; status: 'resolved'; demo?: boolean }
+
 export interface MergeRequest { url: string; iid: number; createdAt: string }
 
 export interface Issue {
@@ -111,6 +117,9 @@ export interface Issue {
   /** Hidden from the board by default; the card and its history are kept. */
   archivedAt?: string
   timesheet?: Timesheet
+  /** Sparkin task a card from the Sparkin to-do list is booked on; pre-selects the time-sheet task. */
+  sparkinTaskId?: string
+  writeBack?: ZentaoWriteBack
   /** Task isolation: the branch and git worktree the agent worked in (absent = the project directory itself). */
   branch?: string
   worktree?: string

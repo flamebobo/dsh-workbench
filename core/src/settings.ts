@@ -23,13 +23,18 @@ export interface PluginSettings {
   /** Run the project's test command automatically when an agent finishes. */
   autoTestOnReview: boolean
   testTimeoutSeconds: number
+  /** A card waiting in 待审核 moves to 已完成 by itself once its tests pass (needs a test command; otherwise you accept it). */
+  autoDoneOnPass: boolean
+  /** Finished Zentao bugs: ask with a comment draft first, or resolve them in Zentao straight away. */
+  zentaoWriteBack: 'confirm' | 'auto'
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
   autoRunConcurrency: 1, autoRunPollSeconds: 5, todoRefreshSeconds: 60, defaultHours: 1, maxUploadMB: 25, fileSearchLimit: 30,
   permissionPreset: 'workspace-write',
-  defaultAgents: { zentao: 'fullstack', gitlab: 'reviewer', jenkins: 'build-fixer', manual: 'fullstack' },
+  defaultAgents: { zentao: 'fullstack', gitlab: 'reviewer', jenkins: 'build-fixer', sparkin: 'fullstack', manual: 'fullstack' },
   isolateByDefault: true, branchPrefix: 'wb/', autoTestOnReview: true, testTimeoutSeconds: 600,
+  autoDoneOnPass: true, zentaoWriteBack: 'confirm',
 }
 
 const num = (v: unknown, lo: number, hi: number, fallback: number, step = 1) => {
@@ -56,5 +61,7 @@ export function normalizeSettings(input: Partial<PluginSettings> | undefined): P
     branchPrefix: /^[A-Za-z0-9][A-Za-z0-9/_.-]*$/.test(prefix) && !prefix.includes('..') ? prefix : d.branchPrefix,
     autoTestOnReview: typeof i.autoTestOnReview === 'boolean' ? i.autoTestOnReview : d.autoTestOnReview,
     testTimeoutSeconds: num(i.testTimeoutSeconds, 10, 3600, d.testTimeoutSeconds),
+    autoDoneOnPass: typeof i.autoDoneOnPass === 'boolean' ? i.autoDoneOnPass : d.autoDoneOnPass,
+    zentaoWriteBack: i.zentaoWriteBack === 'auto' ? 'auto' : 'confirm',
   }
 }

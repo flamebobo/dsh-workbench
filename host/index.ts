@@ -52,6 +52,8 @@ export function apply(ctx: Ctx) {
       case 'issue.archive': return wb.archiveIssue(p.id, !!p.archived)
       case 'issues.archiveDone': return wb.archiveDone()
       case 'todos.archive': return wb.archiveTodo(p.source, p.ref, !!p.archived)
+      case 'issue.writeback.draft': return { ...(await wb.writeBackDraft(p.id)), allowed: wb.canWriteBack(p.id) }
+      case 'issue.writeback': return await wb.writeBackZentao(p.id, p.comment) // outward-facing: only from an explicit click
       case 'sparkin.info': return await wb.sparkinInfo()
       case 'timesheet.report': return await wb.reportTimesheet({ date: p.date, entries: p.entries ?? [] })
       case 'issue.move': return wb.moveIssue(p.id, p.status as Status, p.beforeId, 'human') // only the UI (a human) calls this

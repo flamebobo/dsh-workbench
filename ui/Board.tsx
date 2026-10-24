@@ -1,9 +1,10 @@
 import * as React from 'react'
-import { ago, BUILD_LABEL, buildColor, rpc, STATUS_LABEL, type Attachment, type Issue, type Status } from './api.ts'
+import { ago, BUILD_LABEL, buildColor, canWriteBack, rpc, STATUS_LABEL, type Attachment, type Issue, type Status } from './api.ts'
 import { Composer } from './Composer.tsx'
 import { BuildModal } from './Builds.tsx'
 import { TimesheetModal } from './Timesheet.tsx'
 import { ChangesModal } from './Changes.tsx'
+import { WriteBackModal } from './WriteBack.tsx'
 import { matchesIssue, offerNext } from './chain.ts'
 import type { PageProps } from './App.tsx'
 
@@ -142,6 +143,7 @@ export function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue
   const [busy, setBusy] = useState(false)
   const [reporting, setReporting] = useState(false)
   const [viewing, setViewing] = useState(false)
+  const [writingBack, setWritingBack] = useState(false)
   useEffect(() => { if (issue) setStatus(issue.status) }, [issue?.status]) // a session ending changes it under us
   const runs = issue ? state.runs.filter((r) => r.issueId === issue.id).reverse() : []
   const canStart = !issue || STARTABLE.includes(issue.status)
@@ -185,6 +187,7 @@ export function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue
   return (
     <div className="wb-modal-mask" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
       {reporting && issue && <TimesheetModal p={p} only={[issue.id]} onClose={() => setReporting(false)} />}
+      {writingBack && issue && <WriteBackModal issue={issue} p={p} onClose={() => setWritingBack(false)} />}
       {viewing && issue && <ChangesModal issue={issue} notify={p.notify} onClose={() => setViewing(false)} />}
       <div className="wb-modal" role="dialog" aria-label={issue?.key ?? '新建任务'}>
         <div className="wb-row"><span className="wb-sub">{issue ? `${issue.key}${issue.sourceRef ? ` · ${issue.sourceRef.source} ${issue.sourceRef.ref}` : ' · 手工任务'}` : '新建任务'}</span><span className="wb-grow" />
@@ -210,6 +213,7 @@ export function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue
         </div>
         {issue && <ChainField issue={issue} p={p} />}
         {issue && <CodeField issue={issue} p={p} onChanges={() => setViewing(true)} />}
+        {issue?.writeBack && <div className="wb-field"><label>禅道回写</label><div className="wb-rel">已评论并改为<b>已解决</b> · {ago(issue.writeBack.at)}{issue.writeBack.demo ? ' · 演示，未发送到禅道' : ''}<div className="wb-muted" style={{ whiteSpace: 'pre-wrap', maxHeight: 100, overflow: 'auto' }}>{issue.writeBack.comment}</div></div></div>}
         {issue?.timesheet && <div className="wb-field"><label>工时</label><div className="wb-rel">已填报 <b>{issue.timesheet.hours}h</b> · {issue.timesheet.date} · Sparkin「{issue.timesheet.sparkinTaskName}」<span className="wb-muted"> · 记录 {issue.timesheet.entryId}{issue.timesheet.demo ? ' · 演示，未写入 Sparkin' : ''}</span></div></div>}
         {issue?.note && <div className={`wb-banner ${issue.status === 'blocked' ? 'err' : ''}`} style={{ margin: '4px 0' }}>{issue.note}</div>}
         {issue && (state.builds ?? []).some((b) => b.issueIds.includes(issue.id)) && <div className="wb-field"><label>构建验证</label>
@@ -227,6 +231,7 @@ export function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue
           )) : <div className="wb-muted">暂无执行记录</div>}</div>}
         <div className="wb-row">{issue && <button className="wb-btn danger" onClick={() => { void remove() }}>删除</button>}
           {issue && <button className="wb-btn" disabled={issue.status === 'in_progress'} title={issue.status === 'in_progress' ? '进行中的卡片不能归档' : '归档后默认从看板和待办隐藏，可在「显示已归档」里找回'} onClick={() => { void archive() }}>{issue.archivedAt ? '取消归档' : '归档'}</button>}
+          {issue && canWriteBack(issue) && <button className="wb-btn" onClick={() => setWritingBack(true)}>回写禅道</button>}
           {issue?.status === 'done' && !issue.timesheet && <button className="wb-btn" onClick={() => setReporting(true)}>填报 Sparkin 工时</button>}
           <span className="wb-grow" />
           <button className="wb-btn" onClick={onClose}>取消</button>

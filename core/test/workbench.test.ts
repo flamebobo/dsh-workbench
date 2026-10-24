@@ -107,7 +107,7 @@ test('todos: no credentials -> demo; started items carry their card id', async (
   const { wb } = setup()
   const { issue } = await wb.startWork({ item: bug })
   const t = await wb.listTodos()
-  assert.deepEqual(Object.values(t.sources).map((s) => s.mode), ['demo', 'demo', 'demo'])
+  assert.deepEqual(Object.values(t.sources).map((s) => s.mode), ['demo', 'demo', 'demo', 'demo'])
   assert.equal(t.items[0]!.priority, 'P0')
   assert.equal(t.items.find((x) => x.ref === 'BUG-4821')!.issueId, issue.id)
 })

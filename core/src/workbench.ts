@@ -5,12 +5,12 @@ import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { AgentDriver, DriverEvent } from './driver.ts'
 import { paymentCoreFiles } from '../fixtures/demo-repo.ts'
-import { demoGitlab, demoJenkins, demoZentao } from '../fixtures/demo.ts'
+import { demoGitlab, demoJenkins, demoSparkin, demoZentao } from '../fixtures/demo.ts'
 import { createMergeRequest, fetchGitlab } from './connectors/gitlab.ts'
 import { fetchJenkins, jenkinsBuildState, listJenkinsJobs, triggerJenkinsBuild } from './connectors/jenkins.ts'
 import { CONNECTIONS, testConnection, type SystemId } from './connectors/connections.ts'
 import type { ConnectorContext, Creds, FetchLike } from './connectors/http.ts'
-import { fetchZentao } from './connectors/zentao.ts'
+import { fetchZentao, resolveBug } from './connectors/zentao.ts'
 import { Store } from './store.ts'
 import { fuzzy, listFiles, mentionedFiles } from './files.ts'
 import * as g from './git.ts'
@@ -23,7 +23,7 @@ import { normalizeSettings, type PluginSettings } from './settings.ts'
 export interface TodoResult {
   items: (WorkItem & { issueId?: string; issueStatus?: Status; archived?: boolean })[]
   /** Per system: live data, demo fixtures, or demo fixtures after a live failure (with the error). */
-  sources: Record<'zentao' | 'gitlab' | 'jenkins', { mode: 'live' | 'demo' | 'fallback'; error?: string }>
+  sources: Record<'zentao' | 'gitlab' | 'jenkins' | 'sparkin', { mode: 'live' | 'demo' | 'fallback'; error?: string }>
 }
 
 export class WorkbenchError extends Error {
@@ -140,6 +140,7 @@ export class Workbench {
       pick('zentao', () => fetchZentao(ctx), demoZentao),
       pick('gitlab', () => fetchGitlab(ctx), demoGitlab),
       pick('jenkins', () => fetchJenkins(ctx), demoJenkins),
+      pick('sparkin', async () => (this.sparkin.mode === 'live' ? await this.sparkin.assigned() : undefined), demoSparkin),
     ])
     const rank = { P0: 0, P1: 1, P2: 2, P3: 3 }
     const projectName = (id?: string) => this.store.data.projects.find((p) => p.id === id)?.name ?? '未选择项目'
@@ -163,12 +164,13 @@ export class Workbench {
   }
 
   // ---------- start work ----------
-  resolveProject(w: Pick<WorkItem, 'gitlabProjectId' | 'zentaoProductId' | 'jenkinsJob' | 'project'>): Project | undefined {
+  resolveProject(w: Pick<WorkItem, 'gitlabProjectId' | 'zentaoProductId' | 'jenkinsJob' | 'sparkinProjectId' | 'project'>): Project | undefined {
     const ps = this.store.data.projects
     return (
       ps.find((p) => p.gitlabProjectId != null && p.gitlabProjectId === w.gitlabProjectId) ??
       ps.find((p) => p.zentaoProductId != null && p.zentaoProductId === w.zentaoProductId) ??
       ps.find((p) => p.jenkinsJob && p.jenkinsJob === w.jenkinsJob) ??
+      ps.find((p) => p.sparkinProjectId && p.sparkinProjectId === w.sparkinProjectId) ??
       ps.find((p) => p.name === w.project)
     )
   }
@@ -205,7 +207,7 @@ export class Workbench {
       const issue: Issue = {
         id: `iss_${d.seq}`, key: `WB-${d.issueSeq}`, title: item.title, description: item.description,
         acceptance: item.acceptance, status, agentId: agent.id, projectId, priority: item.priority,
-        sourceRef: { source: item.source, ref: item.ref }, createdAt: t, updatedAt: t,
+        sourceRef: { source: item.source, ref: item.ref }, sparkinTaskId: item.sparkinTaskId, createdAt: t, updatedAt: t,
       }
       d.issues.push(issue); place(d, issue, status)
       return issue
@@ -323,7 +325,22 @@ export class Workbench {
     } else if (e.type === 'turn.started') {
       this.store.update((d) => {
         const r = d.runs.find((x) => x.id === e.runId)
-        if (r && !r.sessionId) r.sessionId = e.sessionId
+        if (!r) return
+        if (!r.sessionId) r.sessionId = e.sessionId
+        // The human kept talking in the session after it finished: the same run is working again, so the card follows it back.
+        const issue = r.status !== 'running' ? d.issues.find((i) => i.id === r.issueId) : undefined
+        const latest = issue && d.runs.filter((x) => x.issueId === issue.id).at(-1) === r
+        if (issue && latest && (issue.status === 'in_review' || issue.status === 'blocked')) {
+          r.status = 'running'; r.endedAt = undefined; r.error = undefined
+          place(d, issue, 'in_progress'); issue.note = undefined; issue.updatedAt = now()
+        }
+      })
+    } else if (e.type === 'message') {
+      // After a plan / question was answered the agent speaks again within the same turn: the card is back in 进行中.
+      this.store.update((d) => {
+        const r = d.runs.find((x) => x.id === e.runId)
+        const issue = r?.status === 'running' ? d.issues.find((i) => i.id === r.issueId) : undefined
+        if (issue?.status === 'in_review') { place(d, issue, 'in_progress'); issue.note = undefined; issue.updatedAt = now() }
       })
     }
   }
@@ -349,6 +366,73 @@ export class Workbench {
       const iss = this.store.data.issues.find((i) => i.id === autoTest)
       if (this.store.data.projects.find((p) => p.id === iss?.projectId)?.testCmd?.trim()) void this.runChecks(autoTest).catch(() => {})
     }
+  }
+
+  /** 待审核 -> 已完成 once the task's tests pass, if that is switched on. A failed or absent test leaves it for the human. */
+  private autoComplete(id: string, checkId: string) {
+    if (!this.settings().autoDoneOnPass) return
+    const issue = this.store.data.issues.find((i) => i.id === id)
+    if (!issue || issue.status !== 'in_review') return
+    if (issue.checks?.at(-1)?.id !== checkId || issue.checks.at(-1)!.state !== 'passed') return
+    if (this.store.data.runs.some((r) => r.issueId === id && r.status === 'running')) return
+    this.store.update((d) => {
+      const i = d.issues.find((x) => x.id === id)!
+      place(d, i, 'done'); i.note = undefined; i.updatedAt = now()
+    })
+    this.afterDone(id)
+  }
+
+  /** Whatever finished a card (the human, or passing tests): optionally write a Zentao bug back, right away. */
+  private afterDone(id: string) {
+    if (this.settings().zentaoWriteBack === 'auto' && this.canWriteBack(id)) {
+      void this.writeBackZentao(id).catch((e) => {
+        this.store.update((d) => { const i = d.issues.find((x) => x.id === id); if (i) i.note = `回写禅道失败：${String((e as Error).message ?? e)}` })
+      })
+    }
+  }
+
+  // ---------- Zentao write-back ----------
+  /** Only finished cards that came from a Zentao bug (not tasks / requirements), once. */
+  canWriteBack(id: string): boolean {
+    const i = this.store.data.issues.find((x) => x.id === id)
+    return !!i && i.status === 'done' && !i.writeBack && i.sourceRef?.source === 'zentao' && /^BUG-\d+$/.test(i.sourceRef.ref)
+  }
+
+  /** The comment that will be posted: what was done, how it was verified, where the change is. The human can edit it first. */
+  async writeBackDraft(id: string): Promise<{ comment: string; mode: 'live' | 'demo' }> {
+    const i = this.store.data.issues.find((x) => x.id === id)
+    if (!i) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
+    const check = i.checks?.at(-1)
+    const summary = this.store.data.runs.filter((r) => r.issueId === id && r.status === 'completed' && r.finalText).at(-1)?.finalText
+    const comment = [
+      `已修复，由研发工作台任务 ${i.key} 完成。`,
+      summary && `\n修复说明：\n${summary.slice(0, 1500)}`,
+      check && `\n验证：${check.cmd} ${check.state === 'passed' ? '通过' : '未通过'}`,
+      i.branch && `分支：${i.branch}`,
+      i.mr && `合并请求：${i.mr.url}`,
+    ].filter(Boolean).join('\n')
+    return { comment, mode: (await this.creds('WORKBENCH_ZENTAO_URL')) ? 'live' : 'demo' }
+  }
+
+  /**
+   * Resolve the bug in Zentao (status 已解决, resolution 已修复) with a comment. Outward-facing: runs from an explicit click,
+   * or automatically only if the 回写 setting says so. Without Zentao credentials nothing is sent and the record says 演示.
+   */
+  async writeBackZentao(id: string, comment?: string): Promise<Issue> {
+    const issue = this.store.data.issues.find((i) => i.id === id)
+    if (!issue) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
+    if (issue.writeBack) throw new WorkbenchError('invalid', `${issue.key} 已经回写过禅道`)
+    if (!this.canWriteBack(id)) throw new WorkbenchError('invalid', '只有已完成、来自禅道 Bug 的任务才能回写禅道')
+    const text = (comment ?? (await this.writeBackDraft(id)).comment).trim()
+    if (!text) throw new WorkbenchError('invalid', '回写的评论不能为空')
+    const bugId = Number(/^BUG-(\d+)$/.exec(issue.sourceRef!.ref)![1])
+    const live = await resolveBug(this.connectorCtx(), bugId, text)
+    return this.store.update((d) => {
+      const i = d.issues.find((x) => x.id === id)!
+      i.writeBack = { at: new Date(this.clock()).toISOString(), comment: text, status: 'resolved', demo: live ? undefined : true }
+      if (i.note?.startsWith('回写禅道失败')) i.note = undefined
+      return i
+    })
   }
 
   // ---------- plugin settings ----------
@@ -574,6 +658,7 @@ export class Workbench {
       if (status !== 'blocked') i.note = undefined
       return i
     })
+    if (status === 'done') this.afterDone(id)
     void this.tick() // a card dropped into 待办 may be next in line
     return moved
   }
@@ -685,6 +770,7 @@ export class Workbench {
         if (c.state === 'failed') i.note = r.timedOut ? '测试超时' : `测试未通过（退出码 ${r.code}）`
         else if (i.note?.startsWith('测试')) i.note = undefined
       })
+      this.autoComplete(id, check.id)
     })
     return check
   }

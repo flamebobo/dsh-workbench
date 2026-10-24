@@ -44,7 +44,7 @@ export const css = `
 .wb-pri.P0 { background: color-mix(in srgb, var(--wb-red) 16%, transparent); color: var(--wb-red); }
 .wb-pri.P1 { background: color-mix(in srgb, var(--wb-amber) 18%, transparent); color: var(--wb-amber); }
 .wb-src { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--wb-fg2); white-space: nowrap; }
-.wb-src i { width: 14px; height: 14px; border-radius: 3px; display: inline-block; } .wb-src i.zentao { background: #3b82f6; } .wb-src i.gitlab { background: #e24329; } .wb-src i.jenkins { background: #d33833; } .wb-src i.manual { background: var(--wb-fg3); }
+.wb-src i { width: 14px; height: 14px; border-radius: 3px; display: inline-block; } .wb-src i.zentao { background: #3b82f6; } .wb-src i.gitlab { background: #e24329; } .wb-src i.jenkins { background: #d33833; } .wb-src i.sparkin { background: #8b5cf6; } .wb-src i.manual { background: var(--wb-fg3); }
 .wb-muted { color: var(--wb-fg3); } .wb-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wb-detail { width: 380px; flex: none; border-left: 1px solid var(--wb-bd1); background: var(--wb-l1); display: flex; flex-direction: column; min-height: 0; }
 .wb-detail-body { flex: 1; overflow: auto; padding: 16px 18px; } .wb-detail-foot { padding: 12px 18px; border-top: 1px solid var(--wb-bd1); display: flex; gap: 8px; align-items: center; }

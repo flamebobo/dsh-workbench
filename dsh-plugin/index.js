@@ -271,6 +271,68 @@ var demoJenkins = [
     url: "https://jenkins.example.com/job/teleone-web/887/"
   }
 ];
+var demoSparkin = [
+  {
+    ref: "SPK-2031",
+    source: "sparkin",
+    priority: "P1",
+    project: "\u4E91\u652F\u4ED8\u5E73\u53F0 \xB7 \u9700\u6C42\u5F00\u53D1",
+    sparkinProjectId: "SP-PAY",
+    sparkinTaskId: "SP-PAY-T2",
+    title: "\u6E20\u9053\u5BF9\u8D26\u62A5\u8868\u5F00\u53D1",
+    statusText: "\u8FDB\u884C\u4E2D",
+    due: "2026-10-30",
+    description: "\u6309\u6E20\u9053\u3001\u6309\u65E5\u7EF4\u5EA6\u751F\u6210\u5BF9\u8D26\u5DEE\u5F02\u62A5\u8868\uFF0C\u5DEE\u5F02\u660E\u7EC6\u53EF\u5BFC\u51FA\u3002\u6570\u636E\u6765\u6E90\u4E3A\u652F\u4ED8\u6D41\u6C34\u8868\u4E0E\u6E20\u9053\u8D26\u5355\u8868\u3002",
+    acceptance: ["\u6309\u6E20\u9053 + \u65E5\u671F\u7B5B\u9009\u5E76\u5C55\u793A\u5DEE\u5F02\u7B14\u6570\u4E0E\u91D1\u989D", "\u5DEE\u5F02\u660E\u7EC6\u53EF\u5BFC\u51FA CSV", "\u8865\u5145\u62A5\u8868\u53E3\u5F84\u7684\u5355\u5143\u6D4B\u8BD5"],
+    related: [{ label: "Sparkin \u4EFB\u52A1 SPK-2031", detail: "\u9884\u4F30 16h\uFF0C\u5DF2\u586B\u62A5 6h" }],
+    url: "https://sparkin.example.com/task/SPK-2031"
+  },
+  {
+    ref: "SPK-2034",
+    source: "sparkin",
+    priority: "P2",
+    project: "\u8BA2\u5355\u4E2D\u5FC3 \xB7 \u8054\u8C03\u4E0E\u6D4B\u8BD5",
+    sparkinProjectId: "SP-ORDER",
+    sparkinTaskId: "SP-ORDER-T5",
+    title: "\u8BA2\u5355\u53D6\u6D88\u6D41\u7A0B\u8054\u8C03\u4E0E\u6D4B\u8BD5",
+    statusText: "\u672A\u5F00\u59CB",
+    due: "2026-10-28",
+    description: "\u4E0E\u5E93\u5B58\u3001\u652F\u4ED8\u4E24\u4E2A\u4E0A\u4E0B\u6E38\u8054\u8C03\u8BA2\u5355\u53D6\u6D88\u6D41\u7A0B\uFF0C\u8986\u76D6\u5DF2\u652F\u4ED8\u53D6\u6D88\u3001\u8D85\u65F6\u81EA\u52A8\u53D6\u6D88\u3001\u90E8\u5206\u53D1\u8D27\u53D6\u6D88\u4E09\u79CD\u573A\u666F\u3002",
+    acceptance: ["\u4E09\u79CD\u53D6\u6D88\u573A\u666F\u8054\u8C03\u901A\u8FC7\u5E76\u7559\u6709\u7528\u4F8B\u8BB0\u5F55", "\u5E93\u5B58\u56DE\u8865\u4E0E\u9000\u6B3E\u72B6\u6001\u4E00\u81F4"],
+    related: [{ label: "Sparkin \u4EFB\u52A1 SPK-2034", detail: "\u9884\u4F30 8h" }],
+    url: "https://sparkin.example.com/task/SPK-2034"
+  },
+  {
+    ref: "SPK-2040",
+    source: "sparkin",
+    priority: "P2",
+    project: "\u57FA\u7840\u8BBE\u65BD \xB7 \u6587\u6863\u4E0E\u5468\u62A5",
+    sparkinProjectId: "SP-INFRA",
+    sparkinTaskId: "SP-INFRA-T6",
+    title: "10 \u6708\u7B2C 4 \u5468\u7814\u53D1\u5468\u62A5",
+    statusText: "\u672A\u5F00\u59CB",
+    due: "2026-10-25",
+    description: "\u6C47\u603B\u672C\u5468\u5DF2\u5B8C\u6210\u7684\u4EFB\u52A1\u3001\u5408\u5E76\u7684 MR\u3001\u6784\u5EFA\u60C5\u51B5\u4E0E\u4E0B\u5468\u8BA1\u5212\u3002",
+    acceptance: ["\u6309\u9879\u76EE\u5217\u51FA\u672C\u5468\u5B8C\u6210\u9879", "\u6807\u6CE8\u98CE\u9669\u4E0E\u4E0B\u5468\u8BA1\u5212"],
+    related: [{ label: "Sparkin \u4EFB\u52A1 SPK-2040", detail: "\u9884\u4F30 1h" }],
+    url: "https://sparkin.example.com/task/SPK-2040"
+  },
+  {
+    ref: "SPK-2045",
+    source: "sparkin",
+    priority: "P1",
+    project: "\u8BA4\u8BC1\u4E2D\u5FC3 \xB7 \u9700\u6C42\u5F00\u53D1",
+    sparkinProjectId: "SP-AUTH",
+    sparkinTaskId: "SP-AUTH-T2",
+    title: "\u767B\u5F55\u98CE\u63A7\u89C4\u5219\u63A5\u5165",
+    statusText: "\u672A\u5F00\u59CB",
+    due: "2026-10-29",
+    description: "\u767B\u5F55\u6D41\u7A0B\u63A5\u5165\u98CE\u63A7\u89C4\u5219\u670D\u52A1\uFF1A\u5F02\u5E38 IP / \u8BBE\u5907\u547D\u4E2D\u65F6\u8981\u6C42\u4E8C\u6B21\u9A8C\u8BC1\uFF0C\u89C4\u5219\u670D\u52A1\u4E0D\u53EF\u7528\u65F6\u964D\u7EA7\u653E\u884C\u5E76\u544A\u8B66\u3002",
+    acceptance: ["\u547D\u4E2D\u89C4\u5219\u65F6\u8981\u6C42\u4E8C\u6B21\u9A8C\u8BC1", "\u98CE\u63A7\u670D\u52A1\u8D85\u65F6 / \u62A5\u9519\u65F6\u964D\u7EA7\u653E\u884C\u5E76\u8BB0\u5F55\u544A\u8B66", "\u8865\u5145\u964D\u7EA7\u8DEF\u5F84\u7684\u5355\u6D4B"],
+    related: [{ label: "Sparkin \u4EFB\u52A1 SPK-2045", detail: "\u9884\u4F30 12h" }],
+    url: "https://sparkin.example.com/task/SPK-2045"
+  }
+];
 
 // core/src/connectors/http.ts
 async function getJson(fetchImpl, url, init = {}) {
@@ -491,7 +553,7 @@ function parseTasks(json, me, executionId, base) {
     url: `${base}/task-view-${t.id}.html`
   }));
 }
-async function fetchZentao(c) {
+async function login(c) {
   const [url, acct, password] = await Promise.all(
     ["WORKBENCH_ZENTAO_URL", "WORKBENCH_ZENTAO_ACCOUNT", "WORKBENCH_ZENTAO_PASSWORD"].map((n) => c.creds(n))
   );
@@ -502,6 +564,22 @@ async function fetchZentao(c) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ account: acct, password })
   });
+  return { base, acct, token };
+}
+async function resolveBug(c, bugId, comment) {
+  const s = await login(c);
+  if (!s) return false;
+  await getJson(c.fetch, `${s.base}/api.php/v1/bugs/${bugId}/resolve`, {
+    method: "POST",
+    headers: { "content-type": "application/json", Token: s.token },
+    body: JSON.stringify({ resolution: "fixed", resolvedBuild: "trunk", comment })
+  });
+  return true;
+}
+async function fetchZentao(c) {
+  const s = await login(c);
+  if (!s) return void 0;
+  const { base, acct, token } = s;
   const headers = { Token: token };
   const discover = async (path, key) => {
     try {
@@ -736,6 +814,9 @@ var DemoSparkin = class {
   async projects() {
     return PROJECTS;
   }
+  async assigned() {
+    return demoSparkin;
+  }
   async tasks(projectId) {
     return TASK_NAMES.map((name, i) => ({ id: `${projectId}-T${i + 1}`, projectId, name }));
   }
@@ -743,8 +824,10 @@ var DemoSparkin = class {
     return { entryId: `DEMO-${Date.now().toString(36)}-${++this.seq}` };
   }
 };
-var KEYWORDS = { zentao: "\u7F3A\u9677\u4FEE\u590D", gitlab: "\u4EE3\u7801\u8BC4\u5BA1", jenkins: "\u6784\u5EFA\u4E0E\u53D1\u5E03", manual: "\u9700\u6C42\u5F00\u53D1" };
+var KEYWORDS = { sparkin: "\u9700\u6C42\u5F00\u53D1", zentao: "\u7F3A\u9677\u4FEE\u590D", gitlab: "\u4EE3\u7801\u8BC4\u5BA1", jenkins: "\u6784\u5EFA\u4E0E\u53D1\u5E03", manual: "\u9700\u6C42\u5F00\u53D1" };
 function suggestTask(issue, tasks) {
+  const own = tasks.find((t) => t.id === issue.sparkinTaskId);
+  if (own) return own;
   const hint = /^BUG-/.test(issue.sourceRef?.ref ?? "") || /缺陷|bug|修复/i.test(issue.title) ? "\u7F3A\u9677\u4FEE\u590D" : KEYWORDS[issue.sourceRef?.source ?? "manual"];
   return tasks.find((t) => t.name.includes(hint)) ?? tasks[0];
 }
@@ -804,11 +887,13 @@ var DEFAULT_SETTINGS = {
   maxUploadMB: 25,
   fileSearchLimit: 30,
   permissionPreset: "workspace-write",
-  defaultAgents: { zentao: "fullstack", gitlab: "reviewer", jenkins: "build-fixer", manual: "fullstack" },
+  defaultAgents: { zentao: "fullstack", gitlab: "reviewer", jenkins: "build-fixer", sparkin: "fullstack", manual: "fullstack" },
   isolateByDefault: true,
   branchPrefix: "wb/",
   autoTestOnReview: true,
-  testTimeoutSeconds: 600
+  testTimeoutSeconds: 600,
+  autoDoneOnPass: true,
+  zentaoWriteBack: "confirm"
 };
 var num = (v, lo, hi, fallback, step = 1) => {
   const n = Number(v);
@@ -831,7 +916,9 @@ function normalizeSettings(input) {
     // a valid git ref prefix: letters, digits, `/`, `-`, `_`, `.`; never starting with `-` or containing `..`
     branchPrefix: /^[A-Za-z0-9][A-Za-z0-9/_.-]*$/.test(prefix) && !prefix.includes("..") ? prefix : d.branchPrefix,
     autoTestOnReview: typeof i.autoTestOnReview === "boolean" ? i.autoTestOnReview : d.autoTestOnReview,
-    testTimeoutSeconds: num(i.testTimeoutSeconds, 10, 3600, d.testTimeoutSeconds)
+    testTimeoutSeconds: num(i.testTimeoutSeconds, 10, 3600, d.testTimeoutSeconds),
+    autoDoneOnPass: typeof i.autoDoneOnPass === "boolean" ? i.autoDoneOnPass : d.autoDoneOnPass,
+    zentaoWriteBack: i.zentaoWriteBack === "auto" ? "auto" : "confirm"
   };
 }
 
@@ -942,7 +1029,8 @@ var Workbench = class {
     const lists = await Promise.all([
       pick("zentao", () => fetchZentao(ctx), demoZentao),
       pick("gitlab", () => fetchGitlab(ctx), demoGitlab),
-      pick("jenkins", () => fetchJenkins(ctx), demoJenkins)
+      pick("jenkins", () => fetchJenkins(ctx), demoJenkins),
+      pick("sparkin", async () => this.sparkin.mode === "live" ? await this.sparkin.assigned() : void 0, demoSparkin)
     ]);
     const rank = { P0: 0, P1: 1, P2: 2, P3: 3 };
     const projectName = (id) => this.store.data.projects.find((p) => p.id === id)?.name ?? "\u672A\u9009\u62E9\u9879\u76EE";
@@ -972,7 +1060,7 @@ var Workbench = class {
   // ---------- start work ----------
   resolveProject(w) {
     const ps = this.store.data.projects;
-    return ps.find((p) => p.gitlabProjectId != null && p.gitlabProjectId === w.gitlabProjectId) ?? ps.find((p) => p.zentaoProductId != null && p.zentaoProductId === w.zentaoProductId) ?? ps.find((p) => p.jenkinsJob && p.jenkinsJob === w.jenkinsJob) ?? ps.find((p) => p.name === w.project);
+    return ps.find((p) => p.gitlabProjectId != null && p.gitlabProjectId === w.gitlabProjectId) ?? ps.find((p) => p.zentaoProductId != null && p.zentaoProductId === w.zentaoProductId) ?? ps.find((p) => p.jenkinsJob && p.jenkinsJob === w.jenkinsJob) ?? ps.find((p) => p.sparkinProjectId && p.sparkinProjectId === w.sparkinProjectId) ?? ps.find((p) => p.name === w.project);
   }
   buildPrompt(i, w, files = [], agent, predecessors = []) {
     const lines = [`# \u4EFB\u52A1\uFF1A${i.title}`];
@@ -1013,6 +1101,7 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
         projectId,
         priority: item.priority,
         sourceRef: { source: item.source, ref: item.ref },
+        sparkinTaskId: item.sparkinTaskId,
         createdAt: t,
         updatedAt: t
       };
@@ -1136,7 +1225,28 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
     } else if (e.type === "turn.started") {
       this.store.update((d) => {
         const r = d.runs.find((x) => x.id === e.runId);
-        if (r && !r.sessionId) r.sessionId = e.sessionId;
+        if (!r) return;
+        if (!r.sessionId) r.sessionId = e.sessionId;
+        const issue = r.status !== "running" ? d.issues.find((i) => i.id === r.issueId) : void 0;
+        const latest = issue && d.runs.filter((x) => x.issueId === issue.id).at(-1) === r;
+        if (issue && latest && (issue.status === "in_review" || issue.status === "blocked")) {
+          r.status = "running";
+          r.endedAt = void 0;
+          r.error = void 0;
+          place(d, issue, "in_progress");
+          issue.note = void 0;
+          issue.updatedAt = now();
+        }
+      });
+    } else if (e.type === "message") {
+      this.store.update((d) => {
+        const r = d.runs.find((x) => x.id === e.runId);
+        const issue = r?.status === "running" ? d.issues.find((i) => i.id === r.issueId) : void 0;
+        if (issue?.status === "in_review") {
+          place(d, issue, "in_progress");
+          issue.note = void 0;
+          issue.updatedAt = now();
+        }
       });
     }
   }
@@ -1165,6 +1275,76 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
       if (this.store.data.projects.find((p) => p.id === iss?.projectId)?.testCmd?.trim()) void this.runChecks(autoTest).catch(() => {
       });
     }
+  }
+  /** 待审核 -> 已完成 once the task's tests pass, if that is switched on. A failed or absent test leaves it for the human. */
+  autoComplete(id, checkId) {
+    if (!this.settings().autoDoneOnPass) return;
+    const issue = this.store.data.issues.find((i) => i.id === id);
+    if (!issue || issue.status !== "in_review") return;
+    if (issue.checks?.at(-1)?.id !== checkId || issue.checks.at(-1).state !== "passed") return;
+    if (this.store.data.runs.some((r) => r.issueId === id && r.status === "running")) return;
+    this.store.update((d) => {
+      const i = d.issues.find((x) => x.id === id);
+      place(d, i, "done");
+      i.note = void 0;
+      i.updatedAt = now();
+    });
+    this.afterDone(id);
+  }
+  /** Whatever finished a card (the human, or passing tests): optionally write a Zentao bug back, right away. */
+  afterDone(id) {
+    if (this.settings().zentaoWriteBack === "auto" && this.canWriteBack(id)) {
+      void this.writeBackZentao(id).catch((e) => {
+        this.store.update((d) => {
+          const i = d.issues.find((x) => x.id === id);
+          if (i) i.note = `\u56DE\u5199\u7985\u9053\u5931\u8D25\uFF1A${String(e.message ?? e)}`;
+        });
+      });
+    }
+  }
+  // ---------- Zentao write-back ----------
+  /** Only finished cards that came from a Zentao bug (not tasks / requirements), once. */
+  canWriteBack(id) {
+    const i = this.store.data.issues.find((x) => x.id === id);
+    return !!i && i.status === "done" && !i.writeBack && i.sourceRef?.source === "zentao" && /^BUG-\d+$/.test(i.sourceRef.ref);
+  }
+  /** The comment that will be posted: what was done, how it was verified, where the change is. The human can edit it first. */
+  async writeBackDraft(id) {
+    const i = this.store.data.issues.find((x) => x.id === id);
+    if (!i) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
+    const check = i.checks?.at(-1);
+    const summary = this.store.data.runs.filter((r) => r.issueId === id && r.status === "completed" && r.finalText).at(-1)?.finalText;
+    const comment = [
+      `\u5DF2\u4FEE\u590D\uFF0C\u7531\u7814\u53D1\u5DE5\u4F5C\u53F0\u4EFB\u52A1 ${i.key} \u5B8C\u6210\u3002`,
+      summary && `
+\u4FEE\u590D\u8BF4\u660E\uFF1A
+${summary.slice(0, 1500)}`,
+      check && `
+\u9A8C\u8BC1\uFF1A${check.cmd} ${check.state === "passed" ? "\u901A\u8FC7" : "\u672A\u901A\u8FC7"}`,
+      i.branch && `\u5206\u652F\uFF1A${i.branch}`,
+      i.mr && `\u5408\u5E76\u8BF7\u6C42\uFF1A${i.mr.url}`
+    ].filter(Boolean).join("\n");
+    return { comment, mode: await this.creds("WORKBENCH_ZENTAO_URL") ? "live" : "demo" };
+  }
+  /**
+   * Resolve the bug in Zentao (status 已解决, resolution 已修复) with a comment. Outward-facing: runs from an explicit click,
+   * or automatically only if the 回写 setting says so. Without Zentao credentials nothing is sent and the record says 演示.
+   */
+  async writeBackZentao(id, comment) {
+    const issue = this.store.data.issues.find((i) => i.id === id);
+    if (!issue) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
+    if (issue.writeBack) throw new WorkbenchError("invalid", `${issue.key} \u5DF2\u7ECF\u56DE\u5199\u8FC7\u7985\u9053`);
+    if (!this.canWriteBack(id)) throw new WorkbenchError("invalid", "\u53EA\u6709\u5DF2\u5B8C\u6210\u3001\u6765\u81EA\u7985\u9053 Bug \u7684\u4EFB\u52A1\u624D\u80FD\u56DE\u5199\u7985\u9053");
+    const text = (comment ?? (await this.writeBackDraft(id)).comment).trim();
+    if (!text) throw new WorkbenchError("invalid", "\u56DE\u5199\u7684\u8BC4\u8BBA\u4E0D\u80FD\u4E3A\u7A7A");
+    const bugId = Number(/^BUG-(\d+)$/.exec(issue.sourceRef.ref)[1]);
+    const live = await resolveBug(this.connectorCtx(), bugId, text);
+    return this.store.update((d) => {
+      const i = d.issues.find((x) => x.id === id);
+      i.writeBack = { at: new Date(this.clock()).toISOString(), comment: text, status: "resolved", demo: live ? void 0 : true };
+      if (i.note?.startsWith("\u56DE\u5199\u7985\u9053\u5931\u8D25")) i.note = void 0;
+      return i;
+    });
   }
   // ---------- plugin settings ----------
   settings() {
@@ -1418,6 +1598,7 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
       if (status !== "blocked") i.note = void 0;
       return i;
     });
+    if (status === "done") this.afterDone(id);
     void this.tick();
     return moved;
   }
@@ -1541,6 +1722,7 @@ ${r.output}` : r.output;
         if (c.state === "failed") i.note = r.timedOut ? "\u6D4B\u8BD5\u8D85\u65F6" : `\u6D4B\u8BD5\u672A\u901A\u8FC7\uFF08\u9000\u51FA\u7801 ${r.code}\uFF09`;
         else if (i.note?.startsWith("\u6D4B\u8BD5")) i.note = void 0;
       });
+      this.autoComplete(id, check.id);
     });
     return check;
   }
@@ -2177,6 +2359,11 @@ function apply(ctx) {
         return wb.archiveDone();
       case "todos.archive":
         return wb.archiveTodo(p.source, p.ref, !!p.archived);
+      case "issue.writeback.draft":
+        return { ...await wb.writeBackDraft(p.id), allowed: wb.canWriteBack(p.id) };
+      case "issue.writeback":
+        return await wb.writeBackZentao(p.id, p.comment);
+      // outward-facing: only from an explicit click
       case "sparkin.info":
         return await wb.sparkinInfo();
       case "timesheet.report":

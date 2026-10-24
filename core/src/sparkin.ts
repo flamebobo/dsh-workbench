@@ -1,4 +1,5 @@
-import type { Issue } from './types.ts'
+import { demoSparkin } from '../fixtures/demo.ts'
+import type { Issue, WorkItem } from './types.ts'
 
 export interface SparkinProject { id: string; name: string }
 export interface SparkinTask { id: string; projectId: string; name: string }
@@ -11,6 +12,8 @@ export interface SparkinClient {
   mode: 'demo' | 'live'
   projects(): Promise<SparkinProject[]>
   tasks(projectId: string): Promise<SparkinTask[]>
+  /** Sparkin tasks assigned to me, as to-do items (`source: 'sparkin'`, `ref` = the Sparkin task number). */
+  assigned(): Promise<WorkItem[]>
   /** Book `hours` on a Sparkin task for `date` (YYYY-MM-DD). Returns the entry id. */
   submit(entry: { taskId: string; date: string; hours: number; note: string }): Promise<{ entryId: string }>
 }
@@ -26,14 +29,17 @@ export class DemoSparkin implements SparkinClient {
   mode = 'demo' as const
   private seq = 0
   async projects() { return PROJECTS }
+  async assigned() { return demoSparkin }
   async tasks(projectId: string) { return TASK_NAMES.map((name, i) => ({ id: `${projectId}-T${i + 1}`, projectId, name })) }
   async submit() { return { entryId: `DEMO-${Date.now().toString(36)}-${++this.seq}` } }
 }
 
-const KEYWORDS: Record<string, string> = { zentao: '缺陷修复', gitlab: '代码评审', jenkins: '构建与发布', manual: '需求开发' }
+const KEYWORDS: Record<string, string> = { sparkin: '需求开发', zentao: '缺陷修复', gitlab: '代码评审', jenkins: '构建与发布', manual: '需求开发' }
 
 /** Pick the likeliest Sparkin task for a card from where it came from (bug -> 缺陷修复, MR -> 代码评审, build -> 构建与发布). */
-export function suggestTask(issue: Pick<Issue, 'sourceRef' | 'title'>, tasks: SparkinTask[]): SparkinTask | undefined {
+export function suggestTask(issue: Pick<Issue, 'sourceRef' | 'title' | 'sparkinTaskId'>, tasks: SparkinTask[]): SparkinTask | undefined {
+  const own = tasks.find((t) => t.id === issue.sparkinTaskId) // a card born from a Sparkin task books on that task
+  if (own) return own
   const hint = /^BUG-/.test(issue.sourceRef?.ref ?? '') || /缺陷|bug|修复/i.test(issue.title) ? '缺陷修复' : KEYWORDS[issue.sourceRef?.source ?? 'manual']
   return tasks.find((t) => t.name.includes(hint!)) ?? tasks[0]
 }

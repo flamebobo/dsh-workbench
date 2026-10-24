@@ -22,6 +22,9 @@ export async function rpc<T>(endpoint: string, payload: unknown = {}): Promise<T
   return j.value as T
 }
 
+/** A finished card that came from a Zentao bug and has not been written back yet. */
+export const canWriteBack = (i: Issue) => i.status === 'done' && !i.writeBack && i.sourceRef?.source === 'zentao' && /^BUG-\d+$/.test(i.sourceRef.ref)
+
 export const STATUS_LABEL: Record<Status, string> = {
   backlog: '待规划', todo: '待办', in_progress: '进行中', in_review: '待审核', done: '已完成', blocked: '已阻塞',
 }

@@ -103,3 +103,35 @@ export const demoJenkins: WorkItem[] = [
     url: 'https://jenkins.example.com/job/teleone-web/887/',
   },
 ]
+
+/** Sparkin tasks assigned to me (demo). Task ids follow DemoSparkin: `<project>-T<n>`, n = position in its six task types. */
+export const demoSparkin: WorkItem[] = [
+  {
+    ref: 'SPK-2031', source: 'sparkin', priority: 'P1', project: '云支付平台 · 需求开发', sparkinProjectId: 'SP-PAY', sparkinTaskId: 'SP-PAY-T2',
+    title: '渠道对账报表开发', statusText: '进行中', due: '2026-10-30',
+    description: '按渠道、按日维度生成对账差异报表，差异明细可导出。数据来源为支付流水表与渠道账单表。',
+    acceptance: ['按渠道 + 日期筛选并展示差异笔数与金额', '差异明细可导出 CSV', '补充报表口径的单元测试'],
+    related: [{ label: 'Sparkin 任务 SPK-2031', detail: '预估 16h，已填报 6h' }], url: 'https://sparkin.example.com/task/SPK-2031',
+  },
+  {
+    ref: 'SPK-2034', source: 'sparkin', priority: 'P2', project: '订单中心 · 联调与测试', sparkinProjectId: 'SP-ORDER', sparkinTaskId: 'SP-ORDER-T5',
+    title: '订单取消流程联调与测试', statusText: '未开始', due: '2026-10-28',
+    description: '与库存、支付两个上下游联调订单取消流程，覆盖已支付取消、超时自动取消、部分发货取消三种场景。',
+    acceptance: ['三种取消场景联调通过并留有用例记录', '库存回补与退款状态一致'],
+    related: [{ label: 'Sparkin 任务 SPK-2034', detail: '预估 8h' }], url: 'https://sparkin.example.com/task/SPK-2034',
+  },
+  {
+    ref: 'SPK-2040', source: 'sparkin', priority: 'P2', project: '基础设施 · 文档与周报', sparkinProjectId: 'SP-INFRA', sparkinTaskId: 'SP-INFRA-T6',
+    title: '10 月第 4 周研发周报', statusText: '未开始', due: '2026-10-25',
+    description: '汇总本周已完成的任务、合并的 MR、构建情况与下周计划。',
+    acceptance: ['按项目列出本周完成项', '标注风险与下周计划'],
+    related: [{ label: 'Sparkin 任务 SPK-2040', detail: '预估 1h' }], url: 'https://sparkin.example.com/task/SPK-2040',
+  },
+  {
+    ref: 'SPK-2045', source: 'sparkin', priority: 'P1', project: '认证中心 · 需求开发', sparkinProjectId: 'SP-AUTH', sparkinTaskId: 'SP-AUTH-T2',
+    title: '登录风控规则接入', statusText: '未开始', due: '2026-10-29',
+    description: '登录流程接入风控规则服务：异常 IP / 设备命中时要求二次验证，规则服务不可用时降级放行并告警。',
+    acceptance: ['命中规则时要求二次验证', '风控服务超时 / 报错时降级放行并记录告警', '补充降级路径的单测'],
+    related: [{ label: 'Sparkin 任务 SPK-2045', detail: '预估 12h' }], url: 'https://sparkin.example.com/task/SPK-2045',
+  },
+]

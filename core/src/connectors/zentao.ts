@@ -52,8 +52,8 @@ export function parseTasks(json: { tasks?: Row[] }, me: string, executionId: num
     }))
 }
 
-/** v1 REST API of the open-source edition; throws when v1 is unavailable so the caller can fall back to demo data. */
-export async function fetchZentao(c: ConnectorContext): Promise<WorkItem[] | undefined> {
+/** Token for the v1 API, or undefined when no credentials are configured (demo mode). */
+async function login(c: ConnectorContext) {
   const [url, acct, password] = await Promise.all(
     ['WORKBENCH_ZENTAO_URL', 'WORKBENCH_ZENTAO_ACCOUNT', 'WORKBENCH_ZENTAO_PASSWORD'].map((n) => c.creds(n)),
   )
@@ -64,6 +64,30 @@ export async function fetchZentao(c: ConnectorContext): Promise<WorkItem[] | und
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ account: acct, password }),
   })
+  return { base, acct, token }
+}
+
+/**
+ * Mark a bug resolved (resolution 已修复) with a comment: one call that both changes the status and records the comment.
+ * Returns false when Zentao isn't configured. Endpoint and fields follow third-party v1 clients, not an official reference:
+ * check them against your Zentao version before relying on it.
+ */
+export async function resolveBug(c: ConnectorContext, bugId: number, comment: string): Promise<boolean> {
+  const s = await login(c)
+  if (!s) return false
+  await getJson(c.fetch, `${s.base}/api.php/v1/bugs/${bugId}/resolve`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', Token: s.token },
+    body: JSON.stringify({ resolution: 'fixed', resolvedBuild: 'trunk', comment }),
+  })
+  return true
+}
+
+/** v1 REST API of the open-source edition; throws when v1 is unavailable so the caller can fall back to demo data. */
+export async function fetchZentao(c: ConnectorContext): Promise<WorkItem[] | undefined> {
+  const s = await login(c)
+  if (!s) return undefined
+  const { base, acct, token } = s
   const headers = { Token: token }
   // Ids from the settings / Projects page win; with none configured, discover what the account can see (best effort, capped).
   const discover = async (path: string, key: string): Promise<number[]> => {
