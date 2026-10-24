@@ -14,6 +14,7 @@ const port = 9333 + Math.floor(Math.random() * 500)
 const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
   '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${mkdtempSync(join(tmpdir(), 'wb-shots-'))}`, '--no-first-run', '--hide-scrollbars', 'about:blank',
 ], { stdio: 'ignore' })
+process.on('exit', () => chrome.kill()) // also when a step throws: a leftover page keeps polling the Host
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 let targets
 for (let n = 0; n < 50; n++) { try { targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); if (targets[0]) break } catch { await sleep(200) } }

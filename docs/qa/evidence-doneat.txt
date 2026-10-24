@@ -1,0 +1,6 @@
+doneAt in the running app (QA instance):
+{
+ "doneAtWhenDone": "2026-10-24T08:23:20.253Z",
+ "afterEdit": "2026-10-24T08:23:20.253Z",
+ "thisWeekDone": 0
+}

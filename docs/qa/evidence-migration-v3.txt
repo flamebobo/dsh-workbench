@@ -1,0 +1,4 @@
+migration on a COPY of the real data file (the real one is untouched):
+  version 3 | cards 19 | marked demo 16 | done cards with doneAt 4/4
+  autoDoneOnPass (kept as before for this existing user): true
+  backup written: true
