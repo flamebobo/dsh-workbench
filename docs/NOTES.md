@@ -55,3 +55,9 @@
 - 分支隔离：`git worktree add -b <前缀><编号>-<标题 ASCII 片段> <数据目录>/worktrees/<项目>/<编号> <基线>`；`baseSha` 用 `merge-base` 记录，diff 以它为基准（含未提交与新文件，`git add -N .`）。
 - MR：`commitAll` → `push -u origin <分支>`（`GIT_TERMINAL_PROMPT=0`、ssh BatchMode，避免卡住）→ `POST /api/v4/projects/:id/merge_requests`；409 时查询同源分支已打开的 MR。测试里用本地裸仓库当 origin、fetch 桩当 GitLab。
 - 老的演示目录（非 git）在 Host 启动时由 `upgradeDemoRepos` 补 `git init` 和 payment-core 的测试命令。
+
+## 上线准备一批功能的发现（2026-10-24）
+- **技能来源**：DSH 的技能注册表接受插件注册提供方：`ctx.get('skills').registerProvider((control) => ({ name, list(options), get(candidate, options) }))`；`list` 返回候选（name、description、invocation、provider、source、rank、locator、resourceBase、path），`get` 返回同样的字段加 `content`（SKILL.md 去掉 frontmatter 的正文）；`control.invalidate()` 让注册表重新读取。自带的文件系统提供方扫描 `<项目根>/.dsh/skills`、`.agents/skills`、`~/.dsh/skills`、`~/.agents/skills` 和 `customSkillDirs`（静态配置），所以动态目录要自己注册提供方。
+- **插件安装**：`dsh plugin --profile <名> add <目录>` 只是转发给 pnpm，在 profile 的 package.json 里写 `link:<目录>`（软链接）。目录固定时，更新 = 替换目录里的文件，不需要重新 add。
+- **通知**：没有找到 DSH 提供的通知服务；插件入口（client entry）在应用打开期间一直运行，所以轮询和 `new Notification` 放在入口里，页面没挂载也能提醒。点击通知时页面可能还没挂载：先把卡片编号放在 `window.__wbPending`，再点侧栏的「工作台」按钮，页面挂载后读取。
+- **数据版本**：`Data.version` 现在是 2；`core/src/store.ts` 里的 `migrations` 按版本逐步升级，升级前复制旧文件为 `.v<旧版本>.bak`；版本高于当前插件的文件直接拒绝加载（`DataVersionError`），不改写。

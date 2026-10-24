@@ -4,7 +4,7 @@ import type { PluginSettings } from '../core/src/settings.ts'
 export type { PluginSettings }
 
 export type { AgentProfile, Attachment, Check, MergeRequest, Build, BuildState, Issue, Project, Run, WorkItem, Status, TodoResult }
-export interface State { version?: string; exampleSkillRoot?: string; issues: Issue[]; runs: Run[]; agents: AgentProfile[]; projects: Project[]; builds?: Build[]; autoRun?: boolean; working?: number; settings?: PluginSettings }
+export interface State { version?: string; update?: import('../core/src/types.ts').UpdateInfo; exampleSkillRoot?: string; issues: Issue[]; runs: Run[]; agents: AgentProfile[]; projects: Project[]; builds?: Build[]; autoRun?: boolean; working?: number; settings?: PluginSettings }
 
 export class RpcError extends Error {
   code?: string

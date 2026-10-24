@@ -14,6 +14,7 @@ import { fetchZentao, resolveBug } from './connectors/zentao.ts'
 import { Store } from './store.ts'
 import { fuzzy, listFiles, mentionedFiles } from './files.ts'
 import * as g from './git.ts'
+import { checkForUpdate, compareVersions } from './update.ts'
 import { anonymousPayload, computeStats, exportRows, toCsv } from './stats.ts'
 import { discoverSkills } from './skillpack.ts'
 import { expandHome } from './onboarding.ts'
@@ -1097,6 +1098,29 @@ export class Workbench {
     const roots = this.settings().skillRoots
     const skills = discoverSkills(roots)
     return { roots: roots.map((r) => ({ root: r, exists: existsSync(resolve(expandHome(r))), count: skills.filter((s) => s.root === resolve(expandHome(r.trim()))).length })), skills: skills.map(({ name, description, root }) => ({ name, description, root })) }
+  }
+
+  // ---------- updates ----------
+  /** Look at the update address now (the 检查更新 button). The result is kept so the banner survives a restart. */
+  async checkUpdate() {
+    const url = this.settings().updateCheckUrl
+    if (!url) throw new WorkbenchError('invalid', '还没有填写更新地址（设置 → 插件设置 → 关于与更新）')
+    const info = await checkForUpdate(this.fetch, url, this.version, new Date(this.clock()))
+    this.store.update((d) => { d.update = info })
+    return info
+  }
+
+  /** The kept result, judged against the version running now (after an update the old "newer" must not linger). */
+  updateInfo() {
+    const u = this.store.data.update
+    return u && { ...u, current: this.version, newer: !!u.latest && compareVersions(u.latest, this.version) > 0 }
+  }
+
+  /** From the Host's timer: at most once a day, only when an address is set. */
+  async maybeCheckUpdate() {
+    const last = this.store.data.update
+    if (!this.settings().updateCheckUrl || (last && this.clock() - Date.parse(last.checkedAt) < 24 * 3600_000)) return
+    await this.checkUpdate().catch(() => {})
   }
 
   // ---------- statistics ----------

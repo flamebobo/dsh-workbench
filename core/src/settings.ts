@@ -36,6 +36,8 @@ export interface PluginSettings {
   /** Anonymous usage counts are sent to `statsReportUrl` about once a day. Off until the user turns it on and sets an address. */
   statsReportEnabled: boolean
   statsReportUrl: string
+  /** Address that says which plugin version is newest (see core/src/update.ts for the shape). Empty = never check. */
+  updateCheckUrl: string
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -44,7 +46,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   defaultAgents: { zentao: 'fullstack', gitlab: 'reviewer', jenkins: 'build-fixer', sparkin: 'fullstack', manual: 'fullstack' },
   isolateByDefault: true, branchPrefix: 'wb/', autoTestOnReview: true, testTimeoutSeconds: 600,
   autoDoneOnPass: true, zentaoWriteBack: 'confirm', onboarded: false, skillRoots: [], desktopNotify: true,
-  statsReportEnabled: false, statsReportUrl: '',
+  statsReportEnabled: false, statsReportUrl: '', updateCheckUrl: '',
 }
 
 const num = (v: unknown, lo: number, hi: number, fallback: number, step = 1) => {
@@ -77,6 +79,7 @@ export function normalizeSettings(input: Partial<PluginSettings> | undefined): P
     skillRoots: Array.isArray(i.skillRoots) ? [...new Set(i.skillRoots.map((x) => String(x).trim()).filter(Boolean))].slice(0, 20) : d.skillRoots,
     desktopNotify: typeof i.desktopNotify === 'boolean' ? i.desktopNotify : d.desktopNotify,
     statsReportEnabled: i.statsReportEnabled === true,
+    updateCheckUrl: typeof i.updateCheckUrl === 'string' && /^https?:\/\/\S+$/.test(i.updateCheckUrl.trim()) ? i.updateCheckUrl.trim() : '',
     statsReportUrl: typeof i.statsReportUrl === 'string' && /^https?:\/\/\S+$/.test(i.statsReportUrl.trim()) ? i.statsReportUrl.trim() : '',
   }
 }

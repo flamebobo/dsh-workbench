@@ -168,6 +168,13 @@ function General({ p }: { p: PageProps }) {
           <option value="auto">自动回写（已完成即评论并改为已解决，不再确认）</option></select>
         <div className="wb-sub" style={{ marginTop: 3 }}>回写 = 给禅道 Bug 加评论并改为「已解决」；只对 Bug 生效，需要先配置禅道账号。</div></div>
 
+      <h4 className="wb-sec">关于与更新</h4>
+      <div className="wb-sub" style={{ marginBottom: 6 }}>研发工作台 {p.state.version ?? '开发版'}　·　数据文件版本由插件自动升级，升级前会备份为 <code>workbench.json.v&lt;旧版本&gt;.bak</code></div>
+      <div className="wb-field"><label>更新地址</label>
+        <input className="wb-input" value={f.updateCheckUrl} onChange={(e) => set('updateCheckUrl', e.target.value)} placeholder='留空 = 不检查。返回 {"version":"0.3.0","url":"https://…/workbench-plugin-0.3.0.zip","notes":"…"}' />
+        <div className="wb-sub" style={{ marginTop: 3 }}>填写并保存后，每天检查一次，有新版本时在工作台顶部提示。</div></div>
+      <Update p={p} dirty={f.updateCheckUrl !== saved?.updateCheckUrl} />
+
       <SkillRoots f={f} set={set} example={p.state.exampleSkillRoot} saved={saved} />
 
       <h4 className="wb-sec">桌面通知</h4>
@@ -213,5 +220,20 @@ function SkillRoots({ f, set, example, saved }: { f: PluginSettings; set: <K ext
         <span className="wb-sub">{report ? (report.roots.length ? report.roots.map((r) => `${r.root}：${r.exists ? `${r.count} 个技能` : '目录不存在'}`).join('；') : '尚未配置') : ''}</span></div>
       {!!report?.skills.length && <div className="wb-sub">已保存的技能：{report.skills.map((s) => `/${s.name}`).join('  ')}</div>}
     </>
+  )
+}
+
+function Update({ p, dirty }: { p: PageProps; dirty: boolean }) {
+  const [busy, setBusy] = useState(false)
+  const u = p.state.update
+  async function check() {
+    setBusy(true)
+    try { const r = await rpc<{ newer: boolean; latest?: string; error?: string }>('update.check'); await p.refresh(); p.notify(r.error ? `检查失败：${r.error}` : r.newer ? `有新版本 ${r.latest}` : '已经是最新版本') } catch (e) { p.notify((e as Error).message) } finally { setBusy(false) }
+  }
+  return (
+    <div className="wb-row" style={{ margin: '4px 0 8px' }}>
+      <button className="wb-btn" disabled={busy || dirty} title={dirty ? '先保存更新地址' : undefined} onClick={() => { void check() }}>{busy ? '检查中…' : '检查更新'}</button>
+      {u && <span className="wb-sub" style={{ color: u.error ? 'var(--wb-red)' : undefined }}>上次检查 {new Date(u.checkedAt).toLocaleString('zh-CN', { hour12: false })}：{u.error ?? (u.newer ? `有新版本 ${u.latest}` : '已是最新')}</span>}
+    </div>
   )
 }

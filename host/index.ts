@@ -39,13 +39,14 @@ export function apply(ctx: Ctx) {
   let timer: ReturnType<typeof setTimeout>
   const loop = () => {
     void wb.maybeReportStats()
+    void wb.maybeCheckUpdate()
     wb.tick().catch((e) => ctx.logger.warn('workbench: auto-run tick failed', e)).finally(() => { if (!stopped) timer = setTimeout(loop, wb.settings().autoRunPollSeconds * 1000) })
   }
   timer = setTimeout(loop, 5000)
   ctx.effect(() => () => { stopped = true; clearTimeout(timer); wb.dispose(); return driver.disposePresets() })
 
   const state = async () => ({
-    version: wb.version, exampleSkillRoot: existsSync(exampleSkillRoot) ? exampleSkillRoot : undefined, issues: wb.listIssues(), runs: wb.listRuns(), agents: wb.listAgents(), projects: wb.listProjects(), builds: await wb.refreshBuilds(), autoRun: wb.autoRun, working: wb.workingCount(), settings: wb.settings(),
+    version: wb.version, update: wb.updateInfo(), exampleSkillRoot: existsSync(exampleSkillRoot) ? exampleSkillRoot : undefined, issues: wb.listIssues(), runs: wb.listRuns(), agents: wb.listAgents(), projects: wb.listProjects(), builds: await wb.refreshBuilds(), autoRun: wb.autoRun, working: wb.workingCount(), settings: wb.settings(),
   })
 
   async function dispatch(endpoint: string, p: any): Promise<unknown> {
@@ -69,6 +70,7 @@ export function apply(ctx: Ctx) {
       case 'onboarding.roots': return wb.onboardingRoots()
       case 'onboarding.scan': return await wb.scanRepos(Array.isArray(p.roots) ? p.roots.map(String) : [])
       case 'onboarding.import': return wb.importRepos(Array.isArray(p.items) ? p.items : [])
+      case 'update.check': return await wb.checkUpdate()
       case 'notices.since': return wb.noticesSince(typeof p.after === 'number' ? p.after : undefined)
       case 'stats.get': return wb.stats()
       case 'stats.payload': return { payload: wb.statsPayload(), last: wb.store.data.statsReport }

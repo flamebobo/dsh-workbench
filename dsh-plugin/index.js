@@ -7,12 +7,27 @@ import { join as join6 } from "node:path";
 var STATUSES = ["backlog", "todo", "in_progress", "in_review", "done", "blocked"];
 
 // core/src/store.ts
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 var dataDir = () => process.env.WORKBENCH_HOME || join(homedir(), ".workbench");
 var defaultDataPath = () => join(dataDir(), "workbench.json");
-var empty = () => ({ version: 1, seq: 0, projects: [], issues: [], agents: [], runs: [] });
+var DATA_VERSION = 2;
+var migrations = {
+  // 1 -> 2: the arrays and fields that later releases read without checking are always present
+  1: (d) => {
+    d.builds ??= [];
+    d.hiddenTodos ??= [];
+    d.issueSeq ??= d.issues.length;
+    for (const i of d.issues) {
+      i.acceptance ??= [];
+      i.attachments ??= [];
+    }
+  }
+};
+var DataVersionError = class extends Error {
+};
+var empty = () => ({ version: DATA_VERSION, seq: 0, projects: [], issues: [], agents: [], runs: [] });
 var Store = class {
   data;
   path;
@@ -21,11 +36,25 @@ var Store = class {
   constructor(path = defaultDataPath()) {
     this.path = path;
     try {
-      this.data = { ...empty(), ...JSON.parse(readFileSync(path, "utf8")) };
+      const raw = JSON.parse(readFileSync(path, "utf8"));
+      this.data = { ...empty(), ...raw, version: Number(raw.version) || 1 };
     } catch (e) {
       if (e.code !== "ENOENT") throw e;
       this.data = empty();
+      return;
     }
+    this.upgrade();
+  }
+  upgrade() {
+    const from = Number(this.data.version) || 1;
+    if (from > DATA_VERSION) throw new DataVersionError(`\u6570\u636E\u6587\u4EF6 ${this.path} \u6765\u81EA\u66F4\u65B0\u7684\u7248\u672C\uFF08\u6570\u636E\u7248\u672C ${from}\uFF0C\u5F53\u524D\u63D2\u4EF6\u53EA\u8BA4\u8BC6\u5230 ${DATA_VERSION}\uFF09\u3002\u8BF7\u5148\u628A\u63D2\u4EF6\u66F4\u65B0\u5230\u6700\u65B0\u7248\uFF0C\u6570\u636E\u6CA1\u6709\u88AB\u6539\u52A8\u3002`);
+    if (from === DATA_VERSION) return;
+    copyFileSync(this.path, `${this.path}.v${from}.bak`);
+    const draft = structuredClone(this.data);
+    for (let v = from; v < DATA_VERSION; v++) migrations[v]?.(draft);
+    draft.version = DATA_VERSION;
+    this.write(draft);
+    this.data = draft;
   }
   /** Apply a mutation and persist it. The mutator may throw to abort; nothing is written then. */
   update(fn) {
@@ -805,6 +834,34 @@ ${e.message}`.trim(), timedOut, ms: Date.now() - t0 });
   });
 }
 
+// core/src/update.ts
+function compareVersions(a, b) {
+  const parse = (v) => {
+    const [core = "", pre] = v.trim().replace(/^v/, "").split("-", 2);
+    return { n: core.split(".").map((x2) => Number.parseInt(x2, 10) || 0), pre };
+  };
+  const x = parse(a), y = parse(b);
+  for (let i = 0; i < Math.max(x.n.length, y.n.length); i++) {
+    const d = (x.n[i] ?? 0) - (y.n[i] ?? 0);
+    if (d) return d < 0 ? -1 : 1;
+  }
+  if (x.pre === y.pre) return 0;
+  return !x.pre ? 1 : !y.pre ? -1 : x.pre < y.pre ? -1 : 1;
+}
+async function checkForUpdate(fetchImpl, url, current, now2) {
+  const checkedAt = now2.toISOString();
+  try {
+    const res = await fetchImpl(url, { signal: AbortSignal.timeout(8e3), headers: { accept: "application/json" } });
+    if (!res.ok) return { current, newer: false, checkedAt, error: `HTTP ${res.status}` };
+    const j = await res.json();
+    if (typeof j.version !== "string" || !/^v?\d+(\.\d+)*(-[\w.]+)?$/.test(j.version)) return { current, newer: false, checkedAt, error: "\u66F4\u65B0\u5730\u5740\u8FD4\u56DE\u7684\u5185\u5BB9\u91CC\u6CA1\u6709\u6709\u6548\u7684 version" };
+    const link = typeof j.url === "string" && /^https?:\/\//.test(j.url) ? j.url : void 0;
+    return { current, latest: j.version.replace(/^v/, ""), newer: compareVersions(j.version, current) > 0, url: link, notes: typeof j.notes === "string" ? j.notes.slice(0, 1e3) : void 0, checkedAt };
+  } catch (e) {
+    return { current, newer: false, checkedAt, error: String(e.message ?? e) };
+  }
+}
+
 // core/src/stats.ts
 var day2 = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 var mondayOf = (t) => {
@@ -1107,7 +1164,8 @@ var DEFAULT_SETTINGS = {
   skillRoots: [],
   desktopNotify: true,
   statsReportEnabled: false,
-  statsReportUrl: ""
+  statsReportUrl: "",
+  updateCheckUrl: ""
 };
 var num = (v, lo, hi, fallback, step = 1) => {
   const n = Number(v);
@@ -1137,6 +1195,7 @@ function normalizeSettings(input) {
     skillRoots: Array.isArray(i.skillRoots) ? [...new Set(i.skillRoots.map((x) => String(x).trim()).filter(Boolean))].slice(0, 20) : d.skillRoots,
     desktopNotify: typeof i.desktopNotify === "boolean" ? i.desktopNotify : d.desktopNotify,
     statsReportEnabled: i.statsReportEnabled === true,
+    updateCheckUrl: typeof i.updateCheckUrl === "string" && /^https?:\/\/\S+$/.test(i.updateCheckUrl.trim()) ? i.updateCheckUrl.trim() : "",
     statsReportUrl: typeof i.statsReportUrl === "string" && /^https?:\/\/\S+$/.test(i.statsReportUrl.trim()) ? i.statsReportUrl.trim() : ""
   };
 }
@@ -2305,6 +2364,29 @@ ${summary.slice(0, 4e3)}`,
     const skills = discoverSkills(roots);
     return { roots: roots.map((r) => ({ root: r, exists: existsSync5(resolve4(expandHome(r))), count: skills.filter((s) => s.root === resolve4(expandHome(r.trim()))).length })), skills: skills.map(({ name, description, root }) => ({ name, description, root })) };
   }
+  // ---------- updates ----------
+  /** Look at the update address now (the 检查更新 button). The result is kept so the banner survives a restart. */
+  async checkUpdate() {
+    const url = this.settings().updateCheckUrl;
+    if (!url) throw new WorkbenchError("invalid", "\u8FD8\u6CA1\u6709\u586B\u5199\u66F4\u65B0\u5730\u5740\uFF08\u8BBE\u7F6E \u2192 \u63D2\u4EF6\u8BBE\u7F6E \u2192 \u5173\u4E8E\u4E0E\u66F4\u65B0\uFF09");
+    const info = await checkForUpdate(this.fetch, url, this.version, new Date(this.clock()));
+    this.store.update((d) => {
+      d.update = info;
+    });
+    return info;
+  }
+  /** The kept result, judged against the version running now (after an update the old "newer" must not linger). */
+  updateInfo() {
+    const u = this.store.data.update;
+    return u && { ...u, current: this.version, newer: !!u.latest && compareVersions(u.latest, this.version) > 0 };
+  }
+  /** From the Host's timer: at most once a day, only when an address is set. */
+  async maybeCheckUpdate() {
+    const last = this.store.data.update;
+    if (!this.settings().updateCheckUrl || last && this.clock() - Date.parse(last.checkedAt) < 24 * 36e5) return;
+    await this.checkUpdate().catch(() => {
+    });
+  }
   // ---------- statistics ----------
   stats() {
     return computeStats(this.store.data, this.clock());
@@ -2759,7 +2841,7 @@ function apply(ctx) {
   const wb = new Workbench({
     store: new Store(defaultDataPath()),
     driver,
-    version: true ? "0.1.0" : "dev",
+    version: true ? "0.2.0" : "dev",
     // Credentials are resolved per call and only ever used inside the connectors (never logged or sent to the page).
     creds: async (name) => (await ctx.credentials.resolve(name))?.value,
     // The settings page stores into DSH's credential store (private file under ~/.dsh); values never go back to the page.
@@ -2778,6 +2860,7 @@ function apply(ctx) {
   let timer;
   const loop = () => {
     void wb.maybeReportStats();
+    void wb.maybeCheckUpdate();
     wb.tick().catch((e) => ctx.logger.warn("workbench: auto-run tick failed", e)).finally(() => {
       if (!stopped) timer = setTimeout(loop, wb.settings().autoRunPollSeconds * 1e3);
     });
@@ -2791,6 +2874,7 @@ function apply(ctx) {
   });
   const state = async () => ({
     version: wb.version,
+    update: wb.updateInfo(),
     exampleSkillRoot: existsSync6(exampleSkillRoot) ? exampleSkillRoot : void 0,
     issues: wb.listIssues(),
     runs: wb.listRuns(),
@@ -2842,6 +2926,8 @@ function apply(ctx) {
         return await wb.scanRepos(Array.isArray(p.roots) ? p.roots.map(String) : []);
       case "onboarding.import":
         return wb.importRepos(Array.isArray(p.items) ? p.items : []);
+      case "update.check":
+        return await wb.checkUpdate();
       case "notices.since":
         return wb.noticesSince(typeof p.after === "number" ? p.after : void 0);
       case "stats.get":

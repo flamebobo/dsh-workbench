@@ -172,8 +172,12 @@ export interface Build {
   updatedAt: string
 }
 
+/** What the update address said at `checkedAt`. */
+export interface UpdateInfo { current: string; latest?: string; newer: boolean; url?: string; notes?: string; checkedAt: string; error?: string }
+
 export interface Data {
-  version: 1
+  /** Shape of this file; see `migrations` in store.ts. */
+  version: number
   seq: number
   /** Counter for card keys WB-1, WB-2 … (seq is shared with ids). */
   issueSeq?: number
@@ -188,6 +192,8 @@ export interface Data {
   settings?: Partial<import('./settings.ts').PluginSettings>
   /** Random id for anonymous statistics (never derived from the user or machine). */
   clientId?: string
+  /** Latest result of the update check (kept so the banner survives a restart). */
+  update?: UpdateInfo
   statsReport?: { at: string; ok: boolean; error?: string }
   hiddenTodos?: { source: Source; ref: string; at: string }[]
 }

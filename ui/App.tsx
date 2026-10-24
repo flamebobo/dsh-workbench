@@ -93,6 +93,12 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
         ))}
       </div>
       {error && <div className="wb-banner err">{error}</div>}
+      {state?.update?.newer && (
+        <div className="wb-banner" role="status">
+          有新版本 <b>{state.update.latest}</b>（当前 {state.update.current}）{state.update.notes && <>：{state.update.notes}</>}
+          {state.update.url && <> · <a href={state.update.url} target="_blank" rel="noreferrer noopener">下载更新包</a></>}
+          <span className="wb-muted"> · 解压后运行里面的 install.sh（Windows 运行 install.ps1），会替换文件并重启 DSH，数据保留</span>
+        </div>)}
       <div className="wb-body">
         {!props ? <div className="wb-empty" style={{ flex: 1 }}>{error ? '无法连接 Host。' : '加载中…'}</div> : (
           <>
