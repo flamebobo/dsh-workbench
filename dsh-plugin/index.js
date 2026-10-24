@@ -2078,38 +2078,72 @@ ${summary.slice(0, 4e3)}`,
   }
   suggestSparkinTask = suggestTask;
   /**
-   * 周报: a task for 周报助手 filled in from this week's cards (finished ones with the hours booked, and what is still open).
-   * Created in 待规划 so auto-run never starts it by itself; the human reviews it and clicks 开工.
+   * 日报 / 周报 draft from the cards: what was finished in the period (with hours, MR and commit subjects), what is still open, and the
+   * hours booked in Sparkin for the period. Plain text the user edits and copies; nothing is sent anywhere.
    */
-  createWeeklyReport() {
+  async buildReport(kind) {
     const t = new Date(this.clock());
-    const mon = new Date(t.getFullYear(), t.getMonth(), t.getDate() - (t.getDay() + 6) % 7);
-    const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
+    const today = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+    const from = kind === "day" ? today : new Date(today.getFullYear(), today.getMonth(), today.getDate() - (today.getDay() + 6) % 7);
+    const to = kind === "day" ? today : new Date(from.getFullYear(), from.getMonth(), from.getDate() + 6);
     const day3 = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const all = this.store.data.issues.filter((i) => i.agentId !== "weekly");
     const groups = [
-      ["\u5DF2\u5B8C\u6210", all.filter((i) => i.status === "done" && new Date(i.updatedAt) >= mon)],
+      ["\u5DF2\u5B8C\u6210", all.filter((i) => i.status === "done" && new Date(i.updatedAt) >= from)],
       ["\u5F85\u5BA1\u6838", all.filter((i) => i.status === "in_review" && !i.archivedAt)],
       ["\u8FDB\u884C\u4E2D", all.filter((i) => i.status === "in_progress")],
       ["\u5DF2\u963B\u585E", all.filter((i) => i.status === "blocked" && !i.archivedAt)]
     ];
     const used = groups.flatMap(([, l]) => l);
-    if (!used.length) throw new WorkbenchError("invalid", "\u672C\u5468\u8FD8\u6CA1\u6709\u53EF\u6C47\u603B\u7684\u4EFB\u52A1");
-    const title = `\u5468\u62A5 ${day3(mon)} ~ ${day3(sun)}`;
-    if (this.store.data.issues.some((i) => i.title === title && !i.archivedAt)) throw new WorkbenchError("duplicate", `\u300C${title}\u300D\u5DF2\u7ECF\u751F\u6210\u8FC7`);
+    if (!used.length) throw new WorkbenchError("invalid", kind === "day" ? "\u4ECA\u5929\u8FD8\u6CA1\u6709\u53EF\u6C47\u603B\u7684\u4EFB\u52A1" : "\u672C\u5468\u8FD8\u6CA1\u6709\u53EF\u6C47\u603B\u7684\u4EFB\u52A1");
+    const title = kind === "day" ? `\u65E5\u62A5 ${day3(from)}` : `\u5468\u62A5 ${day3(from)} ~ ${day3(to)}`;
     const projectName = (id) => this.store.data.projects.find((p) => p.id === id)?.name ?? "\u672A\u9009\u62E9\u9879\u76EE";
-    const line = (i) => `- ${i.key}${i.sourceRef ? `\uFF08${i.sourceRef.ref}\uFF09` : ""} ${i.title} \xB7 ${projectName(i.projectId)}${i.timesheet ? ` \xB7 ${i.timesheet.hours}h` : ""}${i.mr ? ` \xB7 MR !${i.mr.iid}` : ""}`;
-    const hours = used.reduce((n, i) => n + (i.timesheet?.hours ?? 0), 0);
-    const description = [
-      `\u7EDF\u8BA1\u533A\u95F4\uFF1A${day3(mon)} ~ ${day3(sun)}\uFF08\u6765\u81EA\u7814\u53D1\u5DE5\u4F5C\u53F0\u7684\u4EFB\u52A1\uFF09\u3002`,
-      ...groups.filter(([, l]) => l.length).flatMap(([name, l]) => ["", `## ${name}\uFF08${l.length}\uFF09`, ...l.map(line)]),
-      "",
-      `\u5DF2\u586B\u62A5\u5DE5\u65F6\u5408\u8BA1\uFF1A${hours}h`
+    const commits = async (i) => {
+      const project = this.store.data.projects.find((p) => p.id === i.projectId);
+      if (!project || !i.branch || !i.baseSha) return [];
+      try {
+        return (await git(project.cwd, ["log", `${i.baseSha}..${i.branch}`, "--format=%s", "-n", "5"])).split("\n").filter(Boolean);
+      } catch {
+        return [];
+      }
+    };
+    const line = async (i) => [
+      `- ${i.key}${i.sourceRef ? `\uFF08${i.sourceRef.ref}\uFF09` : ""} ${i.title} \xB7 ${projectName(i.projectId)}${i.timesheet ? ` \xB7 ${i.timesheet.hours}h` : ""}${i.mr ? ` \xB7 MR !${i.mr.iid}` : ""}`,
+      ...(await commits(i)).map((c) => `  - \u63D0\u4EA4\uFF1A${c}`)
     ].join("\n");
+    const body = [];
+    for (const [name, list] of groups) if (list.length) body.push("", `## ${name}\uFF08${list.length}\uFF09`, ...await Promise.all(list.map(line)));
+    const booked = this.store.data.issues.flatMap((i) => i.timesheet && i.timesheet.date >= day3(from) && i.timesheet.date <= day3(to) ? [i.timesheet] : []);
+    const hours = Math.round(booked.reduce((n, x) => n + x.hours, 0) * 10) / 10;
+    const byTask = /* @__PURE__ */ new Map();
+    for (const x of booked) byTask.set(x.sparkinTaskName, (byTask.get(x.sparkinTaskName) ?? 0) + x.hours);
+    const text = [
+      `\u7EDF\u8BA1\u533A\u95F4\uFF1A${kind === "day" ? day3(from) : `${day3(from)} ~ ${day3(to)}`}\uFF08\u6765\u81EA\u7814\u53D1\u5DE5\u4F5C\u53F0\u7684\u4EFB\u52A1\uFF09\u3002`,
+      ...body,
+      "",
+      `\u5DF2\u586B\u62A5\u5DE5\u65F6\u5408\u8BA1\uFF1A${hours}h${byTask.size ? `\uFF08${[...byTask].map(([n, h]) => `${n} ${h}h`).join("\uFF0C")}\uFF09` : ""}`
+    ].join("\n");
+    return { kind, title, text, hours };
+  }
+  /**
+   * Hand the (possibly edited) draft to 周报助手 as a task. Created in 待规划 so auto-run never starts it by itself; the human
+   * reviews it and clicks 开工.
+   */
+  async createReportTask(kind, text) {
+    const r = await this.buildReport(kind);
+    if (this.store.data.issues.some((i) => i.title === r.title && !i.archivedAt)) throw new WorkbenchError("duplicate", `\u300C${r.title}\u300D\u5DF2\u7ECF\u751F\u6210\u8FC7`);
     const count = /* @__PURE__ */ new Map();
-    for (const i of used) if (i.projectId) count.set(i.projectId, (count.get(i.projectId) ?? 0) + 1);
+    for (const i of this.store.data.issues) if (i.projectId && r.text.includes(`${i.key}`)) count.set(i.projectId, (count.get(i.projectId) ?? 0) + 1);
     const projectId = [...count].sort((a, b) => b[1] - a[1])[0]?.[0];
-    return this.createIssue({ title, description, acceptance: ["\u6309\u9879\u76EE\u5217\u51FA\u672C\u5468\u5B8C\u6210\u9879\uFF0C\u91CF\u5316\u7ED3\u679C", "\u6807\u6CE8\u98CE\u9669\u4E0E\u963B\u585E", "\u7ED9\u51FA\u4E0B\u5468\u8BA1\u5212", "\u5DE5\u65F6\u5408\u8BA1\u4E0E\u4E0A\u9762\u4E00\u81F4"], priority: "P2", agentId: "weekly", projectId, status: "backlog" });
+    return this.createIssue({
+      title: r.title,
+      description: text?.trim() || r.text,
+      priority: "P2",
+      agentId: "weekly",
+      projectId,
+      status: "backlog",
+      acceptance: ["\u6309\u9879\u76EE\u5217\u51FA\u5B8C\u6210\u9879\uFF0C\u91CF\u5316\u7ED3\u679C", "\u6807\u6CE8\u98CE\u9669\u4E0E\u963B\u585E", kind === "day" ? "\u7ED9\u51FA\u660E\u5929\u8BA1\u5212" : "\u7ED9\u51FA\u4E0B\u5468\u8BA1\u5212", "\u5DE5\u65F6\u5408\u8BA1\u4E0E\u4E0A\u9762\u4E00\u81F4"]
+    });
   }
   // ---------- agents & projects ----------
   listAgents() {
@@ -2672,8 +2706,10 @@ function apply(ctx) {
         return await wb.startIssue(p.id, p.agentId);
       case "issue.next":
         return wb.setNext(p.id, p.nextId ?? "");
-      case "issue.weekly":
-        return wb.createWeeklyReport();
+      case "report.draft":
+        return await wb.buildReport(p.kind === "day" ? "day" : "week");
+      case "report.task":
+        return await wb.createReportTask(p.kind === "day" ? "day" : "week", typeof p.text === "string" ? p.text : void 0);
       case "issue.followup":
         return wb.createFollowUp(p.id, { title: p.title, description: p.description });
       case "issue.archive":

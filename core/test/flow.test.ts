@@ -152,25 +152,36 @@ test('zentao write-back "auto": finishing the bug writes it back; a failure is k
   assert.equal(stateOf(bad.wb, b.issue.id).writeBack, undefined)
 })
 
-test('周报: this week\'s cards and hours are gathered into a backlog task for 周报助手, once', async () => {
+test('日报/周报: draft from this period\'s cards, hours by Sparkin task and commit subjects; the task for 周报助手 only on request, once', async () => {
   const { wb } = setup()
-  assert.throws(() => wb.createWeeklyReport(), /还没有可汇总/)
+  await assert.rejects(wb.buildReport('week'), /还没有可汇总/)
   const a = await wb.startWork({ item: bug })
   wb.setStatus(a.issue.id, 'done')
-  wb.archiveIssue(a.issue.id, true) // archived done cards still count for the week
+  wb.archiveIssue(a.issue.id, true) // archived done cards still count for the period
   const info = await wb.sparkinInfo()
-  await wb.reportTimesheet({ date: '2026-10-24', entries: [{ issueId: a.issue.id, hours: 3, taskId: info.tasks['SP-PAY']![0]!.id }] })
+  const today = new Date()
+  const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  await wb.reportTimesheet({ date: ymd, entries: [{ issueId: a.issue.id, hours: 3, taskId: info.tasks['SP-PAY']![0]!.id }] })
   const open = wb.createIssue({ title: '还在做', projectId: a.issue.projectId, status: 'in_progress' })
-  const r = wb.createWeeklyReport()
-  assert.equal(r.status, 'backlog') // auto-run never picks it up
-  assert.equal(r.agentId, 'weekly')
-  assert.equal(r.projectId, a.issue.projectId)
-  assert.match(r.title, /^周报 \d{4}-\d{2}-\d{2} ~ \d{4}-\d{2}-\d{2}$/)
-  assert.match(r.description, /## 已完成（1）\n- WB-1（BUG-4821） 支付回调幂等修复 .* · 3h/)
-  assert.match(r.description, /## 进行中（1）\n- WB-2 还在做/)
-  assert.match(r.description, /已填报工时合计：3h/)
+
+  const day = await wb.buildReport('day')
+  assert.match(day.title, /^日报 \d{4}-\d{2}-\d{2}$/)
+  assert.match(day.text, /## 已完成（1）\n- WB-1（BUG-4821） 支付回调幂等修复 .* · 3h/)
+  assert.match(day.text, /## 进行中（1）\n- WB-2 还在做/)
+  assert.match(day.text, /已填报工时合计：3h（缺陷修复 3h）/)
+  assert.equal(day.hours, 3)
+  const week = await wb.buildReport('week')
+  assert.match(week.title, /^周报 \d{4}-\d{2}-\d{2} ~ \d{4}-\d{2}-\d{2}$/)
+  assert.equal(wb.listIssues().some((i) => i.agentId === 'weekly'), false) // a draft creates nothing
+
+  const task = await wb.createReportTask('week', `${week.text}\n（我补了一句）`)
+  assert.equal(task.status, 'backlog') // auto-run never picks it up
+  assert.equal(task.agentId, 'weekly')
+  assert.equal(task.projectId, a.issue.projectId)
+  assert.match(task.description, /我补了一句/) // the edited draft is what the agent gets
+  await assert.rejects(wb.createReportTask('week'), /已经生成过/)
+  assert.ok((await wb.createReportTask('day')).title.startsWith('日报'))
   assert.ok(open)
-  assert.throws(() => wb.createWeeklyReport(), /已经生成过/)
 })
 
 test('notices: 待审核, 已阻塞 and write-back are announced once, in order; nothing replays after a start', async () => {

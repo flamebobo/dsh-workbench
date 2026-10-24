@@ -219,3 +219,14 @@ test('merge request: refusals and an already-open MR are handled, and the token 
   writeFileSync(join(w2.wb.listIssues().find((x) => x.id === k.id)!.worktree!, 'c.txt'), 'c')
   await assert.rejects(() => w2.wb.submitMergeRequest(k.id), /分支已推送，但GitLab 创建合并请求失败：HTTP 500/)
 })
+
+test('report draft lists the commit subjects made on each task branch', async () => {
+  const { wb, project } = setup()
+  const i = wb.createIssue({ title: '补文档', projectId: project.id, status: 'todo' })
+  await wb.startIssue(i.id)
+  const wt = wb.listIssues().find((x) => x.id === i.id)!.worktree!
+  writeFileSync(join(wt, 'NOTES.md'), 'x')
+  sh(wt, 'add', 'NOTES.md'); sh(wt, '-c', 'user.name=a', '-c', 'user.email=a@b', 'commit', '-qm', '补充使用说明')
+  const r = await wb.buildReport('day')
+  assert.match(r.text, /## 进行中（1）\n- WB-1 补文档 .*\n {2}- 提交：补充使用说明/)
+})

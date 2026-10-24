@@ -5,6 +5,7 @@ import { BuildModal } from './Builds.tsx'
 import { TimesheetModal } from './Timesheet.tsx'
 import { ChangesModal } from './Changes.tsx'
 import { WriteBackModal } from './WriteBack.tsx'
+import { ReportModal } from './Report.tsx'
 import { matchesIssue, offerNext } from './chain.ts'
 import type { PageProps } from './App.tsx'
 
@@ -19,6 +20,7 @@ export function Board(p: PageProps) {
   const [creating, setCreating] = useState<Status>()
   const [building, setBuilding] = useState(false)
   const [reporting, setReporting] = useState(false)
+  const [report, setReport] = useState(false)
   const [dropAt, setDropAt] = useState<{ id: string; after: boolean }>()
   const [q, setQ] = useState('')
   const [showArchived, setShowArchived] = useState(false)
@@ -35,9 +37,6 @@ export function Board(p: PageProps) {
       await rpc('issue.move', { id, status, beforeId }); await p.refresh()
       if (status === 'done' && cur.status !== 'done') await offerNext(id, state, p.notify)
     } catch (e) { p.notify((e as Error).message) }
-  }
-  async function weekly() {
-    try { const i = await rpc<Issue>('issue.weekly'); await p.refresh(); p.notify(`已生成 ${i.key}「${i.title}」，在待规划里，确认后点开工`); setOpenId(i.id) } catch (e) { p.notify((e as Error).message) }
   }
   async function retry(i: Issue) {
     try { await rpc('issue.start', { id: i.id }); p.notify(`已重新开工：${i.key}`); await p.refresh() } catch (e) { p.notify((e as Error).message); await p.refresh() }
@@ -75,7 +74,7 @@ export function Board(p: PageProps) {
         </div>
         <button className="wb-btn" title="把「已完成」的卡片全部归档，看板更清爽" onClick={() => { void archiveDone() }}>归档已完成</button>
         <button className="wb-btn" title="把已完成的任务和工时填到 Sparkin 对应的项目任务上" onClick={() => setReporting(true)}>填报 Sparkin 工时</button>
-        <button className="wb-btn" title="把本周完成的任务、进行中的事项和工时汇总成一个任务，交给周报助手" onClick={() => { void weekly() }}>生成周报</button>
+        <button className="wb-btn" title="根据今天 / 本周的卡片、提交和工时生成日报或周报草稿，可编辑、复制" onClick={() => setReport(true)}>日报 / 周报</button>
         <button className="wb-btn" title="选择 Jenkins Job 构建一次，验证这批修复" onClick={() => setBuilding(true)}>构建验证</button>
       </div>
       <div className="wb-board" style={{ flex: 1, minHeight: 0, height: 'auto' }}>
@@ -126,6 +125,7 @@ export function Board(p: PageProps) {
       {creating && <IssueModal initialStatus={creating} p={p} onClose={() => setCreating(undefined)} />}
       {building && <BuildModal p={p} onClose={() => setBuilding(false)} />}
       {reporting && <TimesheetModal p={p} onClose={() => setReporting(false)} />}
+      {report && <ReportModal p={p} onClose={() => setReport(false)} onTask={(i) => setOpenId(i.id)} />}
     </div>
   )
 }
