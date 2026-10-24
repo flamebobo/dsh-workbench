@@ -17,6 +17,7 @@ export function Board(p: PageProps) {
   const [creating, setCreating] = useState<Status>()
   const [building, setBuilding] = useState(false)
   const [reporting, setReporting] = useState(false)
+  const [dropAt, setDropAt] = useState<{ id: string; after: boolean }>()
   const [q, setQ] = useState('')
   const [showArchived, setShowArchived] = useState(false)
   useEffect(() => { if (p.focusIssue) setOpenId(p.focusIssue) }, [p.focusIssue])
@@ -24,12 +25,23 @@ export function Board(p: PageProps) {
   const running = new Set(state.runs.filter((r) => r.status === 'running').map((r) => r.issueId))
   const agentName = (id: string) => state.agents.find((a) => a.id === id)?.name ?? id
 
-  async function move(id: string, status: Status) {
+  /** Drop a card into a column: at the end, or just before `beforeId` (that is how a column is reordered). */
+  async function move(id: string, status: Status, beforeId?: string) {
     const cur = state.issues.find((i) => i.id === id)
-    if (!cur || cur.status === status) return
+    if (!cur) return
     try {
-      await rpc('issue.status', { id, status }); await p.refresh()
-      if (status === 'done') await offerNext(id, state, p.notify)
+      await rpc('issue.move', { id, status, beforeId }); await p.refresh()
+      if (status === 'done' && cur.status !== 'done') await offerNext(id, state, p.notify)
+    } catch (e) { p.notify((e as Error).message) }
+  }
+  const auto = !!state.autoRun
+  async function setAuto(enabled: boolean) {
+    if (enabled === auto) return
+    try {
+      await rpc('autorun.set', { enabled })
+      const queued = state.issues.filter((i) => i.status === 'todo' && !i.archivedAt).length
+      p.notify(enabled ? (queued ? `已切换为自动运行：按「待办」从上到下依次开工（共 ${queued} 张，一次一个）` : '已切换为自动运行：之后进入「待办」的任务会按顺序自动开工') : '已切换为手动运行')
+      await p.refresh()
     } catch (e) { p.notify((e as Error).message) }
   }
   async function archiveDone() {
@@ -48,26 +60,40 @@ export function Board(p: PageProps) {
         <label className="wb-pick" style={{ padding: 0 }}><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />显示已归档{archivedCount ? `（${archivedCount}）` : ''}</label>
         {q && <span className="wb-muted">匹配 {visible.length} 张</span>}
         <span className="wb-grow" />
+        <span className="wb-agents" title="正在工作的智能体数量"><span className="wb-dotx" style={{ background: state.working ? 'var(--wb-green)' : 'var(--wb-fg3)' }} />{state.working ?? 0} 个智能体工作中</span>
+        <div className="wb-seg" role="group" aria-label="运行方式" title="手动：点「开工」才运行。自动：按「待办」列从上到下，一次一个，自动开工；拖动卡片可调整顺序">
+          <button aria-pressed={!auto} onClick={() => { void setAuto(false) }}>手动运行</button>
+          <button aria-pressed={auto} onClick={() => { void setAuto(true) }}>自动运行</button>
+        </div>
         <button className="wb-btn" title="把「已完成」的卡片全部归档，看板更清爽" onClick={() => { void archiveDone() }}>归档已完成</button>
         <button className="wb-btn" title="把已完成的任务和工时填到 Sparkin 对应的项目任务上" onClick={() => setReporting(true)}>填报 Sparkin 工时</button>
         <button className="wb-btn" title="选择 Jenkins Job 构建一次，验证这批修复" onClick={() => setBuilding(true)}>构建验证</button>
       </div>
       <div className="wb-board" style={{ flex: 1, minHeight: 0, height: 'auto' }}>
         {COLUMNS.map((col) => {
-          const items = visible.filter((i) => i.status === col).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+          const items = visible.filter((i) => i.status === col).sort(byOrder)
           return (
             <section key={col} className={`wb-col ${over === col ? 'over' : ''}`} aria-label={STATUS_LABEL[col]}
               onDragOver={(e) => { e.preventDefault(); setOver(col) }} onDragLeave={() => setOver((o) => (o === col ? undefined : o))}
-              onDrop={(e) => { e.preventDefault(); setOver(undefined); const id = e.dataTransfer.getData('text/plain') || dragging; if (id) void move(id, col) }}>
+              onDrop={(e) => { e.preventDefault(); setOver(undefined); setDropAt(undefined); const id = e.dataTransfer.getData('text/plain') || dragging; if (id) void move(id, col) }}>
               <div className="wb-col-h"><span className={`wb-dot ${col}`} />{STATUS_LABEL[col]}<span className="n">{items.length}</span>
                 <button className="wb-btn" style={{ padding: '0 8px' }} aria-label={`在${STATUS_LABEL[col]}新建`} onClick={() => setCreating(col)}>+</button></div>
               <div className="wb-col-b">
-                {items.map((i) => (
-                  <article key={i.id} className={`wb-card ${dragging === i.id ? 'drag' : ''} ${i.archivedAt ? 'arch' : ''}`} draggable
-                    onDragStart={(e) => { e.dataTransfer.setData('text/plain', i.id); setDragging(i.id) }} onDragEnd={() => { setDragging(undefined); setOver(undefined) }}
+                {auto && col === 'todo' && <div className="wb-sub" style={{ padding: '0 2px' }}>自动运行中：从上到下依次开工，可拖动调整顺序</div>}
+                {items.map((i, n) => (
+                  <article key={i.id} className={`wb-card ${dragging === i.id ? 'drag' : ''} ${i.archivedAt ? 'arch' : ''} ${dropAt?.id === i.id && dragging !== i.id ? (dropAt.after ? 'dropa' : 'dropb') : ''}`} draggable
+                    onDragStart={(e) => { e.dataTransfer.setData('text/plain', i.id); setDragging(i.id) }} onDragEnd={() => { setDragging(undefined); setOver(undefined); setDropAt(undefined) }}
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setOver(col); const r = e.currentTarget.getBoundingClientRect(); setDropAt({ id: i.id, after: e.clientY > r.top + r.height / 2 }) }}
+                    onDrop={(e) => {
+                      e.preventDefault(); e.stopPropagation()
+                      const id = e.dataTransfer.getData('text/plain') || dragging
+                      const after = dropAt?.id === i.id && dropAt.after
+                      setOver(undefined); setDropAt(undefined)
+                      if (id) void move(id, col, after ? items[n + 1]?.id : i.id)
+                    }}
                     onClick={() => setOpenId(i.id)}>
                     <div className="k">
-                      {running.has(i.id) && <span className="wb-spin" title="会话运行中" />}
+                      {running.has(i.id) && <span className="wb-spin" title="会话运行中" />}{auto && col === 'todo' && <span className="wb-pill" title="自动运行的顺序">#{n + 1}</span>}
                       <span>{i.key}</span>{i.sourceRef && <span>· {i.sourceRef.ref}</span>}{i.archivedAt && <span className="wb-pill">已归档</span>}
                     </div>
                     <div className="t">{i.title}</div>
@@ -91,6 +117,7 @@ export function Board(p: PageProps) {
   )
 }
 
+const byOrder = (a: Issue, b: Issue) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.createdAt.localeCompare(b.createdAt)
 const lastBuild = (builds: PageProps['state']['builds'], issueId: string) => (builds ?? []).filter((b) => b.issueIds.includes(issueId)).at(-1)
 
 const PRIORITIES = ['P0', 'P1', 'P2', 'P3'] as const

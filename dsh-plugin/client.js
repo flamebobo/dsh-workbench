@@ -107,6 +107,11 @@ var WB = (() => {
 .wb-dot { width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--wb-fg3); } .wb-dot.in_progress { border-color: var(--wb-amber); } .wb-dot.in_review { border-color: var(--wb-green); } .wb-dot.done { border-color: var(--wb-blue); background: var(--wb-blue); } .wb-dot.blocked { border-color: var(--wb-red); }
 .wb-col-b { flex: 1; overflow: auto; padding: 0 8px 8px; display: flex; flex-direction: column; gap: 8px; }
 .wb-card { background: var(--wb-bg); border: 1px solid var(--wb-bd); border-radius: 9px; padding: 9px 11px; cursor: grab; }
+.wb-agents { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--wb-fg2); white-space: nowrap; }
+.wb-seg { display: inline-flex; border: 1px solid var(--wb-bd); border-radius: 8px; overflow: hidden; }
+.wb-seg button { border: 0; background: var(--wb-bg); padding: 5px 12px; color: var(--wb-fg2); white-space: nowrap; } .wb-seg button + button { border-left: 1px solid var(--wb-bd); }
+.wb-seg button[aria-pressed=true] { background: var(--wb-fg); color: var(--wb-bg); font-weight: 600; }
+.wb-card.dropb { box-shadow: 0 -3px 0 0 var(--wb-blue); } .wb-card.dropa { box-shadow: 0 3px 0 0 var(--wb-blue); }
 .wb-card.arch { opacity: .6; background: var(--wb-l1); }
 .wb-card:hover { border-color: var(--wb-fg3); } .wb-card.drag { opacity: .45; }
 .wb-card .t { font-weight: 600; margin: 3px 0 6px; word-break: break-word; } .wb-card .m { display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--wb-fg3); }
@@ -655,6 +660,7 @@ ${r.description}`.toLowerCase().includes(w)));
     const [creating, setCreating] = useState5();
     const [building, setBuilding] = useState5(false);
     const [reporting, setReporting] = useState5(false);
+    const [dropAt, setDropAt] = useState5();
     const [q, setQ] = useState5("");
     const [showArchived, setShowArchived] = useState5(false);
     useEffect5(() => {
@@ -662,13 +668,25 @@ ${r.description}`.toLowerCase().includes(w)));
     }, [p.focusIssue]);
     const running = new Set(state.runs.filter((r) => r.status === "running").map((r) => r.issueId));
     const agentName2 = (id) => state.agents.find((a) => a.id === id)?.name ?? id;
-    async function move(id, status) {
+    async function move(id, status, beforeId) {
       const cur = state.issues.find((i) => i.id === id);
-      if (!cur || cur.status === status) return;
+      if (!cur) return;
       try {
-        await rpc("issue.status", { id, status });
+        await rpc("issue.move", { id, status, beforeId });
         await p.refresh();
-        if (status === "done") await offerNext(id, state, p.notify);
+        if (status === "done" && cur.status !== "done") await offerNext(id, state, p.notify);
+      } catch (e) {
+        p.notify(e.message);
+      }
+    }
+    const auto = !!state.autoRun;
+    async function setAuto(enabled) {
+      if (enabled === auto) return;
+      try {
+        await rpc("autorun.set", { enabled });
+        const queued = state.issues.filter((i) => i.status === "todo" && !i.archivedAt).length;
+        p.notify(enabled ? queued ? `\u5DF2\u5207\u6362\u4E3A\u81EA\u52A8\u8FD0\u884C\uFF1A\u6309\u300C\u5F85\u529E\u300D\u4ECE\u4E0A\u5230\u4E0B\u4F9D\u6B21\u5F00\u5DE5\uFF08\u5171 ${queued} \u5F20\uFF0C\u4E00\u6B21\u4E00\u4E2A\uFF09` : "\u5DF2\u5207\u6362\u4E3A\u81EA\u52A8\u8FD0\u884C\uFF1A\u4E4B\u540E\u8FDB\u5165\u300C\u5F85\u529E\u300D\u7684\u4EFB\u52A1\u4F1A\u6309\u987A\u5E8F\u81EA\u52A8\u5F00\u5DE5" : "\u5DF2\u5207\u6362\u4E3A\u624B\u52A8\u8FD0\u884C");
+        await p.refresh();
       } catch (e) {
         p.notify(e.message);
       }
@@ -687,10 +705,14 @@ ${r.description}`.toLowerCase().includes(w)));
     const visible = state.issues.filter((i) => (showArchived || !i.archivedAt) && matchesIssue(i, q, state));
     const keyOf = (id) => state.issues.find((i) => i.id === id)?.key;
     const open = state.issues.find((i) => i.id === openId);
-    return /* @__PURE__ */ React5.createElement("div", { className: "wb-main", style: { position: "relative", display: "flex", flexDirection: "column" } }, /* @__PURE__ */ React5.createElement("div", { className: "wb-toolbar", style: { paddingBottom: 0 } }, /* @__PURE__ */ React5.createElement("input", { className: "wb-input", style: { width: 240 }, type: "search", placeholder: "\u641C\u7D22 \u7F16\u53F7 / \u6807\u9898 / \u63CF\u8FF0 / \u667A\u80FD\u4F53 / \u9879\u76EE", "aria-label": "\u641C\u7D22\u4EFB\u52A1", value: q, onChange: (e) => setQ(e.target.value) }), /* @__PURE__ */ React5.createElement("label", { className: "wb-pick", style: { padding: 0 } }, /* @__PURE__ */ React5.createElement("input", { type: "checkbox", checked: showArchived, onChange: (e) => setShowArchived(e.target.checked) }), "\u663E\u793A\u5DF2\u5F52\u6863", archivedCount ? `\uFF08${archivedCount}\uFF09` : ""), q && /* @__PURE__ */ React5.createElement("span", { className: "wb-muted" }, "\u5339\u914D ", visible.length, " \u5F20"), /* @__PURE__ */ React5.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React5.createElement("button", { className: "wb-btn", title: "\u628A\u300C\u5DF2\u5B8C\u6210\u300D\u7684\u5361\u7247\u5168\u90E8\u5F52\u6863\uFF0C\u770B\u677F\u66F4\u6E05\u723D", onClick: () => {
+    return /* @__PURE__ */ React5.createElement("div", { className: "wb-main", style: { position: "relative", display: "flex", flexDirection: "column" } }, /* @__PURE__ */ React5.createElement("div", { className: "wb-toolbar", style: { paddingBottom: 0 } }, /* @__PURE__ */ React5.createElement("input", { className: "wb-input", style: { width: 240 }, type: "search", placeholder: "\u641C\u7D22 \u7F16\u53F7 / \u6807\u9898 / \u63CF\u8FF0 / \u667A\u80FD\u4F53 / \u9879\u76EE", "aria-label": "\u641C\u7D22\u4EFB\u52A1", value: q, onChange: (e) => setQ(e.target.value) }), /* @__PURE__ */ React5.createElement("label", { className: "wb-pick", style: { padding: 0 } }, /* @__PURE__ */ React5.createElement("input", { type: "checkbox", checked: showArchived, onChange: (e) => setShowArchived(e.target.checked) }), "\u663E\u793A\u5DF2\u5F52\u6863", archivedCount ? `\uFF08${archivedCount}\uFF09` : ""), q && /* @__PURE__ */ React5.createElement("span", { className: "wb-muted" }, "\u5339\u914D ", visible.length, " \u5F20"), /* @__PURE__ */ React5.createElement("span", { className: "wb-grow" }), /* @__PURE__ */ React5.createElement("span", { className: "wb-agents", title: "\u6B63\u5728\u5DE5\u4F5C\u7684\u667A\u80FD\u4F53\u6570\u91CF" }, /* @__PURE__ */ React5.createElement("span", { className: "wb-dotx", style: { background: state.working ? "var(--wb-green)" : "var(--wb-fg3)" } }), state.working ?? 0, " \u4E2A\u667A\u80FD\u4F53\u5DE5\u4F5C\u4E2D"), /* @__PURE__ */ React5.createElement("div", { className: "wb-seg", role: "group", "aria-label": "\u8FD0\u884C\u65B9\u5F0F", title: "\u624B\u52A8\uFF1A\u70B9\u300C\u5F00\u5DE5\u300D\u624D\u8FD0\u884C\u3002\u81EA\u52A8\uFF1A\u6309\u300C\u5F85\u529E\u300D\u5217\u4ECE\u4E0A\u5230\u4E0B\uFF0C\u4E00\u6B21\u4E00\u4E2A\uFF0C\u81EA\u52A8\u5F00\u5DE5\uFF1B\u62D6\u52A8\u5361\u7247\u53EF\u8C03\u6574\u987A\u5E8F" }, /* @__PURE__ */ React5.createElement("button", { "aria-pressed": !auto, onClick: () => {
+      void setAuto(false);
+    } }, "\u624B\u52A8\u8FD0\u884C"), /* @__PURE__ */ React5.createElement("button", { "aria-pressed": auto, onClick: () => {
+      void setAuto(true);
+    } }, "\u81EA\u52A8\u8FD0\u884C")), /* @__PURE__ */ React5.createElement("button", { className: "wb-btn", title: "\u628A\u300C\u5DF2\u5B8C\u6210\u300D\u7684\u5361\u7247\u5168\u90E8\u5F52\u6863\uFF0C\u770B\u677F\u66F4\u6E05\u723D", onClick: () => {
       void archiveDone();
     } }, "\u5F52\u6863\u5DF2\u5B8C\u6210"), /* @__PURE__ */ React5.createElement("button", { className: "wb-btn", title: "\u628A\u5DF2\u5B8C\u6210\u7684\u4EFB\u52A1\u548C\u5DE5\u65F6\u586B\u5230 Sparkin \u5BF9\u5E94\u7684\u9879\u76EE\u4EFB\u52A1\u4E0A", onClick: () => setReporting(true) }, "\u586B\u62A5 Sparkin \u5DE5\u65F6"), /* @__PURE__ */ React5.createElement("button", { className: "wb-btn", title: "\u9009\u62E9 Jenkins Job \u6784\u5EFA\u4E00\u6B21\uFF0C\u9A8C\u8BC1\u8FD9\u6279\u4FEE\u590D", onClick: () => setBuilding(true) }, "\u6784\u5EFA\u9A8C\u8BC1")), /* @__PURE__ */ React5.createElement("div", { className: "wb-board", style: { flex: 1, minHeight: 0, height: "auto" } }, COLUMNS.map((col) => {
-      const items = visible.filter((i) => i.status === col).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      const items = visible.filter((i) => i.status === col).sort(byOrder);
       return /* @__PURE__ */ React5.createElement(
         "section",
         {
@@ -705,16 +727,17 @@ ${r.description}`.toLowerCase().includes(w)));
           onDrop: (e) => {
             e.preventDefault();
             setOver(void 0);
+            setDropAt(void 0);
             const id = e.dataTransfer.getData("text/plain") || dragging;
             if (id) void move(id, col);
           }
         },
         /* @__PURE__ */ React5.createElement("div", { className: "wb-col-h" }, /* @__PURE__ */ React5.createElement("span", { className: `wb-dot ${col}` }), STATUS_LABEL[col], /* @__PURE__ */ React5.createElement("span", { className: "n" }, items.length), /* @__PURE__ */ React5.createElement("button", { className: "wb-btn", style: { padding: "0 8px" }, "aria-label": `\u5728${STATUS_LABEL[col]}\u65B0\u5EFA`, onClick: () => setCreating(col) }, "+")),
-        /* @__PURE__ */ React5.createElement("div", { className: "wb-col-b" }, items.map((i) => /* @__PURE__ */ React5.createElement(
+        /* @__PURE__ */ React5.createElement("div", { className: "wb-col-b" }, auto && col === "todo" && /* @__PURE__ */ React5.createElement("div", { className: "wb-sub", style: { padding: "0 2px" } }, "\u81EA\u52A8\u8FD0\u884C\u4E2D\uFF1A\u4ECE\u4E0A\u5230\u4E0B\u4F9D\u6B21\u5F00\u5DE5\uFF0C\u53EF\u62D6\u52A8\u8C03\u6574\u987A\u5E8F"), items.map((i, n) => /* @__PURE__ */ React5.createElement(
           "article",
           {
             key: i.id,
-            className: `wb-card ${dragging === i.id ? "drag" : ""} ${i.archivedAt ? "arch" : ""}`,
+            className: `wb-card ${dragging === i.id ? "drag" : ""} ${i.archivedAt ? "arch" : ""} ${dropAt?.id === i.id && dragging !== i.id ? dropAt.after ? "dropa" : "dropb" : ""}`,
             draggable: true,
             onDragStart: (e) => {
               e.dataTransfer.setData("text/plain", i.id);
@@ -723,10 +746,27 @@ ${r.description}`.toLowerCase().includes(w)));
             onDragEnd: () => {
               setDragging(void 0);
               setOver(void 0);
+              setDropAt(void 0);
+            },
+            onDragOver: (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setOver(col);
+              const r = e.currentTarget.getBoundingClientRect();
+              setDropAt({ id: i.id, after: e.clientY > r.top + r.height / 2 });
+            },
+            onDrop: (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const id = e.dataTransfer.getData("text/plain") || dragging;
+              const after = dropAt?.id === i.id && dropAt.after;
+              setOver(void 0);
+              setDropAt(void 0);
+              if (id) void move(id, col, after ? items[n + 1]?.id : i.id);
             },
             onClick: () => setOpenId(i.id)
           },
-          /* @__PURE__ */ React5.createElement("div", { className: "k" }, running.has(i.id) && /* @__PURE__ */ React5.createElement("span", { className: "wb-spin", title: "\u4F1A\u8BDD\u8FD0\u884C\u4E2D" }), /* @__PURE__ */ React5.createElement("span", null, i.key), i.sourceRef && /* @__PURE__ */ React5.createElement("span", null, "\xB7 ", i.sourceRef.ref), i.archivedAt && /* @__PURE__ */ React5.createElement("span", { className: "wb-pill" }, "\u5DF2\u5F52\u6863")),
+          /* @__PURE__ */ React5.createElement("div", { className: "k" }, running.has(i.id) && /* @__PURE__ */ React5.createElement("span", { className: "wb-spin", title: "\u4F1A\u8BDD\u8FD0\u884C\u4E2D" }), auto && col === "todo" && /* @__PURE__ */ React5.createElement("span", { className: "wb-pill", title: "\u81EA\u52A8\u8FD0\u884C\u7684\u987A\u5E8F" }, "#", n + 1), /* @__PURE__ */ React5.createElement("span", null, i.key), i.sourceRef && /* @__PURE__ */ React5.createElement("span", null, "\xB7 ", i.sourceRef.ref), i.archivedAt && /* @__PURE__ */ React5.createElement("span", { className: "wb-pill" }, "\u5DF2\u5F52\u6863")),
           /* @__PURE__ */ React5.createElement("div", { className: "t" }, i.title),
           i.note && /* @__PURE__ */ React5.createElement("div", { className: "wb-ellipsis", style: { color: i.status === "blocked" ? "var(--wb-red)" : "var(--wb-amber)", fontSize: 11, marginBottom: 4 }, title: i.note }, i.note),
           lastBuild(state.builds, i.id) && /* @__PURE__ */ React5.createElement("div", { className: "wb-bld", style: { color: buildColor(lastBuild(state.builds, i.id).state) } }, "\u6784\u5EFA ", lastBuild(state.builds, i.id).job, lastBuild(state.builds, i.id).number ? ` #${lastBuild(state.builds, i.id).number}` : "", " \xB7 ", BUILD_LABEL[lastBuild(state.builds, i.id).state]),
@@ -737,6 +777,7 @@ ${r.description}`.toLowerCase().includes(w)));
       );
     })), open && /* @__PURE__ */ React5.createElement(IssueModal, { issue: open, p, onClose: () => setOpenId(void 0) }), creating && /* @__PURE__ */ React5.createElement(IssueModal, { initialStatus: creating, p, onClose: () => setCreating(void 0) }), building && /* @__PURE__ */ React5.createElement(BuildModal, { p, onClose: () => setBuilding(false) }), reporting && /* @__PURE__ */ React5.createElement(TimesheetModal, { p, onClose: () => setReporting(false) }));
   }
+  var byOrder = (a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.createdAt.localeCompare(b.createdAt);
   var lastBuild = (builds, issueId) => (builds ?? []).filter((b) => b.issueIds.includes(issueId)).at(-1);
   var PRIORITIES = ["P0", "P1", "P2", "P3"];
   var STARTABLE2 = ["backlog", "todo", "blocked"];

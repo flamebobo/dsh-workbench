@@ -2,7 +2,7 @@ import type { AgentProfile, Attachment, Build, BuildState, Issue, Project, Run, 
 import type { TodoResult } from '../core/src/workbench.ts'
 
 export type { AgentProfile, Attachment, Build, BuildState, Issue, Project, Run, WorkItem, Status, TodoResult }
-export interface State { issues: Issue[]; runs: Run[]; agents: AgentProfile[]; projects: Project[]; builds?: Build[] }
+export interface State { issues: Issue[]; runs: Run[]; agents: AgentProfile[]; projects: Project[]; builds?: Build[]; autoRun?: boolean; working?: number }
 
 export class RpcError extends Error {
   code?: string

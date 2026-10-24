@@ -23,10 +23,12 @@ export function apply(ctx: Ctx) {
   })
   wb.seedDemoProjects(join(dataDir(), 'demo-repos'))
   void Promise.all(wb.listAgents().map((a) => driver.registerPreset(a)))
-  ctx.effect(() => () => { wb.dispose(); return driver.disposePresets() })
+  // Auto-run safety net: re-check the queue every few seconds (also after a restart with auto-run left on).
+  const timer = setInterval(() => { wb.tick().catch((e) => ctx.logger.warn('workbench: auto-run tick failed', e)) }, 5000)
+  ctx.effect(() => () => { clearInterval(timer); wb.dispose(); return driver.disposePresets() })
 
   const state = async () => ({
-    issues: wb.listIssues(), runs: wb.listRuns(), agents: wb.listAgents(), projects: wb.listProjects(), builds: await wb.refreshBuilds(),
+    issues: wb.listIssues(), runs: wb.listRuns(), agents: wb.listAgents(), projects: wb.listProjects(), builds: await wb.refreshBuilds(), autoRun: wb.autoRun, working: wb.workingCount(),
   })
 
   async function dispatch(endpoint: string, p: any): Promise<unknown> {
@@ -44,6 +46,8 @@ export function apply(ctx: Ctx) {
       case 'todos.archive': return wb.archiveTodo(p.source, p.ref, !!p.archived)
       case 'sparkin.info': return await wb.sparkinInfo()
       case 'timesheet.report': return await wb.reportTimesheet({ date: p.date, entries: p.entries ?? [] })
+      case 'issue.move': return wb.moveIssue(p.id, p.status as Status, p.beforeId, 'human') // only the UI (a human) calls this
+      case 'autorun.set': return wb.setAutoRun(!!p.enabled)
       case 'issue.status': return wb.setStatus(p.id, p.status as Status, 'human') // only the UI (a human) calls this
       case 'issue.delete': return wb.deleteIssue(p.id)
       case 'agent.save': {

@@ -77,6 +77,8 @@ export interface Issue {
   description: string
   acceptance: string[]
   status: Status
+  /** Position in its column (1..n, top first). Auto-run takes the 待办 column from the top. */
+  order?: number
   priority?: Priority
   /** Run the first message through this command (`/plan <prompt>` ...) instead of sending it as plain text. */
   command?: CommandName
@@ -140,5 +142,7 @@ export interface Data {
   runs: Run[]
   builds?: Build[]
   /** To-do rows from Zentao / GitLab / Jenkins the user archived (the source still lists them). */
+  /** Auto-run: cards in 待办 are started one after another, top to bottom, with no click. */
+  autoRun?: boolean
   hiddenTodos?: { source: Source; ref: string; at: string }[]
 }

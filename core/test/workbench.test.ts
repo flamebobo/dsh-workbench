@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -325,4 +325,86 @@ test('Sparkin time sheet: only finished cards, once each, hours checked, entry r
   const bad = await wb.reportTimesheet({ date: '2026-10-24', entries: [{ issueId: b.id, hours: 30, taskId: fix.id }, { issueId: b.id, hours: 1, taskId: 'nope' }] })
   assert.deepEqual(bad.map((x) => x.ok), [false, false])
   await assert.rejects(() => wb.reportTimesheet({ date: 'tomorrow', entries: [] }), /工作日期/)
+})
+
+const titles = (wb: Workbench, status: string) => wb.listIssues().filter((i) => i.status === status).sort((a, b) => a.order! - b.order!).map((i) => i.title)
+
+test('ordering: reorder inside a column, move across columns, entering a column goes to the end, legacy cards get positions', async () => {
+  const { wb, dir, driver } = setup()
+  const [a, b, c] = ['A', 'B', 'C'].map((t) => wb.createIssue({ title: t, status: 'todo' }))
+  assert.deepEqual(titles(wb, 'todo'), ['A', 'B', 'C']) // new cards queue at the bottom
+  wb.moveIssue(c!.id, 'todo', a!.id)
+  assert.deepEqual(titles(wb, 'todo'), ['C', 'A', 'B'])
+  wb.moveIssue(c!.id, 'todo') // no target = to the end
+  assert.deepEqual(titles(wb, 'todo'), ['A', 'B', 'C'])
+  wb.moveIssue(a!.id, 'todo', a!.id) // dropping onto itself changes nothing
+  assert.deepEqual(titles(wb, 'todo'), ['A', 'B', 'C'])
+  wb.moveIssue(b!.id, 'blocked')
+  assert.deepEqual([titles(wb, 'todo'), titles(wb, 'blocked')], [['A', 'C'], ['B']])
+  assert.throws(() => wb.moveIssue(a!.id, 'done', undefined, 'system'), /只能由人/)
+
+  // finishing a run puts the card at the bottom of 待审核
+  const p = wb.listProjects()[0]!
+  const x = wb.createIssue({ title: 'X', projectId: p.id, status: 'todo' })
+  const r = await wb.startIssue(x.id)
+  driver.emit({ type: 'turn.completed', runId: r.run.id, status: 'completed' })
+  wb.moveIssue(a!.id, 'in_review')
+  assert.deepEqual(titles(wb, 'in_review'), ['X', 'A'])
+
+  // cards saved before ordering existed get positions by age
+  const file = join(dir, 'workbench.json')
+  const raw = JSON.parse(readFileSync(file, 'utf8'))
+  for (const i of raw.issues) delete i.order
+  writeFileSync(file, JSON.stringify(raw))
+  const again = new Workbench({ store: new Store(file), driver, creds: async () => undefined })
+  assert.ok(again.listIssues().every((i) => typeof i.order === 'number'))
+  assert.deepEqual(titles(again, 'in_review'), ['A', 'X']) // by age: A was created before X
+})
+
+test('auto-run: 待办 top to bottom, one agent at a time, follows the order, skips what cannot run', async () => {
+  const { wb, driver } = setup()
+  const p = wb.listProjects().find((x) => x.name.endsWith('payment-core'))!
+  const mk = (title: string, o: object = {}) => wb.createIssue({ title, projectId: p.id, status: 'todo', ...o })
+  const a = mk('A'), b = mk('B'), c = mk('C')
+  const noProject = wb.createIssue({ title: 'N', status: 'todo' })
+  const planned = mk('P', { status: 'backlog' })
+  const archived = mk('Z'); wb.archiveIssue(archived.id, true)
+  wb.moveIssue(c.id, 'todo', a.id) // queue: C A B N
+
+  await wb.tick() // manual mode: nothing starts by itself
+  assert.equal(driver.started.length, 0)
+  assert.equal(wb.workingCount(), 0)
+
+  wb.setAutoRun(true)
+  await wb.tick()
+  assert.deepEqual(driver.started.map((s) => s.title.split(' ')[1]), ['C']) // top of the queue, only one
+  assert.equal(wb.workingCount(), 1)
+  assert.equal(wb.listIssues().find((i) => i.id === noProject.id)!.note, '自动运行已跳过：请先选择项目')
+
+  driver.emit({ type: 'turn.completed', runId: wb.listRuns().at(-1)!.id, status: 'completed' })
+  await wb.tick()
+  assert.deepEqual(driver.started.map((s) => s.title.split(' ')[1]), ['C', 'A'])
+  driver.emit({ type: 'turn.completed', runId: wb.listRuns().at(-1)!.id, status: 'failed', error: 'boom' }) // a failure doesn't stop the queue
+  await wb.tick()
+  driver.emit({ type: 'turn.completed', runId: wb.listRuns().at(-1)!.id, status: 'completed' })
+  await wb.tick()
+  assert.deepEqual(driver.started.map((s) => s.title.split(' ')[1]), ['C', 'A', 'B'])
+  assert.deepEqual([titles(wb, 'blocked'), titles(wb, 'backlog')], [['A'], ['P']])
+  assert.equal(wb.listIssues().find((i) => i.id === planned.id)!.status, 'backlog') // 待规划 is never auto-run
+  assert.equal(driver.started.length, 3) // N (no project) and the archived card were not started
+
+  // a card dropped into 待办 while auto-run is on is picked up
+  const d = mk('D', { status: 'backlog' })
+  wb.moveIssue(d.id, 'todo'); await wb.tick()
+  assert.equal(driver.started.length, 4)
+
+  // a start that throws is parked as blocked, not retried forever
+  wb.updateIssue(a.id, { agentId: 'gone' })
+  wb.moveIssue(a.id, 'todo'); driver.emit({ type: 'turn.completed', runId: wb.listRuns().at(-1)!.id, status: 'completed' }); await wb.tick()
+  assert.equal(wb.listIssues().find((i) => i.id === a.id)!.status, 'blocked')
+  assert.match(wb.listIssues().find((i) => i.id === a.id)!.note!, /自动运行启动失败/)
+
+  wb.setAutoRun(false)
+  mk('E'); await wb.tick()
+  assert.equal(driver.started.length, 4)
 })

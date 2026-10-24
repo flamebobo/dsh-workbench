@@ -40,3 +40,9 @@
 - `Issue.nextId` 单向链（不允许成环，`setNext` 沿链检查）；开工时 `predecessorsOf` 把「指向本卡」的卡片最近一次完成的 run 的 `finalText`（≤1500 字）作为「## 前置任务」写进首条消息。
 - 归档 = `Issue.archivedAt`；connector 来源的待办（卡片可能不存在）另存 `Data.hiddenTodos`。进行中的卡片不能归档。删除会清掉别的卡片指向它的 `nextId`。
 - Sparkin：接口文档未提供（方案文档：「拿到文档前用演示数据，拿到后按文档接入」）。`SparkinClient`（projects/tasks/submit）+ `DemoSparkin`；`Project.sparkinProjectId` 是项目页上的映射；`Issue.timesheet` 记录已填报的工时。
+
+## 排序与自动运行
+
+- `Issue.order` 是列内位置（1..n，越小越靠上）。进入一列（新建、开工、会话结束、被拖入）都排到列尾；`moveIssue(id, status, beforeId)` 把卡片插到 `beforeId` 之前并重排目标列。旧数据启动时按创建时间补序号。
+- 看板里每张卡片是放置目标：落在上半部分 = 插到它前面，下半部分 = 插到下一张前面；落在列的空白处 = 列尾。
+- 自动运行：`Data.autoRun`；`tick()` 在 `autoRun` 且工作中的智能体数 < `AUTO_CONCURRENCY`(1) 时，从「待办」列顶开始取第一张有项目的卡片 `startIssue`。触发点：开关、卡片入列/新建、会话结束、Host 每 5 秒的定时器。`tick` 串行化（并发调用合并成「再来一轮」）。启动抛错的卡片转「已阻塞」避免死循环。

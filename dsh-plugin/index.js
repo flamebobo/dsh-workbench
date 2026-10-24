@@ -644,8 +644,19 @@ var WorkbenchError = class extends Error {
   }
 };
 var now = () => (/* @__PURE__ */ new Date()).toISOString();
+var byOrder = (a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.createdAt.localeCompare(b.createdAt);
+function place(d, issue, status, beforeId) {
+  issue.status = status;
+  const col = d.issues.filter((x) => x.status === status && x.id !== issue.id).sort(byOrder);
+  const at = beforeId ? col.findIndex((x) => x.id === beforeId) : -1;
+  col.splice(at < 0 ? col.length : at, 0, issue);
+  col.forEach((x, n) => {
+    x.order = n + 1;
+  });
+}
 var cleanLines = (l) => (l ?? []).map((x) => x.trim()).filter(Boolean);
 var COMMANDS = ["plan", "goal"];
+var AUTO_CONCURRENCY = 1;
 var MAX_UPLOAD = 25 * 1024 * 1024;
 var Workbench = class {
   store;
@@ -666,11 +677,21 @@ var Workbench = class {
     this.sparkin = o.sparkin ?? new DemoSparkin();
     this.fetch = o.fetch ?? ((u, i) => fetch(u, i));
     this.seedAgents();
+    this.normalizeOrders();
     this.reconcileOrphans();
     this.off = this.driver.onEvent((e) => this.onDriverEvent(e));
   }
   dispose() {
     this.off();
+  }
+  /** Cards saved before ordering existed get a position by age, once. */
+  normalizeOrders() {
+    if (this.store.data.issues.every((i) => i.order != null)) return;
+    this.store.update((d) => {
+      for (const st of STATUSES) d.issues.filter((i) => i.status === st).sort(byOrder).forEach((i, n) => {
+        i.order = n + 1;
+      });
+    });
   }
   seedAgents() {
     const have = new Set(this.store.data.agents.map((a) => a.id));
@@ -690,7 +711,7 @@ var Workbench = class {
         r.error = "\u5BBF\u4E3B\u91CD\u542F\uFF0C\u4F1A\u8BDD\u4E8B\u4EF6\u5DF2\u4E22\u5931";
         const issue = d.issues.find((i) => i.id === r.issueId);
         if (issue?.status === "in_progress") {
-          issue.status = "blocked";
+          place(d, issue, "blocked");
           issue.note = r.error;
           issue.updatedAt = now();
         }
@@ -794,6 +815,7 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
         updatedAt: t
       };
       d.issues.push(issue2);
+      place(d, issue2, "todo");
       return issue2;
     });
     return this.launch(issue.id, item);
@@ -825,7 +847,7 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
       const run2 = { id: `run_${d.seq}`, issueId, agentId: agent.id, status: "running", startedAt: t };
       d.runs.push(run2);
       const i = d.issues.find((x) => x.id === issueId);
-      i.status = "in_progress";
+      place(d, i, "in_progress");
       i.note = void 0;
       i.updatedAt = t;
       return run2;
@@ -855,12 +877,13 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
   onDriverEvent(e) {
     if (e.type === "turn.completed") {
       this.finishRun(e.runId, e.status, e.finalText, e.error);
+      void this.tick();
     } else if (e.type === "awaiting.user") {
       this.store.update((d) => {
         const r = d.runs.find((x) => x.id === e.runId);
         const issue = r && r.status === "running" ? d.issues.find((i) => i.id === r.issueId) : void 0;
         if (issue?.status === "in_progress") {
-          issue.status = "in_review";
+          place(d, issue, "in_review");
           issue.note = e.reason;
           issue.updatedAt = now();
         }
@@ -885,7 +908,7 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
       const issue = d.issues.find((i) => i.id === r.issueId);
       if (issue && issue.status === "in_review" && status === "completed") issue.note = void 0;
       if (issue && issue.status === "in_progress") {
-        issue.status = status === "completed" ? "in_review" : "blocked";
+        place(d, issue, status === "completed" ? "in_review" : "blocked");
         issue.note = status === "completed" ? void 0 : error ?? (status === "interrupted" ? "\u4F1A\u8BDD\u88AB\u4E2D\u65AD" : "\u4F1A\u8BDD\u51FA\u9519");
         issue.updatedAt = now();
       }
@@ -1070,7 +1093,7 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
     if (!input.title.trim()) throw new WorkbenchError("invalid", "\u6807\u9898\u4E0D\u80FD\u4E3A\u7A7A");
     if (input.status === "done") throw new WorkbenchError("forbidden", "\u300C\u5DF2\u5B8C\u6210\u300D\u53EA\u80FD\u7531\u4EBA\u5728\u770B\u677F\u4E0A\u8BBE\u7F6E");
     const extras = this.cleanExtras(input);
-    return this.store.update((d) => {
+    const created = this.store.update((d) => {
       d.seq += 1;
       d.issueSeq = (d.issueSeq ?? 0) + 1;
       const t = now();
@@ -1089,8 +1112,11 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
         updatedAt: t
       };
       d.issues.push(issue);
+      place(d, issue, issue.status);
       return issue;
     });
+    void this.tick();
+    return created;
   }
   updateIssue(id, patch) {
     const extras = "command" in patch || patch.attachments ? this.cleanExtras(patch) : void 0;
@@ -1110,16 +1136,84 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
   }
   /** Status changes from the board. `done` is a human decision, so only `actor: 'human'` (the UI) may set it. */
   setStatus(id, status, actor = "human") {
+    return this.moveIssue(id, status, void 0, actor);
+  }
+  /** Drag on the board: into `status`, at the end or just before `beforeId` (that is how a column is reordered). */
+  moveIssue(id, status, beforeId, actor = "human") {
     if (!STATUSES.includes(status)) throw new WorkbenchError("invalid", `\u672A\u77E5\u72B6\u6001 ${status}`);
     if (status === "done" && actor !== "human") throw new WorkbenchError("forbidden", "\u300C\u5DF2\u5B8C\u6210\u300D\u53EA\u80FD\u7531\u4EBA\u8BBE\u7F6E");
-    return this.store.update((d) => {
+    const moved = this.store.update((d) => {
       const i = d.issues.find((x) => x.id === id);
       if (!i) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
-      i.status = status;
-      i.updatedAt = now();
+      const before = i.status;
+      if (beforeId === id && before === status) return i;
+      place(d, i, status, beforeId === id ? void 0 : beforeId);
+      if (before !== status) i.updatedAt = now();
       if (status !== "blocked") i.note = void 0;
       return i;
     });
+    void this.tick();
+    return moved;
+  }
+  // ---------- auto-run ----------
+  get autoRun() {
+    return !!this.store.data.autoRun;
+  }
+  setAutoRun(enabled) {
+    this.store.update((d) => {
+      d.autoRun = enabled;
+    });
+    void this.tick();
+    return this.autoRun;
+  }
+  /** Agents working right now (a plan waiting for approval doesn't count: the human is the bottleneck there). */
+  workingCount() {
+    const d = this.store.data;
+    return d.runs.filter((r) => r.status === "running" && d.issues.find((i) => i.id === r.issueId)?.status === "in_progress").length;
+  }
+  tickP;
+  again = false;
+  /** In auto-run, keep starting the top card of 待办 until `concurrency` agents are working. Safe to call often. */
+  tick() {
+    if (this.tickP) {
+      this.again = true;
+      return this.tickP;
+    }
+    this.tickP = (async () => {
+      do {
+        this.again = false;
+        await this.runTick();
+      } while (this.again);
+    })().finally(() => {
+      this.tickP = void 0;
+    });
+    return this.tickP;
+  }
+  async runTick() {
+    for (let n = 0; n < 50 && this.autoRun && this.workingCount() < AUTO_CONCURRENCY; n++) {
+      const d = this.store.data;
+      const queue = d.issues.filter((i) => i.status === "todo" && !i.archivedAt).sort(byOrder);
+      const ready = queue.find((i) => d.projects.some((p) => p.id === i.projectId));
+      for (const i of queue.filter((x) => x !== ready && !d.projects.some((p) => p.id === x.projectId) && !x.note)) {
+        this.store.update((x) => {
+          const c = x.issues.find((y) => y.id === i.id);
+          if (c) c.note = "\u81EA\u52A8\u8FD0\u884C\u5DF2\u8DF3\u8FC7\uFF1A\u8BF7\u5148\u9009\u62E9\u9879\u76EE";
+        });
+      }
+      if (!ready) return;
+      try {
+        await this.startIssue(ready.id);
+      } catch (e) {
+        this.store.update((x) => {
+          const c = x.issues.find((y) => y.id === ready.id);
+          if (c && c.status === "todo") {
+            place(x, c, "blocked");
+            c.note = `\u81EA\u52A8\u8FD0\u884C\u542F\u52A8\u5931\u8D25\uFF1A${String(e.message ?? e)}`;
+            c.updatedAt = now();
+          }
+        });
+      }
+    }
   }
   deleteIssue(id) {
     for (const a of this.store.data.issues.find((i) => i.id === id)?.attachments ?? []) rmSync(this.uploadPath(a), { force: true });
@@ -1570,7 +1664,11 @@ function apply(ctx) {
   });
   wb.seedDemoProjects(join4(dataDir(), "demo-repos"));
   void Promise.all(wb.listAgents().map((a) => driver.registerPreset(a)));
+  const timer = setInterval(() => {
+    wb.tick().catch((e) => ctx.logger.warn("workbench: auto-run tick failed", e));
+  }, 5e3);
   ctx.effect(() => () => {
+    clearInterval(timer);
     wb.dispose();
     return driver.disposePresets();
   });
@@ -1579,7 +1677,9 @@ function apply(ctx) {
     runs: wb.listRuns(),
     agents: wb.listAgents(),
     projects: wb.listProjects(),
-    builds: await wb.refreshBuilds()
+    builds: await wb.refreshBuilds(),
+    autoRun: wb.autoRun,
+    working: wb.workingCount()
   });
   async function dispatch(endpoint, p) {
     switch (endpoint) {
@@ -1609,6 +1709,11 @@ function apply(ctx) {
         return await wb.sparkinInfo();
       case "timesheet.report":
         return await wb.reportTimesheet({ date: p.date, entries: p.entries ?? [] });
+      case "issue.move":
+        return wb.moveIssue(p.id, p.status, p.beforeId, "human");
+      // only the UI (a human) calls this
+      case "autorun.set":
+        return wb.setAutoRun(!!p.enabled);
       case "issue.status":
         return wb.setStatus(p.id, p.status, "human");
       // only the UI (a human) calls this

@@ -13,7 +13,7 @@ import { fetchZentao } from './connectors/zentao.ts'
 import { Store } from './store.ts'
 import { fuzzy, listFiles, mentionedFiles } from './files.ts'
 import { DemoSparkin, suggestTask, type SparkinClient } from './sparkin.ts'
-import type { AgentProfile, Attachment, Build, BuildState, CommandName, Issue, Priority, Project, Run, Source, Status, WorkItem } from './types.ts'
+import type { AgentProfile, Attachment, Build, BuildState, CommandName, Data, Issue, Priority, Project, Run, Source, Status, WorkItem } from './types.ts'
 import { STATUSES } from './types.ts'
 import { agentPersona, builtinAgents } from './agents.ts'
 
@@ -34,8 +34,20 @@ export class WorkbenchError extends Error {
 }
 
 const now = () => new Date().toISOString()
+const byOrder = (a: Issue, b: Issue) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.createdAt.localeCompare(b.createdAt)
+
+/** Put a card into `status` at the end, or just before `beforeId`, and renumber that column 1..n. */
+function place(d: Data, issue: Issue, status: Status, beforeId?: string) {
+  issue.status = status
+  const col = d.issues.filter((x) => x.status === status && x.id !== issue.id).sort(byOrder)
+  const at = beforeId ? col.findIndex((x) => x.id === beforeId) : -1
+  col.splice(at < 0 ? col.length : at, 0, issue)
+  col.forEach((x, n) => { x.order = n + 1 })
+}
+
 const cleanLines = (l?: string[]) => (l ?? []).map((x) => x.trim()).filter(Boolean)
 const COMMANDS: CommandName[] = ['plan', 'goal']
+const AUTO_CONCURRENCY = 1 // one agent at a time: the queue runs in the order you set
 const MAX_UPLOAD = 25 * 1024 * 1024
 const ACTIVE: Status[] = ['todo', 'in_progress', 'in_review', 'blocked', 'backlog']
 
@@ -71,11 +83,20 @@ export class Workbench {
     this.sparkin = o.sparkin ?? new DemoSparkin()
     this.fetch = o.fetch ?? ((u, i) => fetch(u, i))
     this.seedAgents()
+    this.normalizeOrders()
     this.reconcileOrphans()
     this.off = this.driver.onEvent((e) => this.onDriverEvent(e))
   }
 
   dispose() { this.off() }
+
+  /** Cards saved before ordering existed get a position by age, once. */
+  private normalizeOrders() {
+    if (this.store.data.issues.every((i) => i.order != null)) return
+    this.store.update((d) => {
+      for (const st of STATUSES) d.issues.filter((i) => i.status === st).sort(byOrder).forEach((i, n) => { i.order = n + 1 })
+    })
+  }
 
   private seedAgents() {
     const have = new Set(this.store.data.agents.map((a) => a.id))
@@ -91,7 +112,7 @@ export class Workbench {
       for (const r of d.runs.filter((x) => x.status === 'running')) {
         r.status = 'interrupted'; r.endedAt = now(); r.error = '宿主重启，会话事件已丢失'
         const issue = d.issues.find((i) => i.id === r.issueId)
-        if (issue?.status === 'in_progress') { issue.status = 'blocked'; issue.note = r.error; issue.updatedAt = now() }
+        if (issue?.status === 'in_progress') { place(d, issue, 'blocked'); issue.note = r.error; issue.updatedAt = now() }
       }
     })
   }
@@ -181,7 +202,7 @@ export class Workbench {
         acceptance: item.acceptance, status: 'todo', agentId: agent.id, projectId: project.id, priority: item.priority,
         sourceRef: { source: item.source, ref: item.ref }, createdAt: t, updatedAt: t,
       }
-      d.issues.push(issue)
+      d.issues.push(issue); place(d, issue, 'todo')
       return issue
     })
     return this.launch(issue.id, item)
@@ -216,7 +237,7 @@ export class Workbench {
       const run: Run = { id: `run_${d.seq}`, issueId, agentId: agent.id, status: 'running', startedAt: t }
       d.runs.push(run)
       const i = d.issues.find((x) => x.id === issueId)!
-      i.status = 'in_progress'; i.note = undefined; i.updatedAt = t
+      place(d, i, 'in_progress'); i.note = undefined; i.updatedAt = t
       return run
     })
     const issue = this.store.data.issues.find((i) => i.id === issueId)!
@@ -243,12 +264,13 @@ export class Workbench {
   onDriverEvent(e: DriverEvent) {
     if (e.type === 'turn.completed') {
       this.finishRun(e.runId, e.status, e.finalText, e.error)
+      void this.tick()
     } else if (e.type === 'awaiting.user') {
       // The turn stays open until the human answers, so there is no turn/end to wait for: hand the card over now.
       this.store.update((d) => {
         const r = d.runs.find((x) => x.id === e.runId)
         const issue = r && r.status === 'running' ? d.issues.find((i) => i.id === r.issueId) : undefined
-        if (issue?.status === 'in_progress') { issue.status = 'in_review'; issue.note = e.reason; issue.updatedAt = now() }
+        if (issue?.status === 'in_progress') { place(d, issue, 'in_review'); issue.note = e.reason; issue.updatedAt = now() }
       })
     } else if (e.type === 'turn.started') {
       this.store.update((d) => {
@@ -268,7 +290,7 @@ export class Workbench {
       const issue = d.issues.find((i) => i.id === r.issueId)
       if (issue && issue.status === 'in_review' && status === 'completed') issue.note = undefined
       if (issue && issue.status === 'in_progress') {
-        issue.status = status === 'completed' ? 'in_review' : 'blocked'
+        place(d, issue, status === 'completed' ? 'in_review' : 'blocked')
         issue.note = status === 'completed' ? undefined : error ?? (status === 'interrupted' ? '会话被中断' : '会话出错')
         issue.updatedAt = now()
       }
@@ -434,7 +456,7 @@ export class Workbench {
     if (!input.title.trim()) throw new WorkbenchError('invalid', '标题不能为空')
     if (input.status === 'done') throw new WorkbenchError('forbidden', '「已完成」只能由人在看板上设置')
     const extras = this.cleanExtras(input)
-    return this.store.update((d) => {
+    const created = this.store.update((d) => {
       d.seq += 1
       d.issueSeq = (d.issueSeq ?? 0) + 1
       const t = now()
@@ -443,9 +465,11 @@ export class Workbench {
         status: input.status ?? 'backlog', agentId: input.agentId ?? 'fullstack', projectId: input.projectId || undefined,
         priority: input.priority ?? 'P2', ...extras, createdAt: t, updatedAt: t,
       }
-      d.issues.push(issue)
+      d.issues.push(issue); place(d, issue, issue.status)
       return issue
     })
+    void this.tick()
+    return created
   }
 
   updateIssue(id: string, patch: Partial<Pick<Issue, 'title' | 'description' | 'acceptance' | 'priority' | 'agentId' | 'projectId'>> & { command?: string; attachments?: Attachment[] }) {
@@ -467,15 +491,72 @@ export class Workbench {
 
   /** Status changes from the board. `done` is a human decision, so only `actor: 'human'` (the UI) may set it. */
   setStatus(id: string, status: Status, actor: 'human' | 'system' = 'human') {
+    return this.moveIssue(id, status, undefined, actor)
+  }
+
+  /** Drag on the board: into `status`, at the end or just before `beforeId` (that is how a column is reordered). */
+  moveIssue(id: string, status: Status, beforeId?: string, actor: 'human' | 'system' = 'human') {
     if (!STATUSES.includes(status)) throw new WorkbenchError('invalid', `未知状态 ${status}`)
     if (status === 'done' && actor !== 'human') throw new WorkbenchError('forbidden', '「已完成」只能由人设置')
-    return this.store.update((d) => {
+    const moved = this.store.update((d) => {
       const i = d.issues.find((x) => x.id === id)
       if (!i) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
-      i.status = status; i.updatedAt = now()
+      const before = i.status
+      if (beforeId === id && before === status) return i // dropped on itself: stays put
+      place(d, i, status, beforeId === id ? undefined : beforeId)
+      if (before !== status) i.updatedAt = now()
       if (status !== 'blocked') i.note = undefined
       return i
     })
+    void this.tick() // a card dropped into 待办 may be next in line
+    return moved
+  }
+
+  // ---------- auto-run ----------
+  get autoRun() { return !!this.store.data.autoRun }
+
+  setAutoRun(enabled: boolean) {
+    this.store.update((d) => { d.autoRun = enabled })
+    void this.tick()
+    return this.autoRun
+  }
+
+  /** Agents working right now (a plan waiting for approval doesn't count: the human is the bottleneck there). */
+  workingCount() {
+    const d = this.store.data
+    return d.runs.filter((r) => r.status === 'running' && d.issues.find((i) => i.id === r.issueId)?.status === 'in_progress').length
+  }
+
+  private tickP?: Promise<void>
+  private again = false
+
+  /** In auto-run, keep starting the top card of 待办 until `concurrency` agents are working. Safe to call often. */
+  tick(): Promise<void> {
+    if (this.tickP) { this.again = true; return this.tickP }
+    this.tickP = (async () => {
+      do { this.again = false; await this.runTick() } while (this.again)
+    })().finally(() => { this.tickP = undefined })
+    return this.tickP
+  }
+
+  private async runTick() {
+    for (let n = 0; n < 50 && this.autoRun && this.workingCount() < AUTO_CONCURRENCY; n++) {
+      const d = this.store.data
+      const queue = d.issues.filter((i) => i.status === 'todo' && !i.archivedAt).sort(byOrder)
+      // a card with no (or a deleted) project can't run; say so on the card and move on to the next one
+      const ready = queue.find((i) => d.projects.some((p) => p.id === i.projectId))
+      for (const i of queue.filter((x) => x !== ready && !d.projects.some((p) => p.id === x.projectId) && !x.note)) {
+        this.store.update((x) => { const c = x.issues.find((y) => y.id === i.id); if (c) c.note = '自动运行已跳过：请先选择项目' })
+      }
+      if (!ready) return
+      try { await this.startIssue(ready.id) } catch (e) {
+        // never retry the same card in a loop: park it as blocked with the reason
+        this.store.update((x) => {
+          const c = x.issues.find((y) => y.id === ready.id)
+          if (c && c.status === 'todo') { place(x, c, 'blocked'); c.note = `自动运行启动失败：${String((e as Error).message ?? e)}`; c.updatedAt = now() }
+        })
+      }
+    }
   }
 
   deleteIssue(id: string) {
