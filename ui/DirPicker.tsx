@@ -10,6 +10,7 @@ export function DirPicker(p: { start?: string; onPick: (path: string) => void; o
   const [hidden, setHidden] = useState(false)
   const [list, setList] = useState<Listing>()
   const [err, setErr] = useState<string>()
+  const [typed, setTyped] = useState(p.start ?? '')
   useEffect(() => {
     let live = true
     rpc<Listing>('dirs.list', { path: at, hidden }).then((r) => { if (live) { setList(r); setErr(undefined) } }, (e) => { if (live) setErr((e as Error).message) })
@@ -35,7 +36,15 @@ export function DirPicker(p: { start?: string; onPick: (path: string) => void; o
           {crumbs.map((c, i) => <span key={c.path}>{i > 0 && ' › '}<a href="#" onClick={(e) => { e.preventDefault(); setAt(c.path) }}>{c.label}</a></span>)}
         </div>
         <div className="wb-dirs" style={{ height: 300, overflow: 'auto', border: '1px solid var(--wb-bd)', borderRadius: 7 }}>
-          {err && <div style={{ padding: 10, color: 'var(--wb-red)' }}>{err}</div>}
+          {err && (
+            <div style={{ padding: 10 }}>
+              <div style={{ color: 'var(--wb-red)' }}>{err}</div>
+              {/* a Host that predates the folder listing (DSH not restarted after an update): the path can still be typed */}
+              <div className="wb-sub" style={{ margin: '8px 0 4px' }}>目录列表暂时不可用（更新插件后需要重启 DSH）。可以直接输入绝对路径：</div>
+              <div className="wb-row"><input className="wb-input wb-grow" value={typed} placeholder="/Users/me/code/payment-core 或 D:\\code\\payment-core" onChange={(e) => setTyped(e.target.value)} />
+                <button className="wb-btn primary" disabled={!typed.trim()} onClick={() => p.onPick(typed.trim())}>使用此路径</button></div>
+            </div>
+          )}
           {list?.parent && <div className="wb-dir" role="button" tabIndex={0} onClick={() => setAt(list.parent)} style={rowStyle}>↰ 上一级</div>}
           {list?.entries.map((e) => (
             <div key={e.path} className="wb-dir" role="button" tabIndex={0} onClick={() => setAt(e.path)} onDoubleClick={() => p.onPick(e.path)} style={rowStyle}>
