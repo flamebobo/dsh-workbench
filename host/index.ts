@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { Store, Workbench, WorkbenchError, dataDir, defaultDataPath } from '../core/src/index.ts'
+import { LockError, Store, Workbench, WorkbenchError, acquireLock, dataDir, defaultDataPath } from '../core/src/index.ts'
 import type { Status, WorkItem } from '../core/src/index.ts'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -17,6 +17,14 @@ export const inject = [
 
 /** Host half of the workbench: page -> Host via one owner-only Fetch route, Workbench core in-process. */
 export function apply(ctx: Ctx) {
+  // one writer per data dir: a second DSH (or the Codex version pointed at the same dir) must not overwrite this one's file
+  let release: () => void
+  try { release = acquireLock(dataDir()) } catch (e) {
+    if (!(e instanceof LockError)) throw e
+    ctx.logger.error(`workbench: ${e.message}`)
+    ctx.connection.fetch.register({ path: '/api/workbench.rpc', methods: ['POST'], requestBody: 'buffered', fetch: async () => Response.json({ ok: false, error: e.message }) })
+    return
+  }
   const driver = new DshDriver(ctx)
   const wb = new Workbench({
     store: new Store(defaultDataPath()),
@@ -43,7 +51,7 @@ export function apply(ctx: Ctx) {
     wb.tick().catch((e) => ctx.logger.warn('workbench: auto-run tick failed', e)).finally(() => { if (!stopped) timer = setTimeout(loop, wb.settings().autoRunPollSeconds * 1000) })
   }
   timer = setTimeout(loop, 5000)
-  ctx.effect(() => () => { stopped = true; clearTimeout(timer); wb.dispose(); return driver.disposePresets() })
+  ctx.effect(() => () => { stopped = true; clearTimeout(timer); wb.dispose(); release(); return driver.disposePresets() })
 
   const state = async () => ({
     version: wb.version, update: wb.updateInfo(), exampleSkillRoot: existsSync(exampleSkillRoot) ? exampleSkillRoot : undefined, issues: wb.listIssues(), runs: wb.listRuns(), agents: wb.listAgents(), projects: wb.listProjects(), builds: await wb.refreshBuilds(), autoRun: wb.autoRun, working: wb.workingCount(), settings: wb.settings(), demoLeft: wb.demoLeftovers(),

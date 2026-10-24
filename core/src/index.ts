@@ -1,5 +1,7 @@
 export * from './types.ts'
 export * from './driver.ts'
+export { acquireLock, LockError } from './lock.ts'
+export type { LockOwner } from './lock.ts'
 export { Store, DATA_VERSION, DataVersionError, dataDir, defaultDataPath } from './store.ts'
 export { Workbench, WorkbenchError, defaultAgentFor } from './workbench.ts'
 export type { TodoResult, WorkbenchOptions } from './workbench.ts'

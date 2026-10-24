@@ -61,3 +61,8 @@
 - **插件安装**：`dsh plugin --profile <名> add <目录>` 只是转发给 pnpm，在 profile 的 package.json 里写 `link:<目录>`（软链接）。目录固定时，更新 = 替换目录里的文件，不需要重新 add。
 - **通知**：没有找到 DSH 提供的通知服务；插件入口（client entry）在应用打开期间一直运行，所以轮询和 `new Notification` 放在入口里，页面没挂载也能提醒。点击通知时页面可能还没挂载：先把卡片编号放在 `window.__wbPending`，再点侧栏的「工作台」按钮，页面挂载后读取。
 - **数据版本**：`Data.version` 现在是 2；`core/src/store.ts` 里的 `migrations` 按版本逐步升级，升级前复制旧文件为 `.v<旧版本>.bak`；版本高于当前插件的文件直接拒绝加载（`DataVersionError`），不改写。
+
+## 单写者锁（2026-10-24）
+- 数据目录里的 `workbench.lock` 记录占用者的 PID 和进程启动时间（`core/src/lock.ts`）。DSH Host 在 `apply` 时获取、卸载时释放；Codex 版的本地服务启动时获取。
+- 占用者还活着 → 第二个进程拿不到锁：DSH 版的页面接口直接返回「数据目录正被另一个进程使用（PID …）」；进程已退出、PID 被别的进程复用（启动时间对不上，`ps -o lstart=`）、锁文件损坏，或同一进程重新加载插件 → 直接接管。Windows 上只比较 PID。
+- 影响：`scripts/dev-web.sh` 用的是默认 `~/.workbench`，桌面端开着时它会拿不到锁，需要像 `qa-web.sh` 那样设 `WORKBENCH_HOME`。
