@@ -117,6 +117,14 @@ export class Workbench {
 
   dispose() { this.off() }
 
+  private busy = new Set<string>()
+  /** Calls that write to an outside system must not overlap: a double click would otherwise write twice (two comments, two time entries). */
+  private async once<T>(key: string, what: string, fn: () => Promise<T>): Promise<T> {
+    if (this.busy.has(key)) throw new WorkbenchError('invalid', `${what}正在进行，请稍候`)
+    this.busy.add(key)
+    try { return await fn() } finally { this.busy.delete(key) }
+  }
+
   /** Cards saved before ordering existed get a position by age, once. */
   private normalizeOrders() {
     if (this.store.data.issues.every((i) => i.order != null)) return
@@ -483,7 +491,11 @@ export class Workbench {
    * Resolve the bug in Zentao (status 已解决, resolution 已修复) with a comment. Outward-facing: runs from an explicit click,
    * or automatically only if the 回写 setting says so. Without Zentao credentials nothing is sent and the record says 演示.
    */
-  async writeBackZentao(id: string, comment?: string): Promise<Issue> {
+  writeBackZentao(id: string, comment?: string): Promise<Issue> {
+    return this.once(`writeback:${id}`, '回写禅道', () => this.doWriteBackZentao(id, comment))
+  }
+
+  private async doWriteBackZentao(id: string, comment?: string): Promise<Issue> {
     const issue = this.store.data.issues.find((i) => i.id === id)
     if (!issue) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
     if (issue.writeBack) throw new WorkbenchError('invalid', `${issue.key} 已经回写过禅道`)
@@ -850,7 +862,11 @@ export class Workbench {
    * Commit the task's work, push its branch and open a GitLab merge request. Outward-facing: only called from an explicit click.
    * Pushing uses the git credentials already on this machine; the GitLab token is only used for the API call.
    */
-  async submitMergeRequest(id: string): Promise<Issue> {
+  submitMergeRequest(id: string): Promise<Issue> {
+    return this.once(`mr:${id}`, '提交合并请求', () => this.doSubmitMergeRequest(id))
+  }
+
+  private async doSubmitMergeRequest(id: string): Promise<Issue> {
     const { issue, project } = this.ctxOf(id)
     if (issue.mr) throw new WorkbenchError('invalid', `${issue.key} 已经提交过合并请求：${issue.mr.url}`)
     if (!issue.branch || !issue.worktree || !existsSync(issue.worktree) || !issue.baseSha) {
@@ -975,7 +991,7 @@ export class Workbench {
       if (!(e.hours > 0 && e.hours <= 24)) { fail(`${issue.key}：工时需在 0–24 小时之间`); continue }
       try {
         const note = e.note?.trim() || `${issue.key} ${issue.title}${issue.sourceRef ? `（${issue.sourceRef.ref}）` : ''}`
-        const { entryId } = await this.sparkin.submit({ taskId: task.id, date: input.date, hours: e.hours, note })
+        const { entryId } = await this.once(`timesheet:${issue.id}`, '工时填报', () => this.sparkin.submit({ taskId: task.id, date: input.date, hours: e.hours, note }))
         this.store.update((d) => {
           d.issues.find((i) => i.id === issue.id)!.timesheet = {
             hours: e.hours, date: input.date, sparkinTaskId: task.id, sparkinTaskName: task.name, entryId,
