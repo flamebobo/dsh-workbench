@@ -184,3 +184,23 @@ test('Q10 a brief Jenkins hiccup while following a build does not end the tracki
   const b = await wb.triggerBuild({ job: 'x', issueIds: [a.id] }).catch(() => undefined) // the trigger itself failing is reported at once, as before
   assert.equal(b?.state, 'error')
 })
+
+test('Q11 passing tests alone do not complete a card whose agent changed nothing (it may only have asked a question)', async () => {
+  const { wb, driver } = setup()
+  const project = wb.listProjects().find((p) => p.name.endsWith('payment-core'))!
+  wb.saveProject({ ...project, testCmd: 'true' })
+  const i = wb.createIssue({ title: '需要澄清的缺陷', projectId: project.id, status: 'todo' })
+  const r = (await wb.startIssue(i.id)).run
+  driver.emit({ type: 'turn.completed', runId: r.id, status: 'completed', finalText: '需求不清楚，请补充信息' })
+  const until = async (f: () => boolean) => { for (let n = 0; n < 200 && !f(); n++) await new Promise((x) => setTimeout(x, 25)) }
+  await until(() => wb.listIssues().find((x) => x.id === i.id)!.checks?.at(-1)?.state === 'passed')
+  await new Promise((x) => setTimeout(x, 200))
+  const card = wb.listIssues().find((x) => x.id === i.id)!
+  assert.equal(card.status, 'in_review')
+  assert.match(card.note!, /没有检测到代码改动/)
+  // the same card once the agent has really changed something and the tests pass again
+  writeFileSync(join(project.cwd, 'fix.txt'), 'fixed')
+  await wb.runChecks(i.id)
+  await until(() => wb.listIssues().find((x) => x.id === i.id)!.status === 'done')
+  assert.equal(wb.listIssues().find((x) => x.id === i.id)!.status, 'done')
+})

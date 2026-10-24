@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -78,6 +78,7 @@ test('tests passing move 待审核 -> 已完成 on their own; failing, disabled 
     wb.saveProject({ ...project, testCmd })
     const i = wb.createIssue({ title: `t-${testCmd}`, projectId: project.id, status: 'todo' })
     const r = (await wb.startIssue(i.id)).run
+    writeFileSync(join(project.cwd, `change-${i.key}.txt`), 'x') // the agent's work: passing tests only count when something changed
     driver.emit({ type: 'turn.completed', runId: r.id, status: 'completed' })
     return i.id
   }

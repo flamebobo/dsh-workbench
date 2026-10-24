@@ -450,13 +450,32 @@ export class Workbench {
     }
   }
 
-  /** 待审核 -> 已完成 once the task's tests pass, if that is switched on. A failed or absent test leaves it for the human. */
-  private autoComplete(id: string, checkId: string) {
+  /** The task's work differs from where it started (or, in a plain directory where that can't be told, assume it does). */
+  private async hasChanges(issue: Issue): Promise<boolean> {
+    const project = this.store.data.projects.find((p) => p.id === issue.projectId)
+    try {
+      if (issue.worktree && existsSync(issue.worktree) && issue.baseSha) return (await g.changes(issue.worktree, issue.baseSha)).files.length > 0
+      if (project && (await g.isGitRepo(project.cwd))) return (await g.changes(project.cwd, 'HEAD')).files.length > 0
+    } catch { /* can't tell: don't block the move */ }
+    return true
+  }
+
+  /**
+   * 待审核 -> 已完成 once the task's tests pass, if that is switched on. A failed or absent test leaves it for the human, and so does a
+   * run that changed nothing: the agent may only have asked a question, and the existing tests pass anyway.
+   */
+  private async autoComplete(id: string, checkId: string) {
     if (!this.settings().autoDoneOnPass) return
     const issue = this.store.data.issues.find((i) => i.id === id)
     if (!issue || issue.status !== 'in_review') return
     if (issue.checks?.at(-1)?.id !== checkId || issue.checks.at(-1)!.state !== 'passed') return
     if (this.store.data.runs.some((r) => r.issueId === id && r.status === 'running')) return
+    if (!(await this.hasChanges(issue))) {
+      this.store.update((d) => { const i = d.issues.find((x) => x.id === id); if (i && i.status === 'in_review') i.note = '测试通过，但没有检测到代码改动，请你确认后验收' })
+      return
+    }
+    // the human may have moved the card while the changes were being looked at
+    if (this.store.data.issues.find((i) => i.id === id)?.status !== 'in_review') return
     this.store.update((d) => {
       const i = d.issues.find((x) => x.id === id)!
       place(d, i, 'done'); i.note = undefined; i.updatedAt = now()
@@ -871,7 +890,7 @@ export class Workbench {
         if (c.state === 'failed') i.note = r.timedOut ? '测试超时' : `测试未通过（退出码 ${r.code}）`
         else if (i.note?.startsWith('测试')) i.note = undefined
       })
-      this.autoComplete(id, check.id)
+      void this.autoComplete(id, check.id).catch(() => {})
     })
     return check
   }
