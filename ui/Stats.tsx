@@ -53,7 +53,7 @@ export function StatsPage({ p }: { p: PageProps }) {
 
   return (
     <div className="wb-pane" style={{ display: 'block' }}>
-      <div className="wb-row"><h3 style={{ margin: 0 }}>统计</h3><span className="wb-sub">只统计这台电脑上的数据；「完成」以你拖到已完成为准，工时是你填报过的，不做估算。</span><span className="wb-grow" />
+      <div className="wb-row"><h3 style={{ margin: 0 }}>统计</h3><span className="wb-sub">只统计这台电脑上的数据；「完成」指卡片在「已完成」列（你验收，或开启「测试通过后自动完成」时由测试通过触发），工时是你填报过的，不做估算。</span><span className="wb-grow" />
         <button className="wb-btn" onClick={() => { void exportAs('csv') }}>导出 CSV</button>
         <button className="wb-btn" onClick={() => { void exportAs('json') }}>导出 JSON</button></div>
 
