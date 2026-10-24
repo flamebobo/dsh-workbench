@@ -944,6 +944,8 @@ export class Workbench {
       if (!i) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
       if (archived && i.status === 'in_progress') throw new WorkbenchError('invalid', `${i.key} 正在进行中，不能归档`)
       i.archivedAt = archived ? now() : undefined
+      // a to-do hidden through 「归档」 on the to-do list must come back when the card is restored here
+      if (!archived && i.sourceRef) d.hiddenTodos = (d.hiddenTodos ?? []).filter((h) => !(h.source === i.sourceRef!.source && h.ref === i.sourceRef!.ref))
       if (archived) void this.releaseWorktree(i)
       return i
     })

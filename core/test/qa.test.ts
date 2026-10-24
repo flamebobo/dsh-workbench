@@ -106,3 +106,15 @@ test('Q1c a card is not flagged "gone from the source" while part of that source
   await wb.listTodos()
   assert.equal(wb.listIssues().find((i) => i.id === card.id)!.note, undefined)
 })
+
+test('Q6 un-archiving a card on the board also brings its to-do back (they must agree)', async () => {
+  const { wb } = setup()
+  await wb.listTodos()
+  const card = wb.listIssues().find((i) => i.sourceRef?.ref === 'BUG-4821')!
+  wb.archiveTodo('zentao', 'BUG-4821', true)
+  assert.equal((await wb.listTodos()).items.find((i) => i.ref === 'BUG-4821')!.archived, true)
+  wb.archiveIssue(card.id, false) // 「取消归档」 on the card
+  assert.equal(wb.listIssues().find((i) => i.id === card.id)!.archivedAt, undefined)
+  assert.equal((await wb.listTodos()).items.find((i) => i.ref === 'BUG-4821')!.archived, false)
+})
+
