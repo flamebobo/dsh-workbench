@@ -118,3 +118,15 @@ test('Q6 un-archiving a card on the board also brings its to-do back (they must 
   assert.equal((await wb.listTodos()).items.find((i) => i.ref === 'BUG-4821')!.archived, false)
 })
 
+test('Q7 a test run that was in flight when the Host restarted is closed as failed, so it can be run again', async () => {
+  const { wb, dir } = setup()
+  const { issue } = await wb.startWork({ item: bug })
+  wb.store.update((d) => { d.issues.find((x) => x.id === issue.id)!.checks = [{ id: 'c1', cmd: 'node --test', state: 'running', output: '', at: new Date().toISOString() }] })
+  const wb2 = new Workbench({ store: new Store(join(dir, 'workbench.json')), driver: new FakeDriver(), creds: async () => undefined })
+  const c = wb2.listIssues().find((x) => x.id === issue.id)!.checks![0]!
+  assert.equal(c.state, 'failed')
+  assert.match(c.output, /宿主重启/)
+  wb2.saveProject({ ...wb2.listProjects().find((p) => p.name.endsWith('payment-core'))!, testCmd: 'node -e "0"' })
+  await wb2.runChecks(issue.id) // not refused with 「测试正在运行」
+})
+

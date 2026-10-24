@@ -142,8 +142,11 @@ export class Workbench {
   /** Host restarted while a run was in flight: the event stream is gone, so don't leave the card spinning. */
   private reconcileOrphans() {
     const running = this.store.data.runs.filter((r) => r.status === 'running')
-    if (!running.length) return
+    const testing = this.store.data.issues.filter((i) => i.checks?.some((c) => c.state === 'running'))
+    if (!running.length && !testing.length) return
     this.store.update((d) => {
+      // a test run in flight when the Host stopped never reports back; leaving it "running" would refuse every re-run
+      for (const i of d.issues) for (const c of i.checks ?? []) if (c.state === 'running') { c.state = 'failed'; c.output = '宿主重启，这次测试被中断，请重新运行' }
       for (const r of d.runs.filter((x) => x.status === 'running')) {
         r.status = 'interrupted'; r.endedAt = now(); r.error = '宿主重启，会话事件已丢失'
         const issue = d.issues.find((i) => i.id === r.issueId)
