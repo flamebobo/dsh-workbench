@@ -895,6 +895,7 @@ var WB = (() => {
         if (start) {
           const r = await rpc("issue.start", { id, agentId });
           p.notify(`\u5DF2\u5F00\u5DE5\uFF1A${r.issue.key}\uFF0C\u4F1A\u8BDD\u5DF2\u521B\u5EFA`);
+          p.go("board");
         }
         await p.refresh();
         onClose();

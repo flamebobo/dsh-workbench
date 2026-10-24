@@ -185,6 +185,7 @@ export function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue
       if (start) {
         const r = await rpc<{ issue: Issue }>('issue.start', { id, agentId })
         p.notify(`已开工：${r.issue.key}，会话已创建`)
+        p.go('board') // from the to-do page too, like its own 开工 button
       }
       await p.refresh(); onClose()
     } catch (e) { p.notify((e as Error).message); await p.refresh() } finally { setBusy(false) }

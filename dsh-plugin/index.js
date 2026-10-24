@@ -385,7 +385,8 @@ function parseMergeRequests(list) {
     const full = m.references?.full ?? "";
     const project = full.includes("!") ? full.slice(0, full.lastIndexOf("!")) : `project ${m.project_id}`;
     return {
-      ref: `!${m.iid}`,
+      ref: full || `${m.project_id}!${m.iid}`,
+      // `!12` alone is only unique inside one project; the ref identifies the card
       source: "gitlab",
       title: `MR !${m.iid} \u4EE3\u7801\u8BC4\u5BA1\uFF1A${m.title}`,
       priority: "P1",
@@ -405,7 +406,7 @@ async function fetchGitlab(c) {
   const base = trimSlash(url);
   const headers = { "PRIVATE-TOKEN": token };
   const me = await getJson(c.fetch, `${base}/api/v4/user`, { headers });
-  const q = new URLSearchParams({ scope: "all", state: "opened", reviewer_username: me.username });
+  const q = new URLSearchParams({ scope: "all", state: "opened", reviewer_username: me.username, per_page: "100" });
   return parseMergeRequests(await getJson(c.fetch, `${base}/api/v4/merge_requests?${q}`, { headers }));
 }
 async function createMergeRequest(c, projectId, mr) {
@@ -936,7 +937,8 @@ function anonymousPayload(s, clientId, version, builtinAgents2) {
   };
 }
 var csvCell = (v) => {
-  const s = String(v ?? "");
+  let s = String(v ?? "");
+  if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
 };
 function exportRows(d) {
