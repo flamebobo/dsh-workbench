@@ -87,5 +87,22 @@ export const css = `
 .wb-conn { border: 1px solid var(--wb-bd); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; background: var(--wb-bg); }
 .wb-pick { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; }
 .wb-bld { font-size: 11px; margin-top: 4px; }
+.wb-pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; padding: 4px 20px 20px; }
+.wb-pcard { text-align: left; border: 1px solid var(--wb-bd); border-radius: 14px; background: var(--wb-l1); padding: 14px 16px; min-width: 0; }
+.wb-pcard:hover { border-color: var(--wb-fg3); background: var(--wb-hover); }
+.wb-pcard.add { display: flex; align-items: center; justify-content: center; min-height: 150px; border-style: dashed; color: var(--wb-fg3); background: none; }
+.wb-flag { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: var(--wb-l2); white-space: nowrap; margin-left: auto; }
+.wb-nums { display: flex; gap: 18px; margin-bottom: 10px; } .wb-nums div { display: flex; flex-direction: column; } .wb-nums b { font-size: 20px; line-height: 1.1; } .wb-nums span { font-size: 11px; color: var(--wb-fg3); }
+.wb-pdetail { padding: 14px 22px 28px; max-width: 1280px; }
+.wb-crumb { display: flex; align-items: center; gap: 8px; font-size: 12px; } .wb-crumb button { border: 0; background: none; color: var(--wb-fg2); padding: 0; } .wb-crumb button:hover { color: var(--wb-fg); }
+.wb-panel { background: var(--wb-l1); border-radius: 14px; padding: 14px 16px; min-width: 0; } .wb-panel h4 { margin: 0 0 8px; font-size: 13px; }
+.wb-ptop { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+.wb-pcols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+.wb-bigs { display: flex; } .wb-bigs div { flex: 1; text-align: center; display: flex; flex-direction: column; } .wb-bigs b { font-size: 30px; font-weight: 500; line-height: 1.2; } .wb-bigs span { font-size: 12px; color: var(--wb-fg3); }
+.wb-prow { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; border-bottom: 1px solid var(--wb-bd1); background: none; padding: 9px 4px; text-align: left; } .wb-prow:last-child { border-bottom: 0; } .wb-prow:hover { background: var(--wb-hover); }
+.wb-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (max-width: 900px) { .wb-ptop, .wb-pcols { grid-template-columns: 1fr; } }
+.wb-menu-h { padding: 4px 10px 8px; font-size: 12px; color: var(--wb-fg3); }
+.wb-dotx { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .wb-empty { padding: 40px; text-align: center; color: var(--wb-fg3); }
 `
