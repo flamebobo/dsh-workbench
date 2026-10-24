@@ -45,7 +45,7 @@ export function BuildModal({ p, onClose }: { p: PageProps; onClose: () => void }
         <div className="wb-field"><label>卡片（{picked.size}/{candidates.length}）</label>
           {candidates.length ? candidates.map((i) => (
             <label className="wb-pick" key={i.id}><input type="checkbox" checked={picked.has(i.id)} onChange={() => toggle(i)} />
-              <span className="wb-muted">{i.key}</span><span className="wb-grow wb-ellipsis">{i.title}</span>
+              <span className="wb-muted" style={{ marginRight: 6 }}>{i.key}</span><span className="wb-grow wb-ellipsis">{i.title}</span>
               <span className="wb-pill">{i.status === 'done' ? '已完成' : '待审核'}</span></label>
           )) : <div className="wb-muted">还没有待审核或已完成的卡片。</div>}</div>
         <div className="wb-field"><label>Jenkins Job（对应要验证的环境，可直接输入）</label>
