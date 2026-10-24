@@ -88,11 +88,11 @@ test('Q1 one Zentao product the account cannot read does not turn the whole sour
   assert.deepEqual(t.items.filter((i) => i.source === 'zentao').map((i) => i.ref), ['BUG-9'])
 })
 
-test('Q1b a source that fell back to demo data does not put the demo to-dos on the board as real cards', async () => {
+test('Q1b a source whose every read failed shows no rows and puts nothing on the board', async () => {
   const { wb } = setup(zentaoCreds, zentaoFetch([12, 5, 8, 9]))
   const t = await wb.listTodos()
-  assert.equal(t.sources.zentao.mode, 'fallback')
-  assert.ok(t.items.some((i) => i.ref === 'BUG-4821')) // still shown, with the red banner
+  assert.equal(t.sources.zentao.mode, 'error')
+  assert.equal(t.items.filter((i) => i.source === 'zentao').length, 0) // no demo rows standing in for the real list
   assert.equal(wb.listIssues().filter((i) => i.sourceRef?.source === 'zentao').length, 0)
 })
 
@@ -301,4 +301,16 @@ test('Q17 merge requests with the same number in two GitLab projects are two dif
   ])
   assert.deepEqual(items.map((i) => i.ref), ['team/a!12', 'team/b!12', '3!7'])
   assert.equal(new Set(items.map((i) => i.ref)).size, 3) // refs identify the card (one card per source ref), so they must not collide
+})
+
+test('F1 only a system that was never configured shows demo rows; a configured one that fails shows none, and the Jenkins job list the same', async () => {
+  const down = (async () => new Response('x', { status: 502 })) as typeof fetch
+  const { wb } = setup({ WORKBENCH_JENKINS_URL: 'http://j.test', WORKBENCH_JENKINS_USER: 'u', WORKBENCH_JENKINS_TOKEN: 't' }, down)
+  const t = await wb.listTodos()
+  assert.deepEqual([t.sources.jenkins.mode, t.items.filter((i) => i.source === 'jenkins').length], ['error', 0])
+  assert.equal(t.sources.zentao.mode, 'demo') // never configured: demo data, as before
+  assert.ok(t.items.some((i) => i.source === 'zentao'))
+  assert.equal(wb.listIssues().some((i) => i.sourceRef?.source === 'jenkins'), false)
+  const jobs = await wb.jenkinsJobs()
+  assert.deepEqual([jobs.mode, jobs.jobs.length], ['error', 0])
 })

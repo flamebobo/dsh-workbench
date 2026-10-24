@@ -55,7 +55,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
   useEffect(() => { setAgentId(undefined) }, [selected])
 
   if (!todos) return <div className="wb-empty" style={{ flex: 1 }}>正在拉取待办…</div>
-  const fallbacks = Object.entries(todos.sources).filter(([, s]) => s.mode === 'fallback')
+  const failed = Object.entries(todos.sources).filter(([, s]) => s.mode === 'error')
   const issue: Issue | undefined = sel?.issueId ? state.issues.find((i) => i.id === sel.issueId) : undefined
   // a manual card knows its project directly; connector items are matched by source ids / name
   const project = issue?.projectId ? state.projects.find((x) => x.id === issue.projectId) : sel && state.projects.find((x) =>
@@ -107,8 +107,9 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
   return (
     <>
       <div className="wb-main">
-        {fallbacks.map(([k, s]) => (
-          <div className="wb-banner err" key={k}>{SOURCE_LABEL[k as 'zentao']} 实时数据不可用，已降级为演示数据：{s.error}</div>
+        {failed.map(([k, s]) => (
+          <div className="wb-banner err wb-row" key={k}><span className="wb-grow">{SOURCE_LABEL[k as 'zentao']} 读取失败，这个来源的待办暂时显示为空：{s.error}</span>
+            <button className="wb-btn" onClick={() => p.go('settings')}>去设置</button></div>
         ))}
         {Object.entries(todos.sources).filter(([, s]) => s.mode === 'live' && s.error).map(([k, s]) => (
           <div className="wb-banner" key={k}>{SOURCE_LABEL[k as 'zentao']}：{s.error}</div>
@@ -124,8 +125,8 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
           <label className="wb-pick" style={{ padding: 0 }}><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />显示已归档{todos.items.some((r) => r.archived) ? `（${todos.items.filter((r) => r.archived).length}）` : ''}</label>
           <span className="wb-grow" />
           {(['zentao', 'gitlab', 'jenkins', 'sparkin'] as const).map((s) => (
-            <span key={s} className={`wb-pill ${todos.sources[s].mode === 'live' ? 'live' : 'demo'}`}>
-              {SOURCE_LABEL[s]} {todos.sources[s].mode === 'live' ? '实时' : '演示'}
+            <span key={s} className={`wb-pill ${todos.sources[s].mode === 'live' ? 'live' : todos.sources[s].mode === 'error' ? 'err' : 'demo'}`}>
+              {SOURCE_LABEL[s]} {todos.sources[s].mode === 'live' ? '实时' : todos.sources[s].mode === 'error' ? '读取失败' : '演示'}
             </span>
           ))}
           {p.todosAt && <span className="wb-muted" title="每分钟自动拉取">更新于 {p.todosAt.toLocaleTimeString('zh-CN', { hour12: false })}</span>}

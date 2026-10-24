@@ -21,6 +21,7 @@ export const css = `
 .wb-pill { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 10px; font-size: 11px; background: var(--wb-l2); color: var(--wb-fg2); white-space: nowrap; }
 .wb-pill.demo { background: color-mix(in srgb, var(--wb-amber) 18%, transparent); color: var(--wb-amber); }
 .wb-pill.live { background: color-mix(in srgb, var(--wb-green) 16%, transparent); color: var(--wb-green); }
+.wb-pill.err { background: color-mix(in srgb, var(--wb-red) 16%, transparent); color: var(--wb-red); }
 .wb-btn { border: 1px solid var(--wb-bd); background: var(--wb-bg); border-radius: 7px; padding: 5px 12px; }
 .wb-btn:hover { background: var(--wb-hover); }
 .wb-btn.primary { background: var(--wb-blue); border-color: var(--wb-blue); color: #fff; font-weight: 600; }

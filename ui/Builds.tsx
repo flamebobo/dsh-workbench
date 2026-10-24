@@ -10,7 +10,7 @@ export function BuildModal({ p, onClose }: { p: PageProps; onClose: () => void }
   const candidates = state.issues.filter((i) => i.status === 'in_review' || i.status === 'done')
   const [picked, setPicked] = useState<Set<string>>(new Set(candidates.filter((i) => i.status === 'in_review').map((i) => i.id)))
   const [job, setJob] = useState('')
-  const [jobs, setJobs] = useState<{ jobs: string[]; mode: 'live' | 'demo' | 'fallback'; error?: string }>()
+  const [jobs, setJobs] = useState<{ jobs: string[]; mode: 'live' | 'demo' | 'error'; error?: string }>()
   const [params, setParams] = useState('')
   const [busy, setBusy] = useState(false)
   useEffect(() => { void rpc<NonNullable<typeof jobs>>('jenkins.jobs').then(setJobs).catch((e) => p.notify((e as Error).message)) }, [])
@@ -40,7 +40,7 @@ export function BuildModal({ p, onClose }: { p: PageProps; onClose: () => void }
         <div className="wb-sub" style={{ margin: '4px 0 8px' }}>
           勾选这批已修复的卡片，选择对应环境的 Jenkins Job 构建一次，用来验证。
           {jobs?.mode === 'demo' && <span className="wb-pill demo" style={{ marginLeft: 6 }}>演示：Jenkins 未配置，构建为模拟</span>}
-          {jobs?.mode === 'fallback' && <span className="wb-pill demo" style={{ marginLeft: 6 }} title={jobs.error}>Jenkins 读取失败，显示演示 Job</span>}
+          {jobs?.mode === 'error' && <span className="wb-pill err" style={{ marginLeft: 6 }} title={jobs.error}>Jenkins Job 列表读取失败，可直接输入 Job 名：{jobs.error}</span>}
         </div>
         <div className="wb-field"><label>卡片（{picked.size}/{candidates.length}）</label>
           {candidates.length ? candidates.map((i) => (

@@ -33,13 +33,13 @@ test('sparkin tasks appear in 我的待办 (demo), start on their project, and p
   assert.equal(suggestTask({ ...issue, sparkinTaskId: undefined, sourceRef: { source: 'zentao', ref: 'BUG-1' } }, tasks)?.name, '缺陷修复') // other cards keep the heuristic
 })
 
-test('a live Sparkin failure falls back to demo data without touching the other systems', async () => {
+test('a live Sparkin failure shows no Sparkin rows (not demo ones) without touching the other systems', async () => {
   const { wb } = setup()
   ;(wb.sparkin as { mode: string }).mode = 'live'
   wb.sparkin.assigned = async () => { throw new Error('boom') }
   const t = await wb.listTodos()
-  assert.deepEqual([t.sources.sparkin.mode, t.sources.sparkin.error], ['fallback', 'boom'])
-  assert.ok(t.items.some((i) => i.source === 'sparkin'))
+  assert.deepEqual([t.sources.sparkin.mode, t.sources.sparkin.error], ['error', 'boom'])
+  assert.equal(t.items.filter((i) => i.source === 'sparkin').length, 0)
   assert.equal(t.sources.zentao.mode, 'demo')
 })
 

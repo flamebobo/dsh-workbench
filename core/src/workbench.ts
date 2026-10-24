@@ -27,8 +27,8 @@ import { normalizeSettings, type PluginSettings } from './settings.ts'
 
 export interface TodoResult {
   items: (WorkItem & { issueId?: string; issueStatus?: Status; archived?: boolean })[]
-  /** Per system: live data, demo fixtures, or demo fixtures after a live failure (with the error). */
-  sources: Record<'zentao' | 'gitlab' | 'jenkins' | 'sparkin', { mode: 'live' | 'demo' | 'fallback'; error?: string }>
+  /** Per system: live data, demo fixtures (never configured), or an error (configured but the read failed: no rows, with the reason). */
+  sources: Record<'zentao' | 'gitlab' | 'jenkins' | 'sparkin', { mode: 'live' | 'demo' | 'error'; error?: string }>
 }
 
 /** Something worth interrupting the user for. Kept in memory only; the page asks for what is new since the last id it saw. */
@@ -173,7 +173,9 @@ export class Workbench {
         if (items) { sources[name] = { mode: 'live', error: warnings.join('；') || undefined }; return items }
         sources[name] = { mode: 'demo' }
       } catch (e) {
-        sources[name] = { mode: 'fallback', error: String((e as Error).message ?? e) }
+        // configured but failing: show nothing rather than made-up rows next to the user's real work
+        sources[name] = { mode: 'error', error: String((e as Error).message ?? e) }
+        return []
       }
       return demo
     }
@@ -190,8 +192,7 @@ export class Workbench {
       statusText: '手工任务', description: i.description, acceptance: i.acceptance, related: i.related ?? [], due: i.due || undefined,
     }))
     const sorted = [...lists.flat(), ...manual].sort((a, b) => rank[a.priority] - rank[b.priority])
-    // demo rows shown because a live source failed are not real to-dos: they must not become cards
-    this.syncBoard(sorted.filter((w) => w.source === 'manual' || sources[w.source].mode !== 'fallback'), sources)
+    this.syncBoard(sorted.filter((w) => w.source === 'manual' || sources[w.source].mode !== 'error'), sources)
     const items = sorted.map((w) => {
       const issue = this.issueForSource(w.source, w.ref)
       const hidden = (this.store.data.hiddenTodos ?? []).some((h) => h.source === w.source && h.ref === w.ref)
@@ -616,13 +617,13 @@ export class Workbench {
 
   // ---------- Jenkins builds ----------
   /** Job names to build; the demo list is used until Jenkins is configured. */
-  async jenkinsJobs(): Promise<{ jobs: string[]; mode: 'live' | 'demo' | 'fallback'; error?: string }> {
+  async jenkinsJobs(): Promise<{ jobs: string[]; mode: 'live' | 'demo' | 'error'; error?: string }> {
     const fromProjects = this.store.data.projects.flatMap((p) => (p.jenkinsJob ? [p.jenkinsJob] : []))
     const demo = [...new Set([...fromProjects.flatMap((j) => [`${j}-test`, `${j}-staging`]), ...fromProjects])].sort()
     try {
       const live = await listJenkinsJobs(this.connectorCtx())
       if (live) return { jobs: live, mode: 'live' }
-    } catch (e) { return { jobs: demo, mode: 'fallback', error: String((e as Error).message ?? e) } }
+    } catch (e) { return { jobs: [], mode: 'error', error: String((e as Error).message ?? e) } }
     return { jobs: demo, mode: 'demo' }
   }
 

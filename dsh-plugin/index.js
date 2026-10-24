@@ -1345,7 +1345,8 @@ var Workbench = class {
         }
         sources[name] = { mode: "demo" };
       } catch (e) {
-        sources[name] = { mode: "fallback", error: String(e.message ?? e) };
+        sources[name] = { mode: "error", error: String(e.message ?? e) };
+        return [];
       }
       return demo;
     };
@@ -1370,7 +1371,7 @@ var Workbench = class {
       due: i.due || void 0
     }));
     const sorted = [...lists.flat(), ...manual].sort((a, b) => rank[a.priority] - rank[b.priority]);
-    this.syncBoard(sorted.filter((w) => w.source === "manual" || sources[w.source].mode !== "fallback"), sources);
+    this.syncBoard(sorted.filter((w) => w.source === "manual" || sources[w.source].mode !== "error"), sources);
     const items = sorted.map((w) => {
       const issue = this.issueForSource(w.source, w.ref);
       const hidden = (this.store.data.hiddenTodos ?? []).some((h) => h.source === w.source && h.ref === w.ref);
@@ -1815,7 +1816,7 @@ ${summary.slice(0, 1500)}`,
       const live = await listJenkinsJobs(this.connectorCtx());
       if (live) return { jobs: live, mode: "live" };
     } catch (e) {
-      return { jobs: demo, mode: "fallback", error: String(e.message ?? e) };
+      return { jobs: [], mode: "error", error: String(e.message ?? e) };
     }
     return { jobs: demo, mode: "demo" };
   }

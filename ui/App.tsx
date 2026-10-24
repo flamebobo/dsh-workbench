@@ -87,7 +87,7 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
   useEffect(() => { if (todos) void loadTodos() }, [sig])
 
   const waiting = state?.issues.filter((i) => !i.archivedAt && (i.status === 'in_review' || i.status === 'blocked')).length ?? 0
-  const demo = todos && Object.entries(todos.sources).filter(([, s]) => s.mode !== 'live')
+  const demo = todos && Object.entries(todos.sources).filter(([, s]) => s.mode === 'demo')
   const props = state && { state, refresh, notify, openSession, go, focusIssue, openGuide: () => setGuide(true) }
 
   return (
@@ -96,7 +96,7 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
       <div className="wb-head">
         <h2 className="wb-title">研发工作台</h2>
         <span className="wb-sub">{new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</span>
-        {demo && demo.length > 0 && <span className="wb-pill demo" style={{ cursor: 'pointer' }} onClick={() => go('settings')} title={demo.map(([k, s]) => `${k}: ${s.mode === 'demo' ? '未配置凭据' : s.error}`).join('\n')}>演示数据</span>}
+        {demo && demo.length > 0 && <span className="wb-pill demo" style={{ cursor: 'pointer' }} onClick={() => go('settings')} title={demo.map(([k]) => `${k}: 未配置凭据`).join('\n')}>演示数据</span>}
       </div>
       <div className="wb-tabs" role="tablist">
         {TABS.map(([k, label]) => (

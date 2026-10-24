@@ -112,7 +112,7 @@ test('todos: no credentials -> demo; started items carry their card id', async (
   assert.equal(t.items.find((x) => x.ref === 'BUG-4821')!.issueId, issue.id)
 })
 
-test('todos: live failure falls back to demo with the error, other systems stay live', async () => {
+test('todos: a configured system that fails shows nothing (never demo rows) with the error, other systems stay live', async () => {
   const fetchImpl = (async (url: string) => {
     if (String(url).includes('gitlab')) return new Response('nope', { status: 500 })
     return Response.json({ jobs: [] })
@@ -122,8 +122,9 @@ test('todos: live failure falls back to demo with the error, other systems stay 
     WORKBENCH_JENKINS_URL: 'https://jenkins.test', WORKBENCH_JENKINS_USER: 'u', WORKBENCH_JENKINS_TOKEN: 't',
   }, fetchImpl)
   const t = await wb.listTodos()
-  assert.equal(t.sources.gitlab.mode, 'fallback')
+  assert.equal(t.sources.gitlab.mode, 'error')
   assert.match(t.sources.gitlab.error!, /HTTP 500/)
+  assert.equal(t.items.filter((i) => i.source === 'gitlab').length, 0) // not the demo MRs
   assert.equal(t.sources.jenkins.mode, 'live')
   assert.equal(t.items.filter((i) => i.source === 'jenkins').length, 0)
 })
