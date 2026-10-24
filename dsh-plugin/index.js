@@ -1740,6 +1740,9 @@ ${summary.slice(0, 1500)}`,
   }
   saveSettings(patch) {
     const next = normalizeSettings({ ...this.store.data.settings, ...patch, defaultAgents: { ...this.settings().defaultAgents, ...patch.defaultAgents } });
+    for (const [k, label] of [["updateCheckUrl", "\u66F4\u65B0\u5730\u5740"], ["statsReportUrl", "\u4E0A\u62A5\u5730\u5740"]]) {
+      if (typeof patch[k] === "string" && patch[k].trim() && !next[k]) throw new WorkbenchError("invalid", `${label}\u5FC5\u987B\u4EE5 http:// \u6216 https:// \u5F00\u5934`);
+    }
     for (const [src, id] of Object.entries(next.defaultAgents)) if (!this.store.data.agents.some((a) => a.id === id)) throw new WorkbenchError("invalid", `\u9ED8\u8BA4\u667A\u80FD\u4F53\u300C${id}\u300D\uFF08${src}\uFF09\u4E0D\u5B58\u5728`);
     this.store.update((d) => {
       d.settings = next;
