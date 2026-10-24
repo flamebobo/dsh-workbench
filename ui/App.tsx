@@ -18,13 +18,14 @@ export interface PageProps {
   state: State
   refresh: () => Promise<void>
   notify: (msg: string) => void
-  openSession: (sessionId: string) => void
+  /** Jump to the card's agent session in the host; absent where the host has no way to (Codex). */
+  openSession?: (sessionId: string) => void
   go: (tab: Tab, issueId?: string) => void
   openGuide: () => void
   focusIssue?: string
 }
 
-export function App({ openSession }: { openSession: (id: string) => void }) {
+export function App({ openSession }: { openSession?: (id: string) => void }) {
   const [tab, setTab] = useState<Tab>('todos')
   const [state, setState] = useState<State>()
   const [todos, setTodos] = useState<TodoResult>()
@@ -75,7 +76,10 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
   useEffect(() => {
     void refresh(); void loadTodos()
     const id = setInterval(() => { void refresh() }, 2000)
-    return () => { clearInterval(id); clearTimeout(timer.current) }
+    // the Codex page also hears about changes as they happen (runtime_events), not only on the next poll
+    const changed = () => { void refresh() }
+    window.addEventListener('wb:changed', changed)
+    return () => { clearInterval(id); clearTimeout(timer.current); window.removeEventListener('wb:changed', changed) }
   }, [refresh, loadTodos])
 
   // auto-pull Zentao / GitLab / Jenkins; the interval is a plugin setting (默认每分钟)

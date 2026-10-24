@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ago, BUILD_LABEL, buildColor, rpc, STATUS_LABEL, type Issue, type Project, type Status } from './api.ts'
+import { ago, BUILD_LABEL, HOST_NAME, buildColor, rpc, STATUS_LABEL, type Issue, type Project, type Status } from './api.ts'
 import { SkillPicker } from './SkillPicker.tsx'
 import type { PageProps } from './App.tsx'
 
@@ -81,7 +81,7 @@ function Chips({ x, sparkin }: { x: Project; sparkin: { id: string; name: string
 function ProjectGrid({ p, sparkin, onOpen, onAdd }: { p: PageProps; sparkin: { id: string; name: string }[]; onOpen: (id: string) => void; onAdd: () => void }) {
   return (
     <>
-      <div className="wb-toolbar"><span className="wb-sub">每个项目对应一个工作目录（开工时作为 DSH 会话的 cwd），并关联 GitLab / 禅道 / Jenkins / Sparkin。点卡片查看概览。</span><span className="wb-grow" />
+      <div className="wb-toolbar"><span className="wb-sub">每个项目对应一个工作目录（开工时作为 {HOST_NAME} 会话的 cwd），并关联 GitLab / 禅道 / Jenkins / Sparkin。点卡片查看概览。</span><span className="wb-grow" />
         <button className="wb-btn primary" onClick={onAdd}>+ 添加项目</button></div>
       <div className="wb-pgrid">
         {p.state.projects.map((x) => {

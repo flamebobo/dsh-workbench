@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { notificationState, testNotification } from './notify.ts'
-import { rpc, type ConnectionView, type Issue, type PluginSettings } from './api.ts'
+import { HOST, rpc, type ConnectionView, type Issue, type PluginSettings } from './api.ts'
 import type { PageProps } from './App.tsx'
 
 const { useState, useEffect } = React
@@ -91,7 +91,7 @@ export function Settings(p: PageProps & { reloadTodos: () => Promise<void> }) {
             </div>
             {msg[cur.id] && <div className="wb-banner" style={{ margin: '12px 0 0', ...(msg[cur.id]!.ok ? { background: 'color-mix(in srgb, var(--wb-green) 12%, transparent)', borderColor: 'color-mix(in srgb, var(--wb-green) 35%, transparent)' } : { background: 'color-mix(in srgb, var(--wb-red) 10%, transparent)', borderColor: 'color-mix(in srgb, var(--wb-red) 35%, transparent)' }) }}>{msg[cur.id]!.text}</div>}
             <div className="wb-sub" style={{ marginTop: 22 }}>
-              账号、密码和 Token 保存在 DSH 的凭据库（<code>~/.dsh/.credentials.yaml</code>，仅本机用户可读），不会出现在页面、提示词或日志里；Token / 密码栏留空表示不修改。配置好后「我的待办」自动拉取真实数据，每分钟刷新一次。
+              账号、密码和 Token 保存在{HOST === 'codex' ? <> Codex 版数据目录的 <code>~/.workbench-codex/credentials.json</code>（仅本机用户可读）</> : <> DSH 的凭据库（<code>~/.dsh/.credentials.yaml</code>，仅本机用户可读）</>}，不会出现在页面、提示词或日志里；Token / 密码栏留空表示不修改。配置好后「我的待办」自动拉取真实数据，每分钟刷新一次。
             </div>
           </>
         ) : (
@@ -191,18 +191,25 @@ function General({ p }: { p: PageProps }) {
 
       <h4 className="wb-sec">关于与更新</h4>
       <div className="wb-sub" style={{ marginBottom: 6 }}>研发工作台 {p.state.version ?? '开发版'}　·　数据文件版本由插件自动升级，升级前会备份为 <code>workbench.json.v&lt;旧版本&gt;.bak</code></div>
-      <div className="wb-field"><label>更新地址</label>
-        <input className="wb-input" value={f.updateCheckUrl} onChange={(e) => set('updateCheckUrl', e.target.value)} placeholder='留空 = 不检查。返回 {"version":"0.3.0","url":"https://…/workbench-plugin-0.3.0.zip","notes":"…"}' />
-        <div className="wb-sub" style={{ marginTop: 3 }}>填写并保存后，每天检查一次，有新版本时在工作台顶部提示。</div></div>
-      <Update p={p} dirty={f.updateCheckUrl !== saved?.updateCheckUrl} />
+      {HOST === 'codex'
+        ? <div className="wb-sub" style={{ marginBottom: 8 }}>Codex 版通过插件市场更新：<code>codex plugin marketplace upgrade</code>，再重新打开工作台（本地服务会自动换成新版本）。</div>
+        : <>
+        <div className="wb-field"><label>更新地址</label>
+          <input className="wb-input" value={f.updateCheckUrl} onChange={(e) => set('updateCheckUrl', e.target.value)} placeholder='留空 = 不检查。返回 {"version":"0.3.0","url":"https://…/workbench-plugin-0.3.0.zip","notes":"…"}' />
+          <div className="wb-sub" style={{ marginTop: 3 }}>填写并保存后，每天检查一次，有新版本时在工作台顶部提示。</div></div>
+        <Update p={p} dirty={f.updateCheckUrl !== saved?.updateCheckUrl} />
+        </>}
 
       <SkillRoots f={f} set={set} example={p.state.exampleSkillRoot} saved={saved} />
 
+      {/* Codex shows the page in a sandboxed frame that only lives while it is open: no desktop notifications there */}
+      {HOST !== 'codex' && <>
       <h4 className="wb-sec">桌面通知</h4>
       {check('desktopNotify', '卡片需要你时弹桌面通知', '任务进入「待审核」「已阻塞」或禅道回写完成时提醒；你正在看工作台页面时不弹。点击通知会打开对应卡片')}
       <div className="wb-row" style={{ margin: '4px 0 8px' }}>
         <button className="wb-btn" onClick={() => { void testNotification().then((t) => { setPerm(notificationState()); p.notify(t) }) }}>授权并发送测试通知</button>
         <span className="wb-sub">系统通知权限：{{ granted: '已允许', denied: '已拒绝（到系统设置里允许）', default: '尚未询问', unsupported: '当前环境不支持' }[perm]}</span></div>
+      </>}
 
       <h4 className="wb-sec">统计与上报</h4>
       <div className="wb-field"><label>匿名统计上报地址</label>
@@ -235,7 +242,7 @@ function SkillRoots({ f, set, example, saved }: { f: PluginSettings; set: <K ext
       <h4 className="wb-sec">技能包</h4>
       <div className="wb-field"><label>技能包目录（每行一个；目录下每个技能是 <code>名称/SKILL.md</code>）</label>
         <textarea className="wb-textarea" style={{ minHeight: 64 }} value={f.skillRoots.join('\n')} onChange={(e) => set('skillRoots', e.target.value.split('\n'))} placeholder="例如公司规范技能包所在的目录，留空 = 不使用" />
-        <div className="wb-sub" style={{ marginTop: 3 }}>保存后这些技能会出现在 DSH 的技能列表里，并可在「项目 → 编辑 → 项目规范技能」里按项目挂载：该项目的任务开工时会自动加载。</div></div>
+        <div className="wb-sub" style={{ marginTop: 3 }}>{HOST === 'codex' ? '这些技能可在「智能体」和「项目 → 编辑 → 项目规范技能」里选用，开工时作为技能输入传给 Codex（Codex 自己的技能列表里看不到它们）。' : '保存后这些技能会出现在 DSH 的技能列表里，并可在「项目 → 编辑 → 项目规范技能」里按项目挂载：该项目的任务开工时会自动加载。'}</div></div>
       <div className="wb-row" style={{ margin: '4px 0 8px' }}>
         {example && !f.skillRoots.includes(example) && <button className="wb-btn" title={example} onClick={() => set('skillRoots', [...f.skillRoots.filter((x) => x.trim()), example])}>添加示例技能包</button>}
         <span className="wb-sub">{report ? (report.roots.length ? report.roots.map((r) => `${r.root}：${r.exists ? `${r.count} 个技能` : '目录不存在'}`).join('；') : '尚未配置') : ''}</span></div>

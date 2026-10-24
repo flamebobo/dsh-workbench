@@ -223,7 +223,9 @@ export function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue
       <div className="wb-modal" role="dialog" aria-label={issue?.key ?? '新建任务'}>
         <div className="wb-row"><span className="wb-sub">{issue ? `${issue.key}${issue.sourceRef ? ` · ${issue.sourceRef.source} ${issue.sourceRef.ref}` : ' · 手工任务'}` : '新建任务'}</span><span className="wb-grow" />
           {issue && issue.status === 'in_progress' && state.runs.some((r) => r.issueId === issue.id && r.status === 'running') && <button className="wb-btn danger" disabled={stoppingNow} onClick={() => { void stopCard(issue, p, setStoppingNow) }}>{stoppingNow ? '停止中…' : '停止'}</button>}
-          {issue?.sessionId && <button className="wb-btn" onClick={() => p.openSession(issue.sessionId!)}>打开关联会话 ↗</button>}
+          {issue?.sessionId && (p.openSession
+            ? <button className="wb-btn" onClick={() => p.openSession!(issue.sessionId!)}>打开关联会话 ↗</button>
+            : <span className="wb-sub" title="Codex 线程 ID（工作台起的线程不会出现在当前对话里）">线程 {issue.sessionId.slice(0, 8)}</span>)}
           <button className="wb-btn" aria-label="关闭" onClick={onClose}>✕</button></div>
         <div className="wb-field"><label>标题</label><input className="wb-input" autoFocus={!issue} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例如：补充对账脚本的幂等校验" /></div>
         <div className="wb-field"><label>任务描述</label>

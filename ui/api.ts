@@ -11,13 +11,41 @@ export class RpcError extends Error {
   issueId?: string
 }
 
+/** Which host the page was built for (scripts/build.mjs): the product logic is the same, a few host features differ. */
+declare const __WB_HOST__: 'dsh' | 'codex' | undefined
+export const HOST: 'dsh' | 'codex' = typeof __WB_HOST__ === 'string' ? __WB_HOST__ : 'dsh'
+export const HOST_NAME = HOST === 'codex' ? 'Codex' : 'DSH'
+
+/** How the page reaches its backend: DSH = a Fetch route on the Host, Codex = MCP tool calls through the host's postMessage bridge. */
+export interface Transport {
+  rpc(endpoint: string, payload: unknown): Promise<{ ok: boolean; value?: unknown; error?: string; code?: string; issueId?: string }>
+  upload(file: File): Promise<{ ok: boolean; value?: unknown; error?: string }>
+}
+
 /** Page -> Host: one owner-only Fetch route (see docs/NOTES.md for why not rpc.handle). Document-relative on purpose. */
+const fetchTransport: Transport = {
+  async rpc(endpoint, payload) {
+    const res = await fetch('api/workbench.rpc', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint, payload }),
+    })
+    if (!res.ok) throw new RpcError(`Host 接口不可用（HTTP ${res.status}），请确认插件已加载`)
+    return await res.json()
+  },
+  // Raw bytes to the Host; the name travels in a header.
+  async upload(file) {
+    const res = await fetch('api/workbench.upload', {
+      method: 'POST', body: file,
+      headers: { 'x-wb-name': encodeURIComponent(file.name), 'content-type': file.type || 'application/octet-stream' },
+    })
+    if (!res.ok) throw new RpcError(`上传失败（HTTP ${res.status}）`)
+    return await res.json()
+  },
+}
+let transport = fetchTransport
+export function setTransport(t: Transport) { transport = t }
+
 export async function rpc<T>(endpoint: string, payload: unknown = {}): Promise<T> {
-  const res = await fetch('api/workbench.rpc', {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint, payload }),
-  })
-  if (!res.ok) throw new RpcError(`Host 接口不可用（HTTP ${res.status}），请确认插件已加载`)
-  const j = await res.json()
+  const j = await transport.rpc(endpoint, payload)
   if (!j.ok) throw Object.assign(new RpcError(j.error), { code: j.code, issueId: j.issueId })
   return j.value as T
 }
@@ -37,20 +65,15 @@ export function ago(iso: string): string {
   return `${Math.floor(s / 86400)} 天前`
 }
 
-/** Upload one file's raw bytes to the Host; the returned reference is what the task keeps (the name travels in a header). */
+/** Upload one file to the Host; the returned reference is what the task keeps. */
 export async function uploadFile(file: File): Promise<Attachment> {
-  const res = await fetch('api/workbench.upload', {
-    method: 'POST', body: file,
-    headers: { 'x-wb-name': encodeURIComponent(file.name), 'content-type': file.type || 'application/octet-stream' },
-  })
-  if (!res.ok) throw new RpcError(`上传失败（HTTP ${res.status}）`)
-  const j = await res.json()
+  const j = await transport.upload(file)
   if (!j.ok) throw new RpcError(j.error)
   return j.value as Attachment
 }
 
-/** DSH composer commands that can open a task (a leading `/plan` or `/goal` in the description). */
-export const COMMANDS: { id: 'plan' | 'goal'; label: string; desc: string }[] = [
+/** DSH composer commands that can open a task (a leading `/plan` or `/goal` in the description). Codex has no such channel. */
+export const COMMANDS: { id: 'plan' | 'goal'; label: string; desc: string }[] = HOST === 'codex' ? [] : [
   { id: 'goal', label: '目标', desc: '设置或查看长期任务目标' },
   { id: 'plan', label: '计划', desc: '进入或退出计划模式' },
 ]

@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { rpc, type AgentProfile, type ModelInfo } from './api.ts'
+import { HOST, HOST_NAME, rpc, type AgentProfile, type ModelInfo } from './api.ts'
 import { SkillPicker } from './SkillPicker.tsx'
 import type { PageProps } from './App.tsx'
 
@@ -24,7 +24,7 @@ export function Agents(p: PageProps) {
     const agent = { ...f, id: cur ? cur.id : `agent-${Date.now().toString(36)}` }
     try {
       const saved = await rpc<AgentProfile>('agent.save', agent)
-      await p.refresh(); setId(saved.id); p.notify(`已保存「${saved.name}」，并已注册为 DSH 智能体预设（工作台 · ${saved.name}）`)
+      await p.refresh(); setId(saved.id); p.notify(HOST === 'codex' ? `已保存「${saved.name}」，开工时作为开发者指令传给 Codex` : `已保存「${saved.name}」，并已注册为 DSH 智能体预设（工作台 · ${saved.name}）`)
     } catch (e) { p.notify((e as Error).message) }
   }
 
@@ -48,7 +48,7 @@ export function Agents(p: PageProps) {
               const m = models.find((x) => x.id === (e.target.value || defaultModel))
               setF({ ...f, model: e.target.value || undefined, effort: m?.efforts?.some((x) => x.id === f.effort) ? f.effort : undefined })
             }}>
-              <option value="">跟随 DSH 默认模型{defaultModel ? `（${defaultModel}）` : ''}</option>
+              <option value="">跟随 {HOST_NAME} 默认模型{defaultModel ? `（${defaultModel}）` : ''}</option>
               {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select></div>
           <div className="wb-field wb-grow"><label>模型强度（推理等级）</label>
@@ -60,7 +60,7 @@ export function Agents(p: PageProps) {
         <SkillPicker label="关联技能（多选；开工时在首条消息里用 /技能名 显式指定，智能体会先加载它们）" value={f.skills ?? []} onChange={(skills) => setF({ ...f, skills })} />
         <div className="wb-field"><label>系统指令</label><textarea className="wb-textarea" style={{ minHeight: 220 }} value={f.instructions} onChange={(e) => setF({ ...f, instructions: e.target.value })} /></div>
         <div className="wb-row"><button className="wb-btn primary" onClick={() => { void save() }}>保存</button>
-          <span className="wb-muted">保存后注册为 DSH 智能体预设，开工时按卡片指派的智能体使用。</span></div>
+          <span className="wb-muted">{HOST === 'codex' ? '开工时按卡片指派的智能体使用：模型和指令随 Codex 线程传入，不改 ~/.codex/config.toml。' : '保存后注册为 DSH 智能体预设，开工时按卡片指派的智能体使用。'}</span></div>
       </div>
     </div>
   )
