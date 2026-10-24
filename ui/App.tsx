@@ -6,6 +6,7 @@ import { Board } from './Board.tsx'
 import { Agents } from './Agents.tsx'
 import { Projects } from './Projects.tsx'
 import { Settings } from './Settings.tsx'
+import { Onboarding } from './Onboarding.tsx'
 
 const { useState, useEffect, useCallback, useRef } = React
 export type Tab = 'todos' | 'board' | 'agents' | 'projects' | 'settings'
@@ -18,6 +19,7 @@ export interface PageProps {
   notify: (msg: string) => void
   openSession: (sessionId: string) => void
   go: (tab: Tab, issueId?: string) => void
+  openGuide: () => void
   focusIssue?: string
 }
 
@@ -29,6 +31,8 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
   const [error, setError] = useState<string>()
   const [toast, setToast] = useState<string>()
   const [focusIssue, setFocusIssue] = useState<string>()
+  const [guide, setGuide] = useState(false)
+  const [guideDismissed, setGuideDismissed] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const refresh = useCallback(async () => {
@@ -62,7 +66,7 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
 
   const waiting = state?.issues.filter((i) => !i.archivedAt && (i.status === 'in_review' || i.status === 'blocked')).length ?? 0
   const demo = todos && Object.entries(todos.sources).filter(([, s]) => s.mode !== 'live')
-  const props = state && { state, refresh, notify, openSession, go, focusIssue }
+  const props = state && { state, refresh, notify, openSession, go, focusIssue, openGuide: () => setGuide(true) }
 
   return (
     <div className="wb" style={{ position: 'relative' }}>
@@ -89,6 +93,7 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
           </>
         )}
       </div>
+      {props && (guide || (state.settings?.onboarded === false && !guideDismissed)) && <Onboarding p={props} onClose={() => { setGuide(false); setGuideDismissed(true) }} />}
       {toast && <div className="wb-toast" role="status">{toast}</div>}
     </div>
   )

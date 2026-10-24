@@ -27,6 +27,8 @@ export interface PluginSettings {
   autoDoneOnPass: boolean
   /** Finished Zentao bugs: ask with a comment draft first, or resolve them in Zentao straight away. */
   zentaoWriteBack: 'confirm' | 'auto'
+  /** The first-run guide has been completed or skipped. */
+  onboarded: boolean
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -34,7 +36,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   permissionPreset: 'workspace-write',
   defaultAgents: { zentao: 'fullstack', gitlab: 'reviewer', jenkins: 'build-fixer', sparkin: 'fullstack', manual: 'fullstack' },
   isolateByDefault: true, branchPrefix: 'wb/', autoTestOnReview: true, testTimeoutSeconds: 600,
-  autoDoneOnPass: true, zentaoWriteBack: 'confirm',
+  autoDoneOnPass: true, zentaoWriteBack: 'confirm', onboarded: false,
 }
 
 const num = (v: unknown, lo: number, hi: number, fallback: number, step = 1) => {
@@ -63,5 +65,6 @@ export function normalizeSettings(input: Partial<PluginSettings> | undefined): P
     testTimeoutSeconds: num(i.testTimeoutSeconds, 10, 3600, d.testTimeoutSeconds),
     autoDoneOnPass: typeof i.autoDoneOnPass === 'boolean' ? i.autoDoneOnPass : d.autoDoneOnPass,
     zentaoWriteBack: i.zentaoWriteBack === 'auto' ? 'auto' : 'confirm',
+    onboarded: i.onboarded === true,
   }
 }

@@ -55,6 +55,9 @@ export function apply(ctx: Ctx) {
       case 'todos.archive': return wb.archiveTodo(p.source, p.ref, !!p.archived)
       case 'issue.writeback.draft': return { ...(await wb.writeBackDraft(p.id)), allowed: wb.canWriteBack(p.id) }
       case 'issue.writeback': return await wb.writeBackZentao(p.id, p.comment) // outward-facing: only from an explicit click
+      case 'onboarding.roots': return wb.onboardingRoots()
+      case 'onboarding.scan': return await wb.scanRepos(Array.isArray(p.roots) ? p.roots.map(String) : [])
+      case 'onboarding.import': return wb.importRepos(Array.isArray(p.items) ? p.items : [])
       case 'sparkin.info': return await wb.sparkinInfo()
       case 'timesheet.report': return await wb.reportTimesheet({ date: p.date, entries: p.entries ?? [] })
       case 'issue.move': return wb.moveIssue(p.id, p.status as Status, p.beforeId, 'human') // only the UI (a human) calls this

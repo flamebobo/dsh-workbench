@@ -72,3 +72,6 @@ export interface ModelInfo { id: string; name: string; efforts?: { id: string; n
 export interface SkillInfo { name: string; description: string; source: string }
 export interface FileChange { path: string; status: string; additions: number; deletions: number; patch: string }
 export interface Changes { files: FileChange[]; truncated: boolean; branch?: string; base?: string; isolated: boolean }
+
+export interface RepoCandidate { path: string; name: string; remote?: string; gitlabPath?: string; gitlabProjectId?: number; testCmd?: string; known: boolean }
+export interface ScanResult { repos: RepoCandidate[]; gitlab: 'matched' | 'not_configured' | 'error'; error?: string }

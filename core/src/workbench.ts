@@ -14,6 +14,7 @@ import { fetchZentao, resolveBug } from './connectors/zentao.ts'
 import { Store } from './store.ts'
 import { fuzzy, listFiles, mentionedFiles } from './files.ts'
 import * as g from './git.ts'
+import { describeRepo, findRepos, parseRemote, suggestRoots, type RepoCandidate } from './onboarding.ts'
 import { DemoSparkin, suggestTask, type SparkinClient } from './sparkin.ts'
 import type { AgentProfile, Attachment, Build, BuildState, Check, CommandName, Data, Issue, Priority, Project, Run, Source, Status, WorkItem } from './types.ts'
 import { STATUSES } from './types.ts'
@@ -1021,6 +1022,44 @@ export class Workbench {
       initDemoRepo(p.cwd)
       if (p.name.endsWith('payment-core') && p.testCmd === undefined) this.saveProject({ ...p, testCmd: 'node --test' })
     }
+  }
+
+  // ---------- first-run guide ----------
+  onboardingRoots() { return suggestRoots() }
+
+  /**
+   * Find git repositories under `roots` and, where GitLab is configured and the remote points at it, look up the GitLab project id
+   * from the remote path. Lookups that fail leave the repo unmatched; the scan itself never fails because of GitLab.
+   */
+  async scanRepos(roots: string[]): Promise<{ repos: RepoCandidate[]; gitlab: 'matched' | 'not_configured' | 'error'; error?: string }> {
+    const known = new Set(this.store.data.projects.map((p) => p.cwd))
+    const repos = await Promise.all((await findRepos(roots)).map((d) => describeRepo(d, known)))
+    const [url, token] = await Promise.all(['WORKBENCH_GITLAB_URL', 'WORKBENCH_GITLAB_TOKEN'].map((n) => this.creds(n)))
+    if (!url || !token) return { repos, gitlab: 'not_configured' }
+    const base = url.replace(/\/+$/, '')
+    let host: string
+    try { host = new URL(base).hostname } catch { return { repos, gitlab: 'error', error: 'GitLab 地址无效' } }
+    let error: string | undefined
+    await Promise.all(repos.map(async (r) => {
+      const parsed = r.remote ? parseRemote(r.remote) : undefined
+      if (!parsed || parsed.host !== host) return
+      r.gitlabPath = parsed.path
+      try {
+        const res = await this.fetch(`${base}/api/v4/projects/${encodeURIComponent(parsed.path)}`, { headers: { 'PRIVATE-TOKEN': token }, signal: AbortSignal.timeout(8000) })
+        if (res.ok) r.gitlabProjectId = ((await res.json()) as { id: number }).id
+        else error ??= `GitLab 查询 ${parsed.path} 返回 HTTP ${res.status}`
+      } catch (e) { error ??= String((e as Error).message ?? e) }
+    }))
+    return { repos, gitlab: error ? 'error' : 'matched', error }
+  }
+
+  /** Create projects for the chosen repositories (skipping directories that already are one). Returns what was created. */
+  importRepos(items: { path: string; name?: string; gitlabProjectId?: number; testCmd?: string }[]): Project[] {
+    const have = new Set(this.store.data.projects.map((p) => p.cwd))
+    return items.filter((i) => !have.has(i.path)).map((i) => this.saveProject({
+      name: i.name?.trim() || i.path.split(/[\\/]/).filter(Boolean).at(-1)!, cwd: i.path,
+      gitlabProjectId: i.gitlabProjectId, testCmd: i.testCmd || undefined,
+    }))
   }
 
   deleteProject(id: string) { this.store.update((d) => { d.projects = d.projects.filter((p) => p.id !== id) }) }

@@ -173,6 +173,7 @@ function General({ p }: { p: PageProps }) {
 
       <div className="wb-row" style={{ marginTop: 18 }}>
         <button className="wb-btn primary" onClick={() => { void save() }}>保存</button>
+        <button className="wb-btn" title="重新打开首次使用引导：扫描本机仓库并创建项目" onClick={p.openGuide}>重新运行引导</button>
         <button className="wb-btn" onClick={() => { setF(saved); setMsg(undefined) }}>还原</button>
         {msg && <span style={{ color: msg.startsWith('已保存') ? 'var(--wb-green)' : 'var(--wb-red)' }}>{msg}</span>}
       </div>
