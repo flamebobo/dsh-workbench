@@ -3614,14 +3614,25 @@ async function healthy(dir2) {
     return void 0;
   }
 }
+async function stopProcess(pid) {
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  for (let i = 0; i < 100; i++) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return;
+    }
+    await sleep(50);
+  }
+}
 async function ensureServe(o) {
   let cur = await healthy(o.dir);
   if (cur && cur.version !== o.version) {
-    try {
-      process.kill(cur.info.pid, "SIGTERM");
-    } catch {
-    }
-    for (let i = 0; i < 50 && await healthy(o.dir); i++) await sleep(100);
+    await stopProcess(cur.info.pid);
     cur = void 0;
   }
   if (cur) return cur.info;
@@ -3648,8 +3659,7 @@ async function ensureServe(o) {
 async function stopServe(dir2) {
   const cur = await healthy(dir2);
   if (!cur) return false;
-  process.kill(cur.info.pid, "SIGTERM");
-  for (let i = 0; i < 50 && await healthy(dir2); i++) await sleep(100);
+  await stopProcess(cur.info.pid);
   return true;
 }
 var codexDataDir, sleep;

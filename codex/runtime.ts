@@ -73,6 +73,15 @@ async function healthy(dir: string): Promise<{ info: ServeInfo; version: string 
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+/** Ask a service to stop and wait until its process is gone: it releases the data-dir lock only after its server has closed. */
+async function stopProcess(pid: number) {
+  try { process.kill(pid, 'SIGTERM') } catch { return }
+  for (let i = 0; i < 100; i++) {
+    try { process.kill(pid, 0) } catch { return }
+    await sleep(50)
+  }
+}
+
 /**
  * The running service, started when there is none (the MCP process comes and goes with Codex sessions; the service stays). A service
  * left over from an older plugin version is stopped and replaced, so an update takes effect the next time the board opens.
@@ -80,8 +89,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 export async function ensureServe(o: { dir: string; version: string; entry: string[]; timeoutMs?: number }): Promise<ServeInfo> {
   let cur = await healthy(o.dir)
   if (cur && cur.version !== o.version) {
-    try { process.kill(cur.info.pid, 'SIGTERM') } catch { /* already gone */ }
-    for (let i = 0; i < 50 && (await healthy(o.dir)); i++) await sleep(100)
+    await stopProcess(cur.info.pid)
     cur = undefined
   }
   if (cur) return cur.info
@@ -104,7 +112,6 @@ export async function ensureServe(o: { dir: string; version: string; entry: stri
 export async function stopServe(dir: string) {
   const cur = await healthy(dir)
   if (!cur) return false
-  process.kill(cur.info.pid, 'SIGTERM')
-  for (let i = 0; i < 50 && (await healthy(dir)); i++) await sleep(100)
+  await stopProcess(cur.info.pid)
   return true
 }
