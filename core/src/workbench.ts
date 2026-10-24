@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -5,17 +6,19 @@ import { join } from 'node:path'
 import type { AgentDriver, DriverEvent } from './driver.ts'
 import { paymentCoreFiles } from '../fixtures/demo-repo.ts'
 import { demoGitlab, demoJenkins, demoZentao } from '../fixtures/demo.ts'
-import { fetchGitlab } from './connectors/gitlab.ts'
+import { createMergeRequest, fetchGitlab } from './connectors/gitlab.ts'
 import { fetchJenkins, jenkinsBuildState, listJenkinsJobs, triggerJenkinsBuild } from './connectors/jenkins.ts'
 import { CONNECTIONS, testConnection, type SystemId } from './connectors/connections.ts'
 import type { ConnectorContext, Creds, FetchLike } from './connectors/http.ts'
 import { fetchZentao } from './connectors/zentao.ts'
 import { Store } from './store.ts'
 import { fuzzy, listFiles, mentionedFiles } from './files.ts'
+import * as g from './git.ts'
 import { DemoSparkin, suggestTask, type SparkinClient } from './sparkin.ts'
-import type { AgentProfile, Attachment, Build, BuildState, CommandName, Data, Issue, Priority, Project, Run, Source, Status, WorkItem } from './types.ts'
+import type { AgentProfile, Attachment, Build, BuildState, Check, CommandName, Data, Issue, Priority, Project, Run, Source, Status, WorkItem } from './types.ts'
 import { STATUSES } from './types.ts'
 import { agentPersona, builtinAgents } from './agents.ts'
+import { normalizeSettings, type PluginSettings } from './settings.ts'
 
 export interface TodoResult {
   items: (WorkItem & { issueId?: string; issueStatus?: Status; archived?: boolean })[]
@@ -47,8 +50,6 @@ function place(d: Data, issue: Issue, status: Status, beforeId?: string) {
 
 const cleanLines = (l?: string[]) => (l ?? []).map((x) => x.trim()).filter(Boolean)
 const COMMANDS: CommandName[] = ['plan', 'goal']
-const AUTO_CONCURRENCY = 1 // one agent at a time: the queue runs in the order you set
-const MAX_UPLOAD = 25 * 1024 * 1024
 const ACTIVE: Status[] = ['todo', 'in_progress', 'in_review', 'blocked', 'backlog']
 
 export interface WorkbenchOptions {
@@ -170,7 +171,7 @@ export class Workbench {
     )
   }
 
-  buildPrompt(i: Pick<Issue, 'title' | 'description' | 'acceptance' | 'sourceRef' | 'attachments'>, w?: WorkItem, files: string[] = [], agent?: Pick<AgentProfile, 'name' | 'description'>, predecessors: { key: string; title: string; summary?: string }[] = []): string {
+  buildPrompt(i: Pick<Issue, 'title' | 'description' | 'acceptance' | 'sourceRef' | 'attachments'>, w?: WorkItem, files: string[] = [], agent?: Pick<AgentProfile, 'name' | 'description' | 'skills'>, predecessors: { key: string; title: string; summary?: string }[] = []): string {
     const lines = [`# 任务：${i.title}`]
     if (agent) lines.push(`指派给你的角色：${agent.name}（${agent.description}）`)
     if (i.sourceRef) lines.push(`来源：${i.sourceRef.source} ${i.sourceRef.ref}${w?.url ? `（${w.url}）` : ''}`)
@@ -178,6 +179,7 @@ export class Workbench {
     lines.push('', '## 背景', i.description || '（无）')
     lines.push('', '## 验收标准', ...(i.acceptance.length ? i.acceptance.map((a, n) => `${n + 1}. ${a}`) : ['（未给出，请先与我确认再动手）']))
     if (w?.related.length) lines.push('', '## 关联信息', ...w.related.map((r) => `- ${r.label}${r.detail ? `：${r.detail}` : ''}`))
+    if (agent?.skills?.length) lines.push('', '## 指定技能', `请按这些技能的说明工作：${agent.skills.map((k) => `/${k}`).join(' ')}`)
     for (const p of predecessors) lines.push('', `## 前置任务 ${p.key} ${p.title}`, p.summary ? `它的结论（供你承接）：\n${p.summary}` : '（它没有留下文字结论，请先查看相关改动。）')
     if (files.length) lines.push('', '## 引用的项目文件（相对工作目录，请先阅读）', ...files.map((f) => `- ${f}`))
     if (i.attachments?.length) lines.push('', '## 附件（已随本消息附上）', ...i.attachments.map((a) => `- ${a.name}`))
@@ -190,7 +192,7 @@ export class Workbench {
     const { item } = input
     const existing = this.issueForSource(item.source, item.ref)
     if (existing) throw new WorkbenchError('duplicate', `${item.ref} 已经开过卡片（${existing.key}）`, existing.id)
-    const agent = this.agent(input.agentId ?? defaultAgentFor(item))
+    const agent = this.agent(input.agentId ?? this.settings().defaultAgents[item.source] ?? defaultAgentFor(item))
     const project = this.resolveProject(item)
     if (!project) throw new WorkbenchError('invalid', `「${item.project}」没有对应的项目工作目录，请先在「项目」页添加`)
     const issue = this.store.update((d) => {
@@ -226,6 +228,34 @@ export class Workbench {
     })
   }
 
+  /**
+   * Where the agent works. A git project gets its own branch + worktree per task (so tasks never trample each other and the
+   * diff is exactly this task's); a non-git or opted-out project is used in place. Failing to isolate fails the start loudly.
+   */
+  private async workDir(issueId: string, project: Project): Promise<string> {
+    const issue = this.store.data.issues.find((i) => i.id === issueId)!
+    if (issue.worktree && existsSync(issue.worktree)) return issue.worktree
+    const s = this.settings()
+    if (!(project.isolate ?? s.isolateByDefault) || !(await g.isGitRepo(project.cwd))) return project.cwd
+    const base = project.baseBranch?.trim() || await g.defaultBase(project.cwd)
+    const baseRef = (await g.branchExists(project.cwd, base)) ? base : `origin/${base}`
+    const branch = issue.branch ?? g.branchName(s.branchPrefix, issue.key, issue.title)
+    const path = join(dirname(this.store.path), 'worktrees', project.id, issue.key) // next to the data file, never a global location
+    mkdirSync(dirname(path), { recursive: true })
+    try { await g.addWorktree(project.cwd, branch, path, baseRef) } catch (e) {
+      throw new Error(`创建任务分支「${branch}」失败：${(e as Error).message}（可在项目里关闭「分支隔离」直接在项目目录运行）`)
+    }
+    const baseSha = (await g.git(project.cwd, ['merge-base', baseRef, branch])).trim()
+    this.store.update((d) => { Object.assign(d.issues.find((i) => i.id === issueId)!, { branch, worktree: path, baseBranch: base, baseSha }) })
+    return path
+  }
+
+  /** Remove the task's checkout when nothing uncommitted would be lost; the branch stays. */
+  private async releaseWorktree(issue: Issue) {
+    const project = this.store.data.projects.find((p) => p.id === issue.projectId)
+    if (issue.worktree && project && existsSync(issue.worktree)) await g.removeWorktree(project.cwd, issue.worktree)
+  }
+
   private async launch(issueId: string, item?: WorkItem): Promise<{ issue: Issue; run: Run }> {
     const before = this.store.data.issues.find((i) => i.id === issueId)!
     const agent = this.agent(before.agentId)
@@ -242,12 +272,13 @@ export class Workbench {
     })
     const issue = this.store.data.issues.find((i) => i.id === issueId)!
     try {
+      const cwd = await this.workDir(issue.id, project)
       const { sessionId } = await this.driver.start({
-        runId: run.id, cwd: project.cwd, title: `${issue.key} ${issue.title}`,
-        prompt: this.buildPrompt(issue, item, mentionedFiles(project.cwd, issue.description), agent, this.predecessorsOf(issue.id)),
+        runId: run.id, cwd, title: `${issue.key} ${issue.title}`,
+        prompt: this.buildPrompt(issue, item, mentionedFiles(cwd, issue.description), agent, this.predecessorsOf(issue.id)),
         command: issue.command,
         attachments: (issue.attachments ?? []).map((a) => ({ name: a.name, mediaType: a.mediaType, path: this.uploadPath(a) })),
-        profile: { presetId: agent.id, model: agent.model, instructions: agentPersona(agent) },
+        profile: { presetId: agent.id, model: agent.model, effort: agent.effort, skills: agent.skills, instructions: agentPersona(agent) },
       })
       return this.store.update((d) => {
         d.issues.find((i) => i.id === issueId)!.sessionId = sessionId
@@ -284,17 +315,34 @@ export class Workbench {
   private finishRun(runId: string, status: 'completed' | 'interrupted' | 'failed', finalText?: string, error?: string) {
     const run = this.store.data.runs.find((r) => r.id === runId)
     if (!run || run.status !== 'running') return
+    let autoTest: string | undefined
     this.store.update((d) => {
       const r = d.runs.find((x) => x.id === runId)!
       r.status = status; r.endedAt = now(); r.finalText = finalText; r.error = error
       const issue = d.issues.find((i) => i.id === r.issueId)
       if (issue && issue.status === 'in_review' && status === 'completed') issue.note = undefined
       if (issue && issue.status === 'in_progress') {
+        if (status === 'completed') autoTest = issue.id
         place(d, issue, status === 'completed' ? 'in_review' : 'blocked')
         issue.note = status === 'completed' ? undefined : error ?? (status === 'interrupted' ? '会话被中断' : '会话出错')
         issue.updatedAt = now()
       }
     })
+    if (autoTest && this.settings().autoTestOnReview) {
+      const iss = this.store.data.issues.find((i) => i.id === autoTest)
+      if (this.store.data.projects.find((p) => p.id === iss?.projectId)?.testCmd?.trim()) void this.runChecks(autoTest).catch(() => {})
+    }
+  }
+
+  // ---------- plugin settings ----------
+  settings(): PluginSettings { return normalizeSettings(this.store.data.settings) }
+
+  saveSettings(patch: Partial<PluginSettings>): PluginSettings {
+    const next = normalizeSettings({ ...this.store.data.settings, ...patch, defaultAgents: { ...this.settings().defaultAgents, ...patch.defaultAgents } })
+    for (const [src, id] of Object.entries(next.defaultAgents)) if (!this.store.data.agents.some((a) => a.id === id)) throw new WorkbenchError('invalid', `默认智能体「${id}」（${src}）不存在`)
+    this.store.update((d) => { d.settings = next })
+    void this.tick()
+    return next
   }
 
   // ---------- connections (settings page) ----------
@@ -421,7 +469,7 @@ export class Workbench {
     if (!existsSync(project.cwd)) throw new WorkbenchError('invalid', `工作目录不存在：${project.cwd}`)
     let idx = this.fileIndex.get(projectId)
     if (!idx || Date.now() - idx.at > 30_000) { idx = { at: Date.now(), files: listFiles(project.cwd) }; this.fileIndex.set(projectId, idx) }
-    return fuzzy(idx.files, query)
+    return fuzzy(idx.files, query, this.settings().fileSearchLimit)
   }
 
   // ---------- attachments ----------
@@ -430,7 +478,8 @@ export class Workbench {
 
   saveUpload(input: { name: string; mediaType?: string; data: Uint8Array }): Attachment {
     if (input.data.byteLength === 0) throw new WorkbenchError('invalid', '文件为空')
-    if (input.data.byteLength > MAX_UPLOAD) throw new WorkbenchError('invalid', `文件超过 ${MAX_UPLOAD / 1024 / 1024} MB 上限`)
+    const maxMB = this.settings().maxUploadMB
+    if (input.data.byteLength > maxMB * 1024 * 1024) throw new WorkbenchError('invalid', `文件超过 ${maxMB} MB 上限（可在设置 → 插件设置里调整）`)
     const att: Attachment = {
       id: randomUUID(), name: input.name.replace(/[\\/]/g, '_').slice(0, 200) || 'file',
       mediaType: input.mediaType || 'application/octet-stream', size: input.data.byteLength,
@@ -540,7 +589,7 @@ export class Workbench {
   }
 
   private async runTick() {
-    for (let n = 0; n < 50 && this.autoRun && this.workingCount() < AUTO_CONCURRENCY; n++) {
+    for (let n = 0; n < 50 && this.autoRun && this.workingCount() < this.settings().autoRunConcurrency; n++) {
       const d = this.store.data
       const queue = d.issues.filter((i) => i.status === 'todo' && !i.archivedAt).sort(byOrder)
       // a card with no (or a deleted) project can't run; say so on the card and move on to the next one
@@ -560,10 +609,113 @@ export class Workbench {
   }
 
   deleteIssue(id: string) {
+    const gone = this.store.data.issues.find((i) => i.id === id)
+    if (gone) void this.releaseWorktree(gone)
     for (const a of this.store.data.issues.find((i) => i.id === id)?.attachments ?? []) rmSync(this.uploadPath(a), { force: true })
     this.store.update((d) => {
       d.issues = d.issues.filter((i) => i.id !== id); d.runs = d.runs.filter((r) => r.issueId !== id)
       for (const i of d.issues) if (i.nextId === id) i.nextId = undefined
+    })
+  }
+
+  // ---------- review: changes, tests, merge request ----------
+  private workspaceOf(issue: Issue, project: Project) {
+    return issue.worktree && existsSync(issue.worktree) ? issue.worktree : project.cwd
+  }
+
+  private ctxOf(id: string) {
+    const issue = this.store.data.issues.find((i) => i.id === id)
+    if (!issue) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
+    const project = this.store.data.projects.find((p) => p.id === issue.projectId)
+    if (!project) throw new WorkbenchError('invalid', `${issue.key} 没有关联项目`)
+    return { issue, project }
+  }
+
+  /** What the agent changed: against the task branch's base when it has one, else the project's uncommitted changes. */
+  async issueChanges(id: string) {
+    const { issue, project } = this.ctxOf(id)
+    if (issue.worktree && existsSync(issue.worktree) && issue.baseSha) {
+      return { ...(await g.changes(issue.worktree, issue.baseSha)), branch: issue.branch, base: issue.baseBranch, isolated: true }
+    }
+    if (await g.isGitRepo(project.cwd)) {
+      const branch = (await g.git(project.cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()
+      return { ...(await g.changes(project.cwd, 'HEAD')), branch, base: 'HEAD', isolated: false }
+    }
+    throw new WorkbenchError('invalid', '这个任务的项目不是 git 仓库，无法查看改动')
+  }
+
+  /** Run the project's test command against this task's work, in the background; poll the card for the result. */
+  async runChecks(id: string): Promise<Check> {
+    const { issue, project } = this.ctxOf(id)
+    const cmd = project.testCmd?.trim()
+    if (!cmd) throw new WorkbenchError('invalid', `项目「${project.name}」还没有配置测试命令（项目 → 编辑）`)
+    if (issue.checks?.some((c) => c.state === 'running')) throw new WorkbenchError('invalid', '测试正在运行')
+    const cwd = this.workspaceOf(issue, project)
+    const check = this.store.update((d) => {
+      d.seq += 1
+      const c: Check = { id: `chk_${d.seq}`, cmd, state: 'running', output: '', at: now() }
+      const i = d.issues.find((x) => x.id === id)!
+      i.checks = [...(i.checks ?? []).slice(-4), c]
+      return c
+    })
+    void g.runShell(cmd, cwd, this.settings().testTimeoutSeconds * 1000).then((r) => {
+      this.store.update((d) => {
+        const i = d.issues.find((x) => x.id === id)
+        const c = i?.checks?.find((x) => x.id === check.id)
+        if (!i || !c) return
+        c.state = r.code === 0 ? 'passed' : 'failed'; c.code = r.code; c.ms = r.ms
+        c.output = r.timedOut ? `（超过 ${this.settings().testTimeoutSeconds} 秒，已终止）\n${r.output}` : r.output
+        if (c.state === 'failed') i.note = r.timedOut ? '测试超时' : `测试未通过（退出码 ${r.code}）`
+        else if (i.note?.startsWith('测试')) i.note = undefined
+      })
+    })
+    return check
+  }
+
+  /**
+   * Commit the task's work, push its branch and open a GitLab merge request. Outward-facing: only called from an explicit click.
+   * Pushing uses the git credentials already on this machine; the GitLab token is only used for the API call.
+   */
+  async submitMergeRequest(id: string): Promise<Issue> {
+    const { issue, project } = this.ctxOf(id)
+    if (issue.mr) throw new WorkbenchError('invalid', `${issue.key} 已经提交过合并请求：${issue.mr.url}`)
+    if (!issue.branch || !issue.worktree || !existsSync(issue.worktree) || !issue.baseSha) {
+      throw new WorkbenchError('invalid', '只有在独立任务分支上完成的任务才能提交合并请求（项目需要是 git 仓库并开启分支隔离）')
+    }
+    if (issue.status === 'in_progress') throw new WorkbenchError('invalid', `${issue.key} 正在进行中`)
+    if (project.gitlabProjectId == null) throw new WorkbenchError('invalid', `请先在项目「${project.name}」里填写 GitLab 项目 ID`)
+    if (!(await g.remoteUrl(project.cwd))) throw new WorkbenchError('invalid', `项目「${project.name}」的仓库没有 origin 远程，无法推送`)
+    const ctx = this.connectorCtx()
+    if (!(await this.creds('WORKBENCH_GITLAB_URL')) || !(await this.creds('WORKBENCH_GITLAB_TOKEN'))) throw new WorkbenchError('invalid', 'GitLab 未配置（设置 → GitLab）')
+
+    const ref = issue.sourceRef?.ref ?? issue.key
+    const lastCheck = issue.checks?.at(-1)
+    const summary = this.store.data.runs.filter((r) => r.issueId === id && r.status === 'completed' && r.finalText).at(-1)?.finalText
+    const description = [
+      `**来源**：${issue.sourceRef ? `${issue.sourceRef.source} ${issue.sourceRef.ref}` : '研发工作台手工任务'}（${issue.key}）`,
+      issue.description && `\n## 背景\n${issue.description}`,
+      issue.acceptance.length && `\n## 验收标准\n${issue.acceptance.map((a) => `- [ ] ${a}`).join('\n')}`,
+      lastCheck && `\n## 测试\n\`${lastCheck.cmd}\`：${lastCheck.state === 'passed' ? '通过' : lastCheck.state === 'failed' ? `未通过（退出码 ${lastCheck.code}）` : '运行中'}`,
+      summary && `\n## 智能体总结\n${summary.slice(0, 4000)}`,
+      '\n---\n由研发工作台创建，请人工评审后合并。',
+    ].filter(Boolean).join('\n')
+
+    try {
+      await g.commitAll(issue.worktree, `${ref} ${issue.title}\n\n研发工作台任务 ${issue.key}`)
+      if ((await g.commitsAhead(issue.worktree, issue.baseSha)) === 0) throw new WorkbenchError('invalid', '这个任务分支相对基线没有任何改动，没有可提交的内容')
+      await g.push(issue.worktree, issue.branch)
+    } catch (e) {
+      if (e instanceof WorkbenchError) throw e
+      throw new WorkbenchError('invalid', `推送分支失败：${(e as Error).message}`)
+    }
+    let mr
+    try {
+      mr = await createMergeRequest(ctx, project.gitlabProjectId, { source: issue.branch, target: issue.baseBranch ?? 'main', title: `${ref} ${issue.title}`, description })
+    } catch (e) { throw new WorkbenchError('invalid', `分支已推送，但${(e as Error).message}`) }
+    return this.store.update((d) => {
+      const i = d.issues.find((x) => x.id === id)!
+      i.mr = { url: mr.url, iid: mr.iid, createdAt: now() }; i.updatedAt = now()
+      return i
     })
   }
 
@@ -600,6 +752,7 @@ export class Workbench {
       if (!i) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
       if (archived && i.status === 'in_progress') throw new WorkbenchError('invalid', `${i.key} 正在进行中，不能归档`)
       i.archivedAt = archived ? now() : undefined
+      if (archived) void this.releaseWorktree(i)
       return i
     })
   }
@@ -670,12 +823,13 @@ export class Workbench {
     if (!a) throw new WorkbenchError('not_found', `智能体 ${id} 不存在`)
     return a
   }
-  saveAgent(a: Pick<AgentProfile, 'id' | 'name' | 'description' | 'instructions' | 'model'>): AgentProfile {
+  saveAgent(a: Pick<AgentProfile, 'id' | 'name' | 'description' | 'instructions' | 'model'> & { effort?: string; skills?: string[] }): AgentProfile {
     if (!a.name.trim()) throw new WorkbenchError('invalid', '名称不能为空')
     return this.store.update((d) => {
       const cur = d.agents.find((x) => x.id === a.id)
-      if (cur) { Object.assign(cur, { name: a.name.trim(), description: a.description, instructions: a.instructions, model: a.model || undefined }); return cur }
-      const created: AgentProfile = { ...a, name: a.name.trim(), model: a.model || undefined }
+      const extra = { effort: a.effort || undefined, skills: [...new Set((a.skills ?? []).filter((x) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(x)))] }
+      if (cur) { Object.assign(cur, { name: a.name.trim(), description: a.description, instructions: a.instructions, model: a.model || undefined, ...extra }); return cur }
+      const created: AgentProfile = { ...a, name: a.name.trim(), model: a.model || undefined, ...extra }
       d.agents.push(created)
       return created
     })
@@ -698,7 +852,7 @@ export class Workbench {
   seedDemoProjects(baseDir: string) {
     if (this.store.data.projects.length) return
     const demo: Omit<Project, 'id'>[] = [
-      { name: '云支付 / payment-core', cwd: join(baseDir, 'payment-core'), zentaoProductId: 12, sparkinProjectId: 'SP-PAY' },
+      { name: '云支付 / payment-core', cwd: join(baseDir, 'payment-core'), zentaoProductId: 12, sparkinProjectId: 'SP-PAY', testCmd: 'node --test' },
       { name: '订单服务 / teleone-order', cwd: join(baseDir, 'teleone-order'), gitlabProjectId: 101, zentaoProductId: 5, sparkinProjectId: 'SP-ORDER' },
       { name: '订单服务 / order-service', cwd: join(baseDir, 'order-service'), jenkinsJob: 'order-service', sparkinProjectId: 'SP-ORDER' },
       { name: '前端 / teleone-web', cwd: join(baseDir, 'teleone-web'), jenkinsJob: 'teleone-web', sparkinProjectId: 'SP-WEB' },
@@ -717,11 +871,31 @@ export class Workbench {
         mkdirSync(dirname(f), { recursive: true })
         writeFileSync(f, text)
       }
+      initDemoRepo(p.cwd) // a git repo, so tasks get their own branch and the diff view works out of the box
       this.saveProject(p)
     }
   }
 
+  /** Demo data from before git support: make the seeded directories git repos and give payment-core its test command. */
+  upgradeDemoRepos(baseDir: string) {
+    for (const p of this.store.data.projects) {
+      if (!p.cwd.startsWith(baseDir) || !existsSync(p.cwd)) continue
+      initDemoRepo(p.cwd)
+      if (p.name.endsWith('payment-core') && p.testCmd === undefined) this.saveProject({ ...p, testCmd: 'node --test' })
+    }
+  }
+
   deleteProject(id: string) { this.store.update((d) => { d.projects = d.projects.filter((p) => p.id !== id) }) }
+}
+
+/** `git init` + one commit for a demo working directory. Silently skipped when git isn't installed. */
+function initDemoRepo(cwd: string) {
+  if (existsSync(join(cwd, '.git'))) return
+  try {
+    const run = (...a: string[]) => execFileSync('git', a, { cwd, stdio: 'ignore' })
+    run('init', '-q', '-b', 'main'); run('add', '-A')
+    run('-c', 'user.name=研发工作台', '-c', 'user.email=workbench@localhost', 'commit', '-q', '-m', '初始提交（演示仓库）')
+  } catch { /* no git: tasks just run in the directory */ }
 }
 
 /** Code review MRs go to 代码审查员, failed builds to 构建修复员, everything else to 全栈工程师. */

@@ -1,7 +1,9 @@
 /** Host-agnostic agent driver. DSH implements it in host/, Codex later. core never imports a host package. */
 export interface AgentDriver {
   id: 'dsh' | 'codex'
-  listModels(): Promise<{ id: string; name: string }[]>
+  listModels(): Promise<{ id: string; name: string; efforts?: { id: string; name: string; description?: string }[]; defaultEffort?: string }[]>
+  /** Skills a task can be told to use explicitly. */
+  listSkills(cwds?: string[]): Promise<{ name: string; description: string; source: string }[]>
   start(req: {
     runId: string
     cwd: string
@@ -11,7 +13,7 @@ export interface AgentDriver {
     command?: string
     /** Files to attach to the first message (host reads the bytes from `path`). */
     attachments?: { name: string; mediaType: string; path: string }[]
-    profile: { presetId: string; model?: string; instructions: string }
+    profile: { presetId: string; model?: string; effort?: string; skills?: string[]; instructions: string }
   }): Promise<{ sessionId: string }>
   send(sessionId: string, text: string, mode: 'queue' | 'steer'): Promise<void>
   interrupt(sessionId: string): Promise<void>

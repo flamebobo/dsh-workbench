@@ -107,6 +107,15 @@ export const css = `
 .wb-prow { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; border-bottom: 1px solid var(--wb-bd1); background: none; padding: 9px 4px; text-align: left; } .wb-prow:last-child { border-bottom: 0; } .wb-prow:hover { background: var(--wb-hover); }
 .wb-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 @media (max-width: 900px) { .wb-ptop, .wb-pcols { grid-template-columns: 1fr; } }
+.wb-skills { max-height: 220px; overflow: auto; margin-top: 6px; border: 1px solid var(--wb-bd1); border-radius: 8px; padding: 4px 8px; }
+.wb-chipx { display: inline-flex; align-items: center; gap: 4px; padding: 1px 4px 1px 9px; border-radius: 12px; background: var(--wb-l2); font-size: 12px; } .wb-chipx button { border: 0; background: none; color: var(--wb-fg3); padding: 0 6px; } .wb-chipx button:hover { color: var(--wb-red); }
+.wb-diff { border: 1px solid var(--wb-bd1); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+.wb-diff-h { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: var(--wb-l1); padding: 7px 10px; font-size: 12px; } .wb-diff-h:hover { background: var(--wb-hover); }
+.wb-st { font-size: 11px; padding: 0 6px; border-radius: 4px; background: var(--wb-l2); } .wb-st.st-A { color: var(--wb-green); } .wb-st.st-D { color: var(--wb-red); } .wb-st.st-M { color: var(--wb-amber); }
+.wb-pre { margin: 0; padding: 6px 0; overflow: auto; max-height: 360px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--wb-bg); }
+.wb-pre div { padding: 0 12px; white-space: pre; } .wb-pre .add { background: color-mix(in srgb, var(--wb-green) 14%, transparent); } .wb-pre .del { background: color-mix(in srgb, var(--wb-red) 13%, transparent); } .wb-pre .hunk { color: var(--wb-fg3); background: var(--wb-l1); }
+.wb-linkbtn { border: 0; background: none; color: var(--dsw-alias-link, var(--wb-blue)); padding: 0; font-size: 12px; }
+.wb-sec { margin: 22px 0 8px; font-size: 13px; padding-bottom: 4px; border-bottom: 1px solid var(--wb-bd1); }
 .wb-menu-h { padding: 4px 10px 8px; font-size: 12px; color: var(--wb-fg3); }
 .wb-dotx { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .wb-empty { padding: 40px; text-align: center; color: var(--wb-fg3); }

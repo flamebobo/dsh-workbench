@@ -14,6 +14,7 @@ function setup(creds: Record<string, string> = {}, fetchImpl?: typeof fetch) {
     store: new Store(join(dir, 'workbench.json')), driver, creds: async (n) => creds[n], fetch: fetchImpl,
   })
   wb.seedDemoProjects(join(dir, 'repos'))
+  wb.saveSettings({ isolateByDefault: false }) // most tests assert on the project directory itself; isolation has its own tests
   return { dir, driver, wb }
 }
 const bug = demoZentao[0]!

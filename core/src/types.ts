@@ -35,6 +35,12 @@ export interface Project {
   zentaoProductId?: number
   jenkinsJob?: string
   sparkinProjectId?: string
+  /** Shell command that verifies work in this project (e.g. `npm test`); run on demand and after an agent finishes. */
+  testCmd?: string
+  /** Branch tasks start from and merge requests target; empty = origin's default branch. */
+  baseBranch?: string
+  /** Run each task on its own branch + worktree. Unset = follow the plugin setting. */
+  isolate?: boolean
 }
 
 export interface AgentProfile {
@@ -43,6 +49,10 @@ export interface AgentProfile {
   description: string
   instructions: string
   model?: string
+  /** Reasoning effort id of the chosen model (e.g. high); empty = the model's default. */
+  effort?: string
+  /** Skills explicitly loaded for every task this agent runs (`/skill-name` in the first message). */
+  skills?: string[]
   builtin?: boolean
 }
 
@@ -69,6 +79,19 @@ export interface Timesheet {
   demo?: boolean
 }
 
+/** One run of a project's test command against a task's work. */
+export interface Check {
+  id: string
+  cmd: string
+  state: 'running' | 'passed' | 'failed'
+  code?: number | null
+  output: string
+  at: string
+  ms?: number
+}
+
+export interface MergeRequest { url: string; iid: number; createdAt: string }
+
 export interface Issue {
   id: string
   /** Short key shown on cards, WB-1, WB-2 … */
@@ -88,6 +111,13 @@ export interface Issue {
   /** Hidden from the board by default; the card and its history are kept. */
   archivedAt?: string
   timesheet?: Timesheet
+  /** Task isolation: the branch and git worktree the agent worked in (absent = the project directory itself). */
+  branch?: string
+  worktree?: string
+  baseBranch?: string
+  baseSha?: string
+  checks?: Check[]
+  mr?: MergeRequest
   agentId: string
   projectId?: string
   /** Set when the card was created from a work item; at most one card per (source, ref). */
@@ -144,5 +174,6 @@ export interface Data {
   /** To-do rows from Zentao / GitLab / Jenkins the user archived (the source still lists them). */
   /** Auto-run: cards in 待办 are started one after another, top to bottom, with no click. */
   autoRun?: boolean
+  settings?: Partial<import('./settings.ts').PluginSettings>
   hiddenTodos?: { source: Source; ref: string; at: string }[]
 }

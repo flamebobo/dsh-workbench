@@ -46,3 +46,12 @@
 - `Issue.order` 是列内位置（1..n，越小越靠上）。进入一列（新建、开工、会话结束、被拖入）都排到列尾；`moveIssue(id, status, beforeId)` 把卡片插到 `beforeId` 之前并重排目标列。旧数据启动时按创建时间补序号。
 - 看板里每张卡片是放置目标：落在上半部分 = 插到它前面，下半部分 = 插到下一张前面；落在列的空白处 = 列尾。
 - 自动运行：`Data.autoRun`；`tick()` 在 `autoRun` 且工作中的智能体数 < `AUTO_CONCURRENCY`(1) 时，从「待办」列顶开始取第一张有项目的卡片 `startIssue`。触发点：开关、卡片入列/新建、会话结束、Host 每 5 秒的定时器。`tick` 串行化（并发调用合并成「再来一轮」）。启动抛错的卡片转「已阻塞」避免死循环。
+
+## 设置项、智能体强度/技能、分支隔离/改动/MR
+
+- 插件设置 `PluginSettings`（`core/src/settings.ts`）存在数据文件的 `settings`，`normalizeSettings` 负责夹取范围和校验（分支前缀必须是合法 ref）。
+- 强度：创建会话的 `setup` 里挂 `agent/request` 监听，在会话还没有自己的 `request/header` 时把 `reasoningEffort` 改成智能体配置的值（照抄 webhook 的 `installInitialModelSelection`）；日志里能看到 `config.reasoningEffort`。模型和强度列表来自 `ctx.llm.listModels/resolveModelInfo`。
+- 技能：首条消息里写 `/技能名`（空白分隔的 token）即由 DSH 的 tool-skill 在该步注入技能全文（source.kind==='user' 才识别）。列表读取要借用预设作用域（`agentPresets.acquireScope`）——技能提供者装在预设里，全局 `ctx.skills.list()` 读不到。
+- 分支隔离：`git worktree add -b <前缀><编号>-<标题 ASCII 片段> <数据目录>/worktrees/<项目>/<编号> <基线>`；`baseSha` 用 `merge-base` 记录，diff 以它为基准（含未提交与新文件，`git add -N .`）。
+- MR：`commitAll` → `push -u origin <分支>`（`GIT_TERMINAL_PROMPT=0`、ssh BatchMode，避免卡住）→ `POST /api/v4/projects/:id/merge_requests`；409 时查询同源分支已打开的 MR。测试里用本地裸仓库当 origin、fetch 桩当 GitLab。
+- 老的演示目录（非 git）在 Host 启动时由 `upgradeDemoRepos` 补 `git init` 和 payment-core 的测试命令。

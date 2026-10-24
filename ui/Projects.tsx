@@ -48,6 +48,15 @@ export function Projects(p: PageProps) {
             {f('name', '名称', '云支付 / payment-core')}
             {f('cwd', '工作目录（绝对路径）', '/Users/me/code/payment-core 或 D:\\code\\payment-core')}
             <div className="wb-row">{f('gitlabProjectId', 'GitLab 项目 ID', '101')}{f('zentaoProductId', '禅道产品 ID', '12')}{f('jenkinsJob', 'Jenkins Job 名', 'payment-core')}</div>
+            <div className="wb-field"><label>测试命令（开工后用来验证改动，在任务的工作树里运行）</label>
+              <input className="wb-input" placeholder="npm test / mvn -q test / pytest" value={draft.testCmd ?? ''} onChange={(e) => setDraft({ ...draft, testCmd: e.target.value || undefined })} /></div>
+            <div className="wb-row">
+              <div className="wb-field wb-grow"><label>基线分支（任务从它切出，MR 指向它；留空 = origin 的默认分支）</label>
+                <input className="wb-input" placeholder="main" value={draft.baseBranch ?? ''} onChange={(e) => setDraft({ ...draft, baseBranch: e.target.value || undefined })} /></div>
+              <div className="wb-field" style={{ width: 200 }}><label>分支隔离</label>
+                <select className="wb-select" value={draft.isolate === undefined ? '' : draft.isolate ? 'on' : 'off'} onChange={(e) => setDraft({ ...draft, isolate: e.target.value === '' ? undefined : e.target.value === 'on' })}>
+                  <option value="">跟随插件设置</option><option value="on">开：每个任务独立分支</option><option value="off">关：直接在项目目录</option></select></div>
+            </div>
             <div className="wb-field"><label>Sparkin 项目（填报工时时对应到它的任务）</label>
               <select className="wb-select" value={draft.sparkinProjectId ?? ''} onChange={(e) => setDraft({ ...draft, sparkinProjectId: e.target.value || undefined })}>
                 <option value="">未关联</option>{sparkin.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
@@ -62,7 +71,7 @@ export function Projects(p: PageProps) {
 function Chips({ x, sparkin }: { x: Project; sparkin: { id: string; name: string }[] }) {
   const items = [
     x.gitlabProjectId != null && `GitLab #${x.gitlabProjectId}`, x.zentaoProductId != null && `禅道产品 ${x.zentaoProductId}`,
-    x.jenkinsJob && `Jenkins ${x.jenkinsJob}`, x.sparkinProjectId && `Sparkin ${sparkin.find((s) => s.id === x.sparkinProjectId)?.name ?? x.sparkinProjectId}`,
+    x.jenkinsJob && `Jenkins ${x.jenkinsJob}`, x.testCmd && `测试 ${x.testCmd}`, x.sparkinProjectId && `Sparkin ${sparkin.find((s) => s.id === x.sparkinProjectId)?.name ?? x.sparkinProjectId}`,
   ].filter(Boolean) as string[]
   return items.length ? <div className="wb-chips">{items.map((t) => <span className="wb-pill" key={t}>{t}</span>)}</div> : <span className="wb-muted">还没有关联 GitLab / 禅道 / Jenkins / Sparkin</span>
 }

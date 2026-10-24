@@ -3,6 +3,7 @@ import { ago, BUILD_LABEL, buildColor, rpc, STATUS_LABEL, type Attachment, type 
 import { Composer } from './Composer.tsx'
 import { BuildModal } from './Builds.tsx'
 import { TimesheetModal } from './Timesheet.tsx'
+import { ChangesModal } from './Changes.tsx'
 import { matchesIssue, offerNext } from './chain.ts'
 import type { PageProps } from './App.tsx'
 
@@ -100,6 +101,7 @@ export function Board(p: PageProps) {
                     {i.note && <div className="wb-ellipsis" style={{ color: i.status === 'blocked' ? 'var(--wb-red)' : 'var(--wb-amber)', fontSize: 11, marginBottom: 4 }} title={i.note}>{i.note}</div>}
                     {lastBuild(state.builds, i.id) && <div className="wb-bld" style={{ color: buildColor(lastBuild(state.builds, i.id)!.state) }}>构建 {lastBuild(state.builds, i.id)!.job}{lastBuild(state.builds, i.id)!.number ? ` #${lastBuild(state.builds, i.id)!.number}` : ''} · {BUILD_LABEL[lastBuild(state.builds, i.id)!.state]}</div>}
                     {(i.nextId || state.issues.some((x) => x.nextId === i.id)) && <div className="wb-bld wb-muted">{state.issues.some((x) => x.nextId === i.id) ? `← ${state.issues.filter((x) => x.nextId === i.id).map((x) => x.key).join(' ')}` : ''}{i.nextId ? `  → ${keyOf(i.nextId)}` : ''}</div>}
+                    {(i.checks?.length || i.mr) && <div className="wb-bld">{i.checks?.length ? <span style={{ color: checkColor(i.checks.at(-1)!.state) }}>测试 {checkLabel(i.checks.at(-1)!.state)}</span> : null}{i.checks?.length && i.mr ? ' · ' : ''}{i.mr && <a href={i.mr.url} target="_blank" rel="noreferrer noopener" onClick={(e) => e.stopPropagation()}>MR !{i.mr.iid} ↗</a>}</div>}
                     {i.timesheet && <div className="wb-bld" style={{ color: 'var(--wb-green)' }}>已填报工时 {i.timesheet.hours}h · {i.timesheet.sparkinTaskName}</div>}
                     <div className="m"><span className="wb-pill">{agentName(i.agentId)}</span><span style={{ marginLeft: 'auto' }}>{ago(i.updatedAt)}</span></div>
                   </article>
@@ -117,6 +119,8 @@ export function Board(p: PageProps) {
   )
 }
 
+const checkLabel = (s: string) => (s === 'passed' ? '通过' : s === 'failed' ? '未通过' : '运行中…')
+const checkColor = (s: string) => (s === 'passed' ? 'var(--wb-green)' : s === 'failed' ? 'var(--wb-red)' : 'var(--wb-amber)')
 const byOrder = (a: Issue, b: Issue) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.createdAt.localeCompare(b.createdAt)
 const lastBuild = (builds: PageProps['state']['builds'], issueId: string) => (builds ?? []).filter((b) => b.issueIds.includes(issueId)).at(-1)
 
@@ -137,6 +141,7 @@ function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue; initi
   const [files, setFiles] = useState<Attachment[]>(issue?.attachments ?? [])
   const [busy, setBusy] = useState(false)
   const [reporting, setReporting] = useState(false)
+  const [viewing, setViewing] = useState(false)
   useEffect(() => { if (issue) setStatus(issue.status) }, [issue?.status]) // a session ending changes it under us
   const runs = issue ? state.runs.filter((r) => r.issueId === issue.id).reverse() : []
   const canStart = !issue || STARTABLE.includes(issue.status)
@@ -180,6 +185,7 @@ function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue; initi
   return (
     <div className="wb-modal-mask" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
       {reporting && issue && <TimesheetModal p={p} only={[issue.id]} onClose={() => setReporting(false)} />}
+      {viewing && issue && <ChangesModal issue={issue} notify={p.notify} onClose={() => setViewing(false)} />}
       <div className="wb-modal" role="dialog" aria-label={issue?.key ?? '新建任务'}>
         <div className="wb-row"><span className="wb-sub">{issue ? `${issue.key}${issue.sourceRef ? ` · ${issue.sourceRef.source} ${issue.sourceRef.ref}` : ' · 手工任务'}` : '新建任务'}</span><span className="wb-grow" />
           {issue?.sessionId && <button className="wb-btn" onClick={() => p.openSession(issue.sessionId!)}>打开关联会话 ↗</button>}
@@ -203,6 +209,7 @@ function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue; initi
             <select className="wb-select" value={status} onChange={(e) => setStatus(e.target.value as Status)}>{COLUMNS.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}</select></div>
         </div>
         {issue && <ChainField issue={issue} p={p} />}
+        {issue && <CodeField issue={issue} p={p} onChanges={() => setViewing(true)} />}
         {issue?.timesheet && <div className="wb-field"><label>工时</label><div className="wb-rel">已填报 <b>{issue.timesheet.hours}h</b> · {issue.timesheet.date} · Sparkin「{issue.timesheet.sparkinTaskName}」<span className="wb-muted"> · 记录 {issue.timesheet.entryId}{issue.timesheet.demo ? ' · 演示，未写入 Sparkin' : ''}</span></div></div>}
         {issue?.note && <div className={`wb-banner ${issue.status === 'blocked' ? 'err' : ''}`} style={{ margin: '4px 0' }}>{issue.note}</div>}
         {issue && (state.builds ?? []).some((b) => b.issueIds.includes(issue.id)) && <div className="wb-field"><label>构建验证</label>
@@ -259,6 +266,39 @@ function ChainField({ issue, p }: { issue: Issue; p: PageProps }) {
         <input className="wb-input" autoFocus placeholder="后续任务标题（继承本任务的项目和智能体）" value={title} onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && title.trim()) { void act(async () => { await rpc('issue.followup', { id: issue.id, title }); setTitle(''); setAdding(false) }) } }} />
         <button className="wb-btn" disabled={!title.trim()} onClick={() => { void act(async () => { await rpc('issue.followup', { id: issue.id, title }); setTitle(''); setAdding(false) }) }}>创建</button></div>}
+    </div>
+  )
+}
+
+/** 代码与验证: the task branch, what changed, the project's tests, and the merge request. */
+function CodeField({ issue, p, onChanges }: { issue: Issue; p: PageProps; onChanges: () => void }) {
+  const project = p.state.projects.find((x) => x.id === issue.projectId)
+  const last = issue.checks?.at(-1)
+  const [busy, setBusy] = useState<'test' | 'mr'>()
+  const [open, setOpen] = useState(false)
+  if (!project || (issue.status === 'backlog' && !issue.branch)) return null
+  const act = async (kind: 'test' | 'mr') => {
+    if (kind === 'mr' && !confirm(`将提交 ${issue.key} 的改动并把分支「${issue.branch}」推送到 origin，然后在 GitLab 创建合并请求（目标分支 ${issue.baseBranch}）。继续？`)) return
+    setBusy(kind)
+    try {
+      if (kind === 'test') { await rpc('issue.test', { id: issue.id }); p.notify('已开始运行测试') } else { const r = await rpc<Issue>('issue.mr', { id: issue.id }); p.notify(`已创建合并请求 !${r.mr?.iid}`) }
+      await p.refresh()
+    } catch (e) { p.notify((e as Error).message); await p.refresh() } finally { setBusy(undefined) }
+  }
+  return (
+    <div className="wb-field"><label>代码与验证</label>
+      <div className="wb-rel">
+        {issue.branch ? <>分支 <b>{issue.branch}</b><span className="wb-muted"> ← 基线 {issue.baseBranch}{issue.worktree ? ` · 工作树 ${issue.worktree}` : ''}</span></> : <span className="wb-muted">直接在项目目录运行（没有独立分支）</span>}
+        {issue.mr && <div>合并请求：<a href={issue.mr.url} target="_blank" rel="noreferrer noopener">!{issue.mr.iid} ↗</a></div>}
+        {last && <div>测试：<b style={{ color: checkColor(last.state) }}>{checkLabel(last.state)}</b><span className="wb-muted"> · {last.cmd}{last.ms ? ` · ${(last.ms / 1000).toFixed(1)}s` : ''}</span>
+          {last.state !== 'running' && <> <button className="wb-linkbtn" onClick={() => setOpen(!open)}>{open ? '收起输出' : '查看输出'}</button></>}
+          {open && <pre className="wb-pre" style={{ maxHeight: 180, border: '1px solid var(--wb-bd1)', borderRadius: 6, marginTop: 4 }}>{last.output || '（无输出）'}</pre>}</div>}
+      </div>
+      <div className="wb-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
+        <button className="wb-btn" onClick={onChanges}>查看改动</button>
+        <button className="wb-btn" disabled={!!busy || !project.testCmd || last?.state === 'running'} title={project.testCmd ? `运行：${project.testCmd}` : '项目还没有配置测试命令（项目 → 编辑）'} onClick={() => { void act('test') }}>{busy === 'test' || last?.state === 'running' ? '测试运行中…' : '运行测试'}</button>
+        {issue.branch && !issue.mr && <button className="wb-btn" disabled={!!busy || issue.status === 'in_progress'} title="提交改动、推送分支，并在 GitLab 创建合并请求" onClick={() => { void act('mr') }}>{busy === 'mr' ? '提交中…' : '提交 MR'}</button>}
+      </div>
     </div>
   )
 }

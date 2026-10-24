@@ -7,7 +7,7 @@ const { useState, useMemo, useEffect } = React
 type Row = TodoResult['items'][number]
 const SOURCE_LABEL = { zentao: '禅道', gitlab: 'GitLab', jenkins: 'Jenkins', manual: '手工' }
 const STARTABLE = ['backlog', 'todo', 'blocked']
-const DEFAULT_AGENT = { gitlab: 'reviewer', jenkins: 'build-fixer', zentao: 'fullstack', manual: 'fullstack' }
+const FALLBACK_AGENT = { gitlab: 'reviewer', jenkins: 'build-fixer', zentao: 'fullstack', manual: 'fullstack' }
 
 export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloadTodos: () => Promise<void> }) {
   const { todos, state } = p
@@ -62,7 +62,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
     try {
       const { issue } = sel.issueId
         ? await rpc<{ issue: Issue }>('issue.start', { id: sel.issueId, agentId: agentId ?? issueAgent })
-        : await rpc<{ issue: Issue }>('todos.start', { item: sel, agentId: agentId ?? DEFAULT_AGENT[sel.source] })
+        : await rpc<{ issue: Issue }>('todos.start', { item: sel, agentId: agentId ?? (state.settings?.defaultAgents ?? FALLBACK_AGENT)[sel.source] })
       p.notify(`已开工：${issue.key}，会话已创建`)
       await p.refresh(); await p.reloadTodos()
       p.go('board')
@@ -157,7 +157,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
               </>
             ) : (
               <>
-                <select className="wb-select" style={{ width: 130 }} value={agentId ?? issueAgent ?? DEFAULT_AGENT[sel.source]} onChange={(e) => setAgentId(e.target.value)} aria-label="智能体">
+                <select className="wb-select" style={{ width: 130 }} value={agentId ?? issueAgent ?? (state.settings?.defaultAgents ?? FALLBACK_AGENT)[sel.source]} onChange={(e) => setAgentId(e.target.value)} aria-label="智能体">
                   {state.agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
                 <button className="wb-btn primary wb-grow" disabled={busy || !project} title={project ? undefined : '请先选择项目'} onClick={() => { void start() }}>{busy ? '正在创建会话…' : '开工（创建会话）'}</button>

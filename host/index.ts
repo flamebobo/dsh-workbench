@@ -21,14 +21,21 @@ export function apply(ctx: Ctx) {
     // The settings page stores into DSH's credential store (private file under ~/.dsh); values never go back to the page.
     setCred: async (name, value) => { if (value === undefined) await ctx.credentials.unset(name); else await ctx.credentials.set(name, value) },
   })
+  driver.permission = () => wb.settings().permissionPreset
   wb.seedDemoProjects(join(dataDir(), 'demo-repos'))
+  wb.upgradeDemoRepos(join(dataDir(), 'demo-repos'))
   void Promise.all(wb.listAgents().map((a) => driver.registerPreset(a)))
   // Auto-run safety net: re-check the queue every few seconds (also after a restart with auto-run left on).
-  const timer = setInterval(() => { wb.tick().catch((e) => ctx.logger.warn('workbench: auto-run tick failed', e)) }, 5000)
-  ctx.effect(() => () => { clearInterval(timer); wb.dispose(); return driver.disposePresets() })
+  let stopped = false
+  let timer: ReturnType<typeof setTimeout>
+  const loop = () => {
+    wb.tick().catch((e) => ctx.logger.warn('workbench: auto-run tick failed', e)).finally(() => { if (!stopped) timer = setTimeout(loop, wb.settings().autoRunPollSeconds * 1000) })
+  }
+  timer = setTimeout(loop, 5000)
+  ctx.effect(() => () => { stopped = true; clearTimeout(timer); wb.dispose(); return driver.disposePresets() })
 
   const state = async () => ({
-    issues: wb.listIssues(), runs: wb.listRuns(), agents: wb.listAgents(), projects: wb.listProjects(), builds: await wb.refreshBuilds(), autoRun: wb.autoRun, working: wb.workingCount(),
+    issues: wb.listIssues(), runs: wb.listRuns(), agents: wb.listAgents(), projects: wb.listProjects(), builds: await wb.refreshBuilds(), autoRun: wb.autoRun, working: wb.workingCount(), settings: wb.settings(),
   })
 
   async function dispatch(endpoint: string, p: any): Promise<unknown> {
@@ -64,7 +71,13 @@ export function apply(ctx: Ctx) {
       case 'jenkins.jobs': return await wb.jenkinsJobs()
       case 'builds.trigger': return await wb.triggerBuild({ job: p.job, params: p.params, issueIds: p.issueIds ?? [] })
       case 'files.search': return wb.searchFiles(p.projectId, p.q ?? '')
-      case 'models.list': return await driver.listModels()
+      case 'models.list': return { models: await driver.listModels(), defaultModel: ctx.agentDefaultModel.currentSelection().model }
+      case 'skills.list': return await driver.listSkills(wb.listProjects().map((x) => x.cwd))
+      case 'issue.changes': return await wb.issueChanges(p.id)
+      case 'issue.test': return await wb.runChecks(p.id)
+      case 'issue.mr': return await wb.submitMergeRequest(p.id) // outward-facing: only an explicit click in the UI calls this
+      case 'settings.get': return wb.settings()
+      case 'settings.save': return wb.saveSettings(p ?? {})
       default: throw new WorkbenchError('invalid', `unknown endpoint ${endpoint}`)
     }
   }

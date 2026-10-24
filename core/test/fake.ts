@@ -5,7 +5,8 @@ export class FakeDriver implements AgentDriver {
   started: Parameters<AgentDriver['start']>[0][] = []
   failStart?: Error
   private cbs = new Set<(e: DriverEvent) => void>()
-  async listModels() { return [{ id: 'm', name: 'm' }] }
+  async listModels() { return [{ id: 'm', name: 'm', efforts: [{ id: 'high', name: 'High' }] }] }
+  async listSkills() { return [{ name: 'find-skills', description: 'd', source: 'bundled' }] }
   async start(req: Parameters<AgentDriver['start']>[0]) {
     if (this.failStart) throw this.failStart
     this.started.push(req)

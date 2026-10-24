@@ -42,7 +42,8 @@ var Store = class {
 };
 
 // core/src/workbench.ts
-import { existsSync as existsSync2, mkdirSync as mkdirSync2, rmSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync as existsSync3, mkdirSync as mkdirSync2, rmSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { dirname as dirname2, isAbsolute } from "node:path";
 import { randomUUID } from "node:crypto";
 import { join as join3 } from "node:path";
@@ -309,6 +310,29 @@ async function fetchGitlab(c) {
   const q = new URLSearchParams({ scope: "all", state: "opened", reviewer_username: me.username });
   return parseMergeRequests(await getJson(c.fetch, `${base}/api/v4/merge_requests?${q}`, { headers }));
 }
+async function createMergeRequest(c, projectId, mr) {
+  const [url, token] = await Promise.all(["WORKBENCH_GITLAB_URL", "WORKBENCH_GITLAB_TOKEN"].map((n) => c.creds(n)));
+  if (!url || !token) throw new Error("GitLab \u672A\u914D\u7F6E\uFF08\u8BBE\u7F6E \u2192 GitLab\uFF09");
+  const base = `${trimSlash(url)}/api/v4/projects/${projectId}/merge_requests`;
+  const headers = { "PRIVATE-TOKEN": token, "content-type": "application/json" };
+  const res = await c.fetch(base, {
+    method: "POST",
+    headers,
+    signal: AbortSignal.timeout(15e3),
+    body: JSON.stringify({ source_branch: mr.source, target_branch: mr.target, title: mr.title, description: mr.description, remove_source_branch: true })
+  });
+  if (res.ok) {
+    const j = await res.json();
+    return { url: j.web_url, iid: j.iid, existing: false };
+  }
+  const text = await res.text().catch(() => "");
+  if (res.status === 409 || /already exists/i.test(text)) {
+    const q = new URLSearchParams({ state: "opened", source_branch: mr.source });
+    const list = await getJson(c.fetch, `${base}?${q}`, { headers });
+    if (list[0]) return { url: list[0].web_url, iid: list[0].iid, existing: true };
+  }
+  throw new Error(`GitLab \u521B\u5EFA\u5408\u5E76\u8BF7\u6C42\u5931\u8D25\uFF1AHTTP ${res.status}${text ? ` ${text.slice(0, 200)}` : ""}`);
+}
 
 // core/src/connectors/jenkins.ts
 var TREE = "jobs[name,url,color,lastBuild[number,result,timestamp,url]]";
@@ -558,6 +582,144 @@ function mentionedFiles(root, text) {
   return [...found];
 }
 
+// core/src/git.ts
+import { execFile, spawn } from "node:child_process";
+import { existsSync as existsSync2 } from "node:fs";
+function git(cwd, args, o = {}) {
+  return new Promise((resolve2, reject) => {
+    execFile("git", args, {
+      cwd,
+      timeout: o.timeoutMs ?? 6e4,
+      maxBuffer: 32 * 1024 * 1024,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes", LC_ALL: "C" }
+    }, (err, stdout, stderr) => {
+      if (!err) return resolve2(stdout);
+      const msg = String(stderr || stdout || err.message).trim().split("\n").slice(-6).join("\n");
+      reject(new Error(msg || String(err.message)));
+    });
+  });
+}
+async function isGitRepo(cwd) {
+  if (!existsSync2(cwd)) return false;
+  try {
+    return (await git(cwd, ["rev-parse", "--is-inside-work-tree"])).trim() === "true";
+  } catch {
+    return false;
+  }
+}
+async function branchExists(cwd, branch) {
+  try {
+    await git(cwd, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function defaultBase(cwd) {
+  try {
+    return (await git(cwd, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])).trim().replace(/^origin\//, "");
+  } catch {
+  }
+  return (await git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+}
+async function remoteUrl(cwd) {
+  try {
+    return (await git(cwd, ["remote", "get-url", "origin"])).trim() || void 0;
+  } catch {
+    return void 0;
+  }
+}
+var branchName = (prefix, key, title) => {
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30).replace(/-+$/g, "");
+  return `${prefix}${key.toLowerCase()}${slug ? `-${slug}` : ""}`;
+};
+async function addWorktree(repo, branch, path, base) {
+  if (await branchExists(repo, branch)) await git(repo, ["worktree", "add", path, branch]);
+  else await git(repo, ["worktree", "add", "-b", branch, path, base]);
+}
+async function removeWorktree(repo, path) {
+  try {
+    await git(repo, ["worktree", "remove", path]);
+  } catch {
+  }
+}
+var MAX_PATCH = 2e5;
+async function changes(cwd, base) {
+  await git(cwd, ["add", "-N", "."]).catch(() => {
+  });
+  const [names, nums, patch] = await Promise.all([
+    git(cwd, ["diff", "--name-status", base]),
+    git(cwd, ["diff", "--numstat", base]),
+    git(cwd, ["diff", "--no-color", base])
+  ]);
+  const stat = new Map(nums.trim().split("\n").filter(Boolean).map((l) => {
+    const [a, d, ...p] = l.split("	");
+    return [p.join("	"), [Number(a) || 0, Number(d) || 0]];
+  }));
+  const patches = /* @__PURE__ */ new Map();
+  let truncated = false;
+  let used = 0;
+  for (const chunk of patch.split(/^diff --git /m).slice(1)) {
+    const path = /^a\/(.+?) b\/(.+)$/m.exec(chunk.split("\n")[0])?.[2] ?? "";
+    const text = `diff --git ${chunk}`;
+    if (used + text.length > MAX_PATCH) {
+      truncated = true;
+      patches.set(path, "\uFF08\u6539\u52A8\u592A\u5927\uFF0C\u5DF2\u7701\u7565\uFF1B\u8BF7\u5728\u7EC8\u7AEF\u7528 git diff \u67E5\u770B\uFF09");
+      continue;
+    }
+    used += text.length;
+    patches.set(path, text);
+  }
+  const files = names.trim().split("\n").filter(Boolean).map((l) => {
+    const [st, ...p] = l.split("	");
+    const path = p.at(-1);
+    const [additions, deletions] = stat.get(path) ?? [0, 0];
+    return { path, status: st[0] ?? "?", additions, deletions, patch: patches.get(path) ?? "" };
+  });
+  return { files, truncated };
+}
+async function commitAll(cwd, message) {
+  await git(cwd, ["add", "-A"]);
+  try {
+    await git(cwd, ["diff", "--cached", "--quiet"]);
+    return false;
+  } catch {
+  }
+  const hasId = await git(cwd, ["config", "user.email"]).then((s) => !!s.trim()).catch(() => false);
+  await git(cwd, [...hasId ? [] : ["-c", "user.name=\u7814\u53D1\u5DE5\u4F5C\u53F0", "-c", "user.email=workbench@localhost"], "commit", "-m", message]);
+  return true;
+}
+async function commitsAhead(cwd, base) {
+  return Number((await git(cwd, ["rev-list", "--count", `${base}..HEAD`])).trim()) || 0;
+}
+var push = (cwd, branch) => git(cwd, ["push", "-u", "origin", branch], { timeoutMs: 18e4 });
+function runShell(cmd, cwd, timeoutMs) {
+  return new Promise((resolve2) => {
+    const t0 = Date.now();
+    const child = spawn(cmd, { cwd, shell: true, env: { ...process.env, CI: "1", FORCE_COLOR: "0" } });
+    let out = "";
+    const add = (b) => {
+      out = (out + b.toString()).slice(-2e4);
+    };
+    child.stdout.on("data", add);
+    child.stderr.on("data", add);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, timeoutMs);
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      resolve2({ code: null, output: `${out}
+${e.message}`.trim(), timedOut, ms: Date.now() - t0 });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve2({ code, output: out.trim(), timedOut, ms: Date.now() - t0 });
+    });
+  });
+}
+
 // core/src/sparkin.ts
 var PROJECTS = [
   { id: "SP-PAY", name: "\u4E91\u652F\u4ED8\u5E73\u53F0" },
@@ -633,6 +795,46 @@ ${a.instructions}
 \u5F00\u59CB\u5904\u7406\u4E00\u4E2A\u4EFB\u52A1\u65F6\uFF0C\u56DE\u590D\u7684\u7B2C\u4E00\u53E5\u8BDD\u5148\u8BF4\u660E\u4F60\u662F\u300C${a.name}\u300D\u4EE5\u53CA\u8FD9\u6B21\u6253\u7B97\u600E\u4E48\u505A\uFF0C\u518D\u5C55\u5F00\u3002`;
 }
 
+// core/src/settings.ts
+var DEFAULT_SETTINGS = {
+  autoRunConcurrency: 1,
+  autoRunPollSeconds: 5,
+  todoRefreshSeconds: 60,
+  defaultHours: 1,
+  maxUploadMB: 25,
+  fileSearchLimit: 30,
+  permissionPreset: "workspace-write",
+  defaultAgents: { zentao: "fullstack", gitlab: "reviewer", jenkins: "build-fixer", manual: "fullstack" },
+  isolateByDefault: true,
+  branchPrefix: "wb/",
+  autoTestOnReview: true,
+  testTimeoutSeconds: 600
+};
+var num = (v, lo, hi, fallback, step = 1) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n / step) * step)) : fallback;
+};
+function normalizeSettings(input) {
+  const d = DEFAULT_SETTINGS;
+  const i = input ?? {};
+  const prefix = typeof i.branchPrefix === "string" ? i.branchPrefix.trim() : d.branchPrefix;
+  return {
+    autoRunConcurrency: num(i.autoRunConcurrency, 1, 5, d.autoRunConcurrency),
+    autoRunPollSeconds: num(i.autoRunPollSeconds, 2, 60, d.autoRunPollSeconds),
+    todoRefreshSeconds: num(i.todoRefreshSeconds, 15, 3600, d.todoRefreshSeconds),
+    defaultHours: num(i.defaultHours, 0.5, 24, d.defaultHours, 0.5),
+    maxUploadMB: num(i.maxUploadMB, 1, 200, d.maxUploadMB),
+    fileSearchLimit: num(i.fileSearchLimit, 10, 100, d.fileSearchLimit),
+    permissionPreset: i.permissionPreset === "danger-full-access" ? "danger-full-access" : "workspace-write",
+    defaultAgents: { ...d.defaultAgents, ...Object.fromEntries(Object.entries(i.defaultAgents ?? {}).filter(([, v]) => typeof v === "string" && v)) },
+    isolateByDefault: typeof i.isolateByDefault === "boolean" ? i.isolateByDefault : d.isolateByDefault,
+    // a valid git ref prefix: letters, digits, `/`, `-`, `_`, `.`; never starting with `-` or containing `..`
+    branchPrefix: /^[A-Za-z0-9][A-Za-z0-9/_.-]*$/.test(prefix) && !prefix.includes("..") ? prefix : d.branchPrefix,
+    autoTestOnReview: typeof i.autoTestOnReview === "boolean" ? i.autoTestOnReview : d.autoTestOnReview,
+    testTimeoutSeconds: num(i.testTimeoutSeconds, 10, 3600, d.testTimeoutSeconds)
+  };
+}
+
 // core/src/workbench.ts
 var WorkbenchError = class extends Error {
   code;
@@ -656,8 +858,6 @@ function place(d, issue, status, beforeId) {
 }
 var cleanLines = (l) => (l ?? []).map((x) => x.trim()).filter(Boolean);
 var COMMANDS = ["plan", "goal"];
-var AUTO_CONCURRENCY = 1;
-var MAX_UPLOAD = 25 * 1024 * 1024;
 var Workbench = class {
   store;
   driver;
@@ -781,6 +981,7 @@ var Workbench = class {
     lines.push("", "## \u80CC\u666F", i.description || "\uFF08\u65E0\uFF09");
     lines.push("", "## \u9A8C\u6536\u6807\u51C6", ...i.acceptance.length ? i.acceptance.map((a, n) => `${n + 1}. ${a}`) : ["\uFF08\u672A\u7ED9\u51FA\uFF0C\u8BF7\u5148\u4E0E\u6211\u786E\u8BA4\u518D\u52A8\u624B\uFF09"]);
     if (w?.related.length) lines.push("", "## \u5173\u8054\u4FE1\u606F", ...w.related.map((r) => `- ${r.label}${r.detail ? `\uFF1A${r.detail}` : ""}`));
+    if (agent?.skills?.length) lines.push("", "## \u6307\u5B9A\u6280\u80FD", `\u8BF7\u6309\u8FD9\u4E9B\u6280\u80FD\u7684\u8BF4\u660E\u5DE5\u4F5C\uFF1A${agent.skills.map((k) => `/${k}`).join(" ")}`);
     for (const p of predecessors) lines.push("", `## \u524D\u7F6E\u4EFB\u52A1 ${p.key} ${p.title}`, p.summary ? `\u5B83\u7684\u7ED3\u8BBA\uFF08\u4F9B\u4F60\u627F\u63A5\uFF09\uFF1A
 ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uFF0C\u8BF7\u5148\u67E5\u770B\u76F8\u5173\u6539\u52A8\u3002\uFF09");
     if (files.length) lines.push("", "## \u5F15\u7528\u7684\u9879\u76EE\u6587\u4EF6\uFF08\u76F8\u5BF9\u5DE5\u4F5C\u76EE\u5F55\uFF0C\u8BF7\u5148\u9605\u8BFB\uFF09", ...files.map((f) => `- ${f}`));
@@ -793,7 +994,7 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
     const { item } = input;
     const existing = this.issueForSource(item.source, item.ref);
     if (existing) throw new WorkbenchError("duplicate", `${item.ref} \u5DF2\u7ECF\u5F00\u8FC7\u5361\u7247\uFF08${existing.key}\uFF09`, existing.id);
-    const agent = this.agent(input.agentId ?? defaultAgentFor(item));
+    const agent = this.agent(input.agentId ?? this.settings().defaultAgents[item.source] ?? defaultAgentFor(item));
     const project = this.resolveProject(item);
     if (!project) throw new WorkbenchError("invalid", `\u300C${item.project}\u300D\u6CA1\u6709\u5BF9\u5E94\u7684\u9879\u76EE\u5DE5\u4F5C\u76EE\u5F55\uFF0C\u8BF7\u5148\u5728\u300C\u9879\u76EE\u300D\u9875\u6DFB\u52A0`);
     const issue = this.store.update((d) => {
@@ -836,6 +1037,36 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
       return { key: i.key, title: i.title, summary: done?.finalText?.slice(0, 1500) };
     });
   }
+  /**
+   * Where the agent works. A git project gets its own branch + worktree per task (so tasks never trample each other and the
+   * diff is exactly this task's); a non-git or opted-out project is used in place. Failing to isolate fails the start loudly.
+   */
+  async workDir(issueId, project) {
+    const issue = this.store.data.issues.find((i) => i.id === issueId);
+    if (issue.worktree && existsSync3(issue.worktree)) return issue.worktree;
+    const s = this.settings();
+    if (!(project.isolate ?? s.isolateByDefault) || !await isGitRepo(project.cwd)) return project.cwd;
+    const base = project.baseBranch?.trim() || await defaultBase(project.cwd);
+    const baseRef = await branchExists(project.cwd, base) ? base : `origin/${base}`;
+    const branch = issue.branch ?? branchName(s.branchPrefix, issue.key, issue.title);
+    const path = join3(dirname2(this.store.path), "worktrees", project.id, issue.key);
+    mkdirSync2(dirname2(path), { recursive: true });
+    try {
+      await addWorktree(project.cwd, branch, path, baseRef);
+    } catch (e) {
+      throw new Error(`\u521B\u5EFA\u4EFB\u52A1\u5206\u652F\u300C${branch}\u300D\u5931\u8D25\uFF1A${e.message}\uFF08\u53EF\u5728\u9879\u76EE\u91CC\u5173\u95ED\u300C\u5206\u652F\u9694\u79BB\u300D\u76F4\u63A5\u5728\u9879\u76EE\u76EE\u5F55\u8FD0\u884C\uFF09`);
+    }
+    const baseSha = (await git(project.cwd, ["merge-base", baseRef, branch])).trim();
+    this.store.update((d) => {
+      Object.assign(d.issues.find((i) => i.id === issueId), { branch, worktree: path, baseBranch: base, baseSha });
+    });
+    return path;
+  }
+  /** Remove the task's checkout when nothing uncommitted would be lost; the branch stays. */
+  async releaseWorktree(issue) {
+    const project = this.store.data.projects.find((p) => p.id === issue.projectId);
+    if (issue.worktree && project && existsSync3(issue.worktree)) await removeWorktree(project.cwd, issue.worktree);
+  }
   async launch(issueId, item) {
     const before = this.store.data.issues.find((i) => i.id === issueId);
     const agent = this.agent(before.agentId);
@@ -854,14 +1085,15 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
     });
     const issue = this.store.data.issues.find((i) => i.id === issueId);
     try {
+      const cwd = await this.workDir(issue.id, project);
       const { sessionId } = await this.driver.start({
         runId: run.id,
-        cwd: project.cwd,
+        cwd,
         title: `${issue.key} ${issue.title}`,
-        prompt: this.buildPrompt(issue, item, mentionedFiles(project.cwd, issue.description), agent, this.predecessorsOf(issue.id)),
+        prompt: this.buildPrompt(issue, item, mentionedFiles(cwd, issue.description), agent, this.predecessorsOf(issue.id)),
         command: issue.command,
         attachments: (issue.attachments ?? []).map((a) => ({ name: a.name, mediaType: a.mediaType, path: this.uploadPath(a) })),
-        profile: { presetId: agent.id, model: agent.model, instructions: agentPersona(agent) }
+        profile: { presetId: agent.id, model: agent.model, effort: agent.effort, skills: agent.skills, instructions: agentPersona(agent) }
       });
       return this.store.update((d) => {
         d.issues.find((i) => i.id === issueId).sessionId = sessionId;
@@ -899,6 +1131,7 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
   finishRun(runId, status, finalText, error) {
     const run = this.store.data.runs.find((r) => r.id === runId);
     if (!run || run.status !== "running") return;
+    let autoTest;
     this.store.update((d) => {
       const r = d.runs.find((x) => x.id === runId);
       r.status = status;
@@ -908,11 +1141,30 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
       const issue = d.issues.find((i) => i.id === r.issueId);
       if (issue && issue.status === "in_review" && status === "completed") issue.note = void 0;
       if (issue && issue.status === "in_progress") {
+        if (status === "completed") autoTest = issue.id;
         place(d, issue, status === "completed" ? "in_review" : "blocked");
         issue.note = status === "completed" ? void 0 : error ?? (status === "interrupted" ? "\u4F1A\u8BDD\u88AB\u4E2D\u65AD" : "\u4F1A\u8BDD\u51FA\u9519");
         issue.updatedAt = now();
       }
     });
+    if (autoTest && this.settings().autoTestOnReview) {
+      const iss = this.store.data.issues.find((i) => i.id === autoTest);
+      if (this.store.data.projects.find((p) => p.id === iss?.projectId)?.testCmd?.trim()) void this.runChecks(autoTest).catch(() => {
+      });
+    }
+  }
+  // ---------- plugin settings ----------
+  settings() {
+    return normalizeSettings(this.store.data.settings);
+  }
+  saveSettings(patch) {
+    const next = normalizeSettings({ ...this.store.data.settings, ...patch, defaultAgents: { ...this.settings().defaultAgents, ...patch.defaultAgents } });
+    for (const [src, id] of Object.entries(next.defaultAgents)) if (!this.store.data.agents.some((a) => a.id === id)) throw new WorkbenchError("invalid", `\u9ED8\u8BA4\u667A\u80FD\u4F53\u300C${id}\u300D\uFF08${src}\uFF09\u4E0D\u5B58\u5728`);
+    this.store.update((d) => {
+      d.settings = next;
+    });
+    void this.tick();
+    return next;
   }
   // ---------- connections (settings page) ----------
   connectorCtx() {
@@ -1048,13 +1300,13 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
   searchFiles(projectId, query) {
     const project = this.store.data.projects.find((p) => p.id === projectId);
     if (!project) throw new WorkbenchError("invalid", "\u8BF7\u5148\u9009\u62E9\u9879\u76EE");
-    if (!existsSync2(project.cwd)) throw new WorkbenchError("invalid", `\u5DE5\u4F5C\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${project.cwd}`);
+    if (!existsSync3(project.cwd)) throw new WorkbenchError("invalid", `\u5DE5\u4F5C\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${project.cwd}`);
     let idx = this.fileIndex.get(projectId);
     if (!idx || Date.now() - idx.at > 3e4) {
       idx = { at: Date.now(), files: listFiles(project.cwd) };
       this.fileIndex.set(projectId, idx);
     }
-    return fuzzy(idx.files, query);
+    return fuzzy(idx.files, query, this.settings().fileSearchLimit);
   }
   // ---------- attachments ----------
   get uploadsDir() {
@@ -1065,7 +1317,8 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
   }
   saveUpload(input) {
     if (input.data.byteLength === 0) throw new WorkbenchError("invalid", "\u6587\u4EF6\u4E3A\u7A7A");
-    if (input.data.byteLength > MAX_UPLOAD) throw new WorkbenchError("invalid", `\u6587\u4EF6\u8D85\u8FC7 ${MAX_UPLOAD / 1024 / 1024} MB \u4E0A\u9650`);
+    const maxMB = this.settings().maxUploadMB;
+    if (input.data.byteLength > maxMB * 1024 * 1024) throw new WorkbenchError("invalid", `\u6587\u4EF6\u8D85\u8FC7 ${maxMB} MB \u4E0A\u9650\uFF08\u53EF\u5728\u8BBE\u7F6E \u2192 \u63D2\u4EF6\u8BBE\u7F6E\u91CC\u8C03\u6574\uFF09`);
     const att = {
       id: randomUUID(),
       name: input.name.replace(/[\\/]/g, "_").slice(0, 200) || "file",
@@ -1079,7 +1332,7 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
   /** Keep only a known command and attachments whose bytes are still on disk (the page is untrusted input). */
   cleanExtras(x) {
     if (x.command && !COMMANDS.includes(x.command)) throw new WorkbenchError("invalid", `\u4E0D\u652F\u6301\u7684\u6307\u4EE4 /${x.command}`);
-    const attachments = (x.attachments ?? []).filter((a) => /^[0-9a-f-]{36}$/.test(a.id) && existsSync2(this.uploadPath(a))).map(({ id, name, mediaType, size }) => ({ id, name, mediaType, size }));
+    const attachments = (x.attachments ?? []).filter((a) => /^[0-9a-f-]{36}$/.test(a.id) && existsSync3(this.uploadPath(a))).map(({ id, name, mediaType, size }) => ({ id, name, mediaType, size }));
     return { command: x.command || void 0, attachments };
   }
   // ---------- issues ----------
@@ -1190,7 +1443,7 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
     return this.tickP;
   }
   async runTick() {
-    for (let n = 0; n < 50 && this.autoRun && this.workingCount() < AUTO_CONCURRENCY; n++) {
+    for (let n = 0; n < 50 && this.autoRun && this.workingCount() < this.settings().autoRunConcurrency; n++) {
       const d = this.store.data;
       const queue = d.issues.filter((i) => i.status === "todo" && !i.archivedAt).sort(byOrder);
       const ready = queue.find((i) => d.projects.some((p) => p.id === i.projectId));
@@ -1216,11 +1469,123 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
     }
   }
   deleteIssue(id) {
+    const gone = this.store.data.issues.find((i) => i.id === id);
+    if (gone) void this.releaseWorktree(gone);
     for (const a of this.store.data.issues.find((i) => i.id === id)?.attachments ?? []) rmSync(this.uploadPath(a), { force: true });
     this.store.update((d) => {
       d.issues = d.issues.filter((i) => i.id !== id);
       d.runs = d.runs.filter((r) => r.issueId !== id);
       for (const i of d.issues) if (i.nextId === id) i.nextId = void 0;
+    });
+  }
+  // ---------- review: changes, tests, merge request ----------
+  workspaceOf(issue, project) {
+    return issue.worktree && existsSync3(issue.worktree) ? issue.worktree : project.cwd;
+  }
+  ctxOf(id) {
+    const issue = this.store.data.issues.find((i) => i.id === id);
+    if (!issue) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
+    const project = this.store.data.projects.find((p) => p.id === issue.projectId);
+    if (!project) throw new WorkbenchError("invalid", `${issue.key} \u6CA1\u6709\u5173\u8054\u9879\u76EE`);
+    return { issue, project };
+  }
+  /** What the agent changed: against the task branch's base when it has one, else the project's uncommitted changes. */
+  async issueChanges(id) {
+    const { issue, project } = this.ctxOf(id);
+    if (issue.worktree && existsSync3(issue.worktree) && issue.baseSha) {
+      return { ...await changes(issue.worktree, issue.baseSha), branch: issue.branch, base: issue.baseBranch, isolated: true };
+    }
+    if (await isGitRepo(project.cwd)) {
+      const branch = (await git(project.cwd, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+      return { ...await changes(project.cwd, "HEAD"), branch, base: "HEAD", isolated: false };
+    }
+    throw new WorkbenchError("invalid", "\u8FD9\u4E2A\u4EFB\u52A1\u7684\u9879\u76EE\u4E0D\u662F git \u4ED3\u5E93\uFF0C\u65E0\u6CD5\u67E5\u770B\u6539\u52A8");
+  }
+  /** Run the project's test command against this task's work, in the background; poll the card for the result. */
+  async runChecks(id) {
+    const { issue, project } = this.ctxOf(id);
+    const cmd = project.testCmd?.trim();
+    if (!cmd) throw new WorkbenchError("invalid", `\u9879\u76EE\u300C${project.name}\u300D\u8FD8\u6CA1\u6709\u914D\u7F6E\u6D4B\u8BD5\u547D\u4EE4\uFF08\u9879\u76EE \u2192 \u7F16\u8F91\uFF09`);
+    if (issue.checks?.some((c) => c.state === "running")) throw new WorkbenchError("invalid", "\u6D4B\u8BD5\u6B63\u5728\u8FD0\u884C");
+    const cwd = this.workspaceOf(issue, project);
+    const check = this.store.update((d) => {
+      d.seq += 1;
+      const c = { id: `chk_${d.seq}`, cmd, state: "running", output: "", at: now() };
+      const i = d.issues.find((x) => x.id === id);
+      i.checks = [...(i.checks ?? []).slice(-4), c];
+      return c;
+    });
+    void runShell(cmd, cwd, this.settings().testTimeoutSeconds * 1e3).then((r) => {
+      this.store.update((d) => {
+        const i = d.issues.find((x) => x.id === id);
+        const c = i?.checks?.find((x) => x.id === check.id);
+        if (!i || !c) return;
+        c.state = r.code === 0 ? "passed" : "failed";
+        c.code = r.code;
+        c.ms = r.ms;
+        c.output = r.timedOut ? `\uFF08\u8D85\u8FC7 ${this.settings().testTimeoutSeconds} \u79D2\uFF0C\u5DF2\u7EC8\u6B62\uFF09
+${r.output}` : r.output;
+        if (c.state === "failed") i.note = r.timedOut ? "\u6D4B\u8BD5\u8D85\u65F6" : `\u6D4B\u8BD5\u672A\u901A\u8FC7\uFF08\u9000\u51FA\u7801 ${r.code}\uFF09`;
+        else if (i.note?.startsWith("\u6D4B\u8BD5")) i.note = void 0;
+      });
+    });
+    return check;
+  }
+  /**
+   * Commit the task's work, push its branch and open a GitLab merge request. Outward-facing: only called from an explicit click.
+   * Pushing uses the git credentials already on this machine; the GitLab token is only used for the API call.
+   */
+  async submitMergeRequest(id) {
+    const { issue, project } = this.ctxOf(id);
+    if (issue.mr) throw new WorkbenchError("invalid", `${issue.key} \u5DF2\u7ECF\u63D0\u4EA4\u8FC7\u5408\u5E76\u8BF7\u6C42\uFF1A${issue.mr.url}`);
+    if (!issue.branch || !issue.worktree || !existsSync3(issue.worktree) || !issue.baseSha) {
+      throw new WorkbenchError("invalid", "\u53EA\u6709\u5728\u72EC\u7ACB\u4EFB\u52A1\u5206\u652F\u4E0A\u5B8C\u6210\u7684\u4EFB\u52A1\u624D\u80FD\u63D0\u4EA4\u5408\u5E76\u8BF7\u6C42\uFF08\u9879\u76EE\u9700\u8981\u662F git \u4ED3\u5E93\u5E76\u5F00\u542F\u5206\u652F\u9694\u79BB\uFF09");
+    }
+    if (issue.status === "in_progress") throw new WorkbenchError("invalid", `${issue.key} \u6B63\u5728\u8FDB\u884C\u4E2D`);
+    if (project.gitlabProjectId == null) throw new WorkbenchError("invalid", `\u8BF7\u5148\u5728\u9879\u76EE\u300C${project.name}\u300D\u91CC\u586B\u5199 GitLab \u9879\u76EE ID`);
+    if (!await remoteUrl(project.cwd)) throw new WorkbenchError("invalid", `\u9879\u76EE\u300C${project.name}\u300D\u7684\u4ED3\u5E93\u6CA1\u6709 origin \u8FDC\u7A0B\uFF0C\u65E0\u6CD5\u63A8\u9001`);
+    const ctx = this.connectorCtx();
+    if (!await this.creds("WORKBENCH_GITLAB_URL") || !await this.creds("WORKBENCH_GITLAB_TOKEN")) throw new WorkbenchError("invalid", "GitLab \u672A\u914D\u7F6E\uFF08\u8BBE\u7F6E \u2192 GitLab\uFF09");
+    const ref = issue.sourceRef?.ref ?? issue.key;
+    const lastCheck = issue.checks?.at(-1);
+    const summary = this.store.data.runs.filter((r) => r.issueId === id && r.status === "completed" && r.finalText).at(-1)?.finalText;
+    const description = [
+      `**\u6765\u6E90**\uFF1A${issue.sourceRef ? `${issue.sourceRef.source} ${issue.sourceRef.ref}` : "\u7814\u53D1\u5DE5\u4F5C\u53F0\u624B\u5DE5\u4EFB\u52A1"}\uFF08${issue.key}\uFF09`,
+      issue.description && `
+## \u80CC\u666F
+${issue.description}`,
+      issue.acceptance.length && `
+## \u9A8C\u6536\u6807\u51C6
+${issue.acceptance.map((a) => `- [ ] ${a}`).join("\n")}`,
+      lastCheck && `
+## \u6D4B\u8BD5
+\`${lastCheck.cmd}\`\uFF1A${lastCheck.state === "passed" ? "\u901A\u8FC7" : lastCheck.state === "failed" ? `\u672A\u901A\u8FC7\uFF08\u9000\u51FA\u7801 ${lastCheck.code}\uFF09` : "\u8FD0\u884C\u4E2D"}`,
+      summary && `
+## \u667A\u80FD\u4F53\u603B\u7ED3
+${summary.slice(0, 4e3)}`,
+      "\n---\n\u7531\u7814\u53D1\u5DE5\u4F5C\u53F0\u521B\u5EFA\uFF0C\u8BF7\u4EBA\u5DE5\u8BC4\u5BA1\u540E\u5408\u5E76\u3002"
+    ].filter(Boolean).join("\n");
+    try {
+      await commitAll(issue.worktree, `${ref} ${issue.title}
+
+\u7814\u53D1\u5DE5\u4F5C\u53F0\u4EFB\u52A1 ${issue.key}`);
+      if (await commitsAhead(issue.worktree, issue.baseSha) === 0) throw new WorkbenchError("invalid", "\u8FD9\u4E2A\u4EFB\u52A1\u5206\u652F\u76F8\u5BF9\u57FA\u7EBF\u6CA1\u6709\u4EFB\u4F55\u6539\u52A8\uFF0C\u6CA1\u6709\u53EF\u63D0\u4EA4\u7684\u5185\u5BB9");
+      await push(issue.worktree, issue.branch);
+    } catch (e) {
+      if (e instanceof WorkbenchError) throw e;
+      throw new WorkbenchError("invalid", `\u63A8\u9001\u5206\u652F\u5931\u8D25\uFF1A${e.message}`);
+    }
+    let mr;
+    try {
+      mr = await createMergeRequest(ctx, project.gitlabProjectId, { source: issue.branch, target: issue.baseBranch ?? "main", title: `${ref} ${issue.title}`, description });
+    } catch (e) {
+      throw new WorkbenchError("invalid", `\u5206\u652F\u5DF2\u63A8\u9001\uFF0C\u4F46${e.message}`);
+    }
+    return this.store.update((d) => {
+      const i = d.issues.find((x) => x.id === id);
+      i.mr = { url: mr.url, iid: mr.iid, createdAt: now() };
+      i.updatedAt = now();
+      return i;
     });
   }
   // ---------- chain, archive ----------
@@ -1263,6 +1628,7 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
       if (!i) throw new WorkbenchError("not_found", `\u5361\u7247 ${id} \u4E0D\u5B58\u5728`);
       if (archived && i.status === "in_progress") throw new WorkbenchError("invalid", `${i.key} \u6B63\u5728\u8FDB\u884C\u4E2D\uFF0C\u4E0D\u80FD\u5F52\u6863`);
       i.archivedAt = archived ? now() : void 0;
+      if (archived) void this.releaseWorktree(i);
       return i;
     });
   }
@@ -1355,11 +1721,12 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
     if (!a.name.trim()) throw new WorkbenchError("invalid", "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
     return this.store.update((d) => {
       const cur = d.agents.find((x) => x.id === a.id);
+      const extra = { effort: a.effort || void 0, skills: [...new Set((a.skills ?? []).filter((x) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(x)))] };
       if (cur) {
-        Object.assign(cur, { name: a.name.trim(), description: a.description, instructions: a.instructions, model: a.model || void 0 });
+        Object.assign(cur, { name: a.name.trim(), description: a.description, instructions: a.instructions, model: a.model || void 0, ...extra });
         return cur;
       }
-      const created = { ...a, name: a.name.trim(), model: a.model || void 0 };
+      const created = { ...a, name: a.name.trim(), model: a.model || void 0, ...extra };
       d.agents.push(created);
       return created;
     });
@@ -1386,7 +1753,7 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
   seedDemoProjects(baseDir) {
     if (this.store.data.projects.length) return;
     const demo = [
-      { name: "\u4E91\u652F\u4ED8 / payment-core", cwd: join3(baseDir, "payment-core"), zentaoProductId: 12, sparkinProjectId: "SP-PAY" },
+      { name: "\u4E91\u652F\u4ED8 / payment-core", cwd: join3(baseDir, "payment-core"), zentaoProductId: 12, sparkinProjectId: "SP-PAY", testCmd: "node --test" },
       { name: "\u8BA2\u5355\u670D\u52A1 / teleone-order", cwd: join3(baseDir, "teleone-order"), gitlabProjectId: 101, zentaoProductId: 5, sparkinProjectId: "SP-ORDER" },
       { name: "\u8BA2\u5355\u670D\u52A1 / order-service", cwd: join3(baseDir, "order-service"), jenkinsJob: "order-service", sparkinProjectId: "SP-ORDER" },
       { name: "\u524D\u7AEF / teleone-web", cwd: join3(baseDir, "teleone-web"), jenkinsJob: "teleone-web", sparkinProjectId: "SP-WEB" },
@@ -1402,11 +1769,20 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
 ` };
       for (const [rel, text] of Object.entries(files)) {
         const f = join3(p.cwd, rel);
-        if (existsSync2(f)) continue;
+        if (existsSync3(f)) continue;
         mkdirSync2(dirname2(f), { recursive: true });
         writeFileSync2(f, text);
       }
+      initDemoRepo(p.cwd);
       this.saveProject(p);
+    }
+  }
+  /** Demo data from before git support: make the seeded directories git repos and give payment-core its test command. */
+  upgradeDemoRepos(baseDir) {
+    for (const p of this.store.data.projects) {
+      if (!p.cwd.startsWith(baseDir) || !existsSync3(p.cwd)) continue;
+      initDemoRepo(p.cwd);
+      if (p.name.endsWith("payment-core") && p.testCmd === void 0) this.saveProject({ ...p, testCmd: "node --test" });
     }
   }
   deleteProject(id) {
@@ -1415,6 +1791,16 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
     });
   }
 };
+function initDemoRepo(cwd) {
+  if (existsSync3(join3(cwd, ".git"))) return;
+  try {
+    const run = (...a) => execFileSync("git", a, { cwd, stdio: "ignore" });
+    run("init", "-q", "-b", "main");
+    run("add", "-A");
+    run("-c", "user.name=\u7814\u53D1\u5DE5\u4F5C\u53F0", "-c", "user.email=workbench@localhost", "commit", "-q", "-m", "\u521D\u59CB\u63D0\u4EA4\uFF08\u6F14\u793A\u4ED3\u5E93\uFF09");
+  } catch {
+  }
+}
 function defaultAgentFor(w) {
   return w.source === "gitlab" ? "reviewer" : w.source === "jenkins" ? "build-fixer" : "fullstack";
 }
@@ -1464,6 +1850,8 @@ ${agentPersona(a)}` } },
 }
 var DshDriver = class {
   id = "dsh";
+  /** The permission preset new sessions start with (a plugin setting). */
+  permission = () => "workspace-write";
   ctx;
   cbs = /* @__PURE__ */ new Set();
   runs = /* @__PURE__ */ new Map();
@@ -1475,8 +1863,58 @@ var DshDriver = class {
     this.ctx = ctx;
     ctx.on("session/event", (session, event) => this.onSessionEvent(session.id, event));
   }
+  /** Models of the default provider with their selectable reasoning efforts, read live from DSH. */
   async listModels() {
-    return MODELS;
+    const llm = this.ctx.get("llm");
+    if (!llm) return MODELS;
+    try {
+      const provider = this.ctx.agentDefaultModel.currentSelection().provider;
+      const models = await llm.listModels(provider);
+      return await Promise.all(models.map(async (m) => {
+        const info = await llm.resolveModelInfo(provider, m.id).catch(() => void 0);
+        return {
+          id: m.id,
+          name: m.name ?? m.id,
+          efforts: info?.reasoning?.efforts?.map((e) => ({ id: e.id, name: e.name, description: e.description })),
+          defaultEffort: info?.reasoning?.defaultEffort
+        };
+      }));
+    } catch (e) {
+      this.ctx.logger.warn("workbench: model list failed", e);
+      return MODELS;
+    }
+  }
+  /**
+   * User-invocable skills (global ones plus those of the given project directories); `/name` in a first message loads one.
+   * Skill providers live inside agent presets, so the lookup borrows a preset's scope the way DSH's own skill menu does.
+   */
+  async listSkills(cwds = []) {
+    const skills = this.ctx.get("skills");
+    if (!skills) return [];
+    const presets = this.ctx.get("agentPresets");
+    let lease;
+    for (const id of ["wb-fullstack", "standard"]) {
+      try {
+        lease = await presets?.acquireScope(id);
+        if (lease) break;
+      } catch {
+      }
+    }
+    const seen = /* @__PURE__ */ new Map();
+    try {
+      for (const cwd of [void 0, ...cwds]) {
+        try {
+          for (const k of await skills.list({ ...cwd ? { cwd } : {}, scope: lease?.key })) {
+            if (k.invocation?.userInvocable !== false && !seen.has(k.name)) seen.set(k.name, { name: k.name, description: k.description ?? "", source: String(k.source) });
+          }
+        } catch (e) {
+          this.ctx.logger.warn("workbench: skill list failed", e);
+        }
+      }
+    } finally {
+      await lease?.[Symbol.asyncDispose]?.();
+    }
+    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
   /** (Re)register one agent as a DSH Agent Preset `wb-<id>`. Failure is logged; start() then falls back to `standard`. */
   async registerPreset(a) {
@@ -1519,13 +1957,23 @@ ${req.prompt}`;
         agentOptions: { provider: selected.provider, model: req.profile.model || selected.model },
         setup: async (agentCtx) => {
           await ctx.agentPresets.mount(agentCtx, presetInfo.id);
+          const model = req.profile.model || selected.model;
+          const effort = req.profile.effort;
+          if (effort) {
+            agentCtx.on("agent/request", async ({ agent }, next) => {
+              const resolved2 = await next();
+              if (agent.session.requestHeader() !== void 0 || resolved2.provider !== selected.provider || resolved2.model !== model) return resolved2;
+              const { reasoningEffort: _inherited, ...rest } = resolved2;
+              return { ...rest, reasoningEffort: effort };
+            });
+          }
         }
       });
       this.handles.set(sessionId, handle);
       try {
         await workspace.attachSession(sessionId);
         try {
-          ctx.permissionPresets.set(handle.agent.session, "workspace-write");
+          ctx.permissionPresets.set(handle.agent.session, this.permission());
         } catch (e) {
           ctx.logger.warn("workbench: permission preset not applied", e);
         }
@@ -1662,13 +2110,21 @@ function apply(ctx) {
       else await ctx.credentials.set(name, value);
     }
   });
+  driver.permission = () => wb.settings().permissionPreset;
   wb.seedDemoProjects(join4(dataDir(), "demo-repos"));
+  wb.upgradeDemoRepos(join4(dataDir(), "demo-repos"));
   void Promise.all(wb.listAgents().map((a) => driver.registerPreset(a)));
-  const timer = setInterval(() => {
-    wb.tick().catch((e) => ctx.logger.warn("workbench: auto-run tick failed", e));
-  }, 5e3);
+  let stopped = false;
+  let timer;
+  const loop = () => {
+    wb.tick().catch((e) => ctx.logger.warn("workbench: auto-run tick failed", e)).finally(() => {
+      if (!stopped) timer = setTimeout(loop, wb.settings().autoRunPollSeconds * 1e3);
+    });
+  };
+  timer = setTimeout(loop, 5e3);
   ctx.effect(() => () => {
-    clearInterval(timer);
+    stopped = true;
+    clearTimeout(timer);
     wb.dispose();
     return driver.disposePresets();
   });
@@ -1679,7 +2135,8 @@ function apply(ctx) {
     projects: wb.listProjects(),
     builds: await wb.refreshBuilds(),
     autoRun: wb.autoRun,
-    working: wb.workingCount()
+    working: wb.workingCount(),
+    settings: wb.settings()
   });
   async function dispatch(endpoint, p) {
     switch (endpoint) {
@@ -1743,7 +2200,20 @@ function apply(ctx) {
       case "files.search":
         return wb.searchFiles(p.projectId, p.q ?? "");
       case "models.list":
-        return await driver.listModels();
+        return { models: await driver.listModels(), defaultModel: ctx.agentDefaultModel.currentSelection().model };
+      case "skills.list":
+        return await driver.listSkills(wb.listProjects().map((x) => x.cwd));
+      case "issue.changes":
+        return await wb.issueChanges(p.id);
+      case "issue.test":
+        return await wb.runChecks(p.id);
+      case "issue.mr":
+        return await wb.submitMergeRequest(p.id);
+      // outward-facing: only an explicit click in the UI calls this
+      case "settings.get":
+        return wb.settings();
+      case "settings.save":
+        return wb.saveSettings(p ?? {});
       default:
         throw new WorkbenchError("invalid", `unknown endpoint ${endpoint}`);
     }

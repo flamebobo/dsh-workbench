@@ -43,6 +43,8 @@ function presetDefinition(a: AgentProfile) {
 
 export class DshDriver implements AgentDriver {
   id = 'dsh' as const
+  /** The permission preset new sessions start with (a plugin setting). */
+  permission: () => string = () => 'workspace-write'
   private ctx: Ctx
   private cbs = new Set<(e: DriverEvent) => void>()
   private runs = new Map<string, { runId: string; lastText?: string }>() // sessionId -> run
@@ -54,7 +56,46 @@ export class DshDriver implements AgentDriver {
     ctx.on('session/event', (session: any, event: any) => this.onSessionEvent(session.id, event))
   }
 
-  async listModels() { return MODELS }
+  /** Models of the default provider with their selectable reasoning efforts, read live from DSH. */
+  async listModels() {
+    const llm = this.ctx.get('llm')
+    if (!llm) return MODELS
+    try {
+      const provider = this.ctx.agentDefaultModel.currentSelection().provider
+      const models = await llm.listModels(provider)
+      return await Promise.all(models.map(async (m: any) => {
+        const info = await llm.resolveModelInfo(provider, m.id).catch(() => undefined)
+        return {
+          id: m.id as string, name: (m.name ?? m.id) as string,
+          efforts: info?.reasoning?.efforts?.map((e: any) => ({ id: e.id as string, name: e.name as string, description: e.description as string | undefined })),
+          defaultEffort: info?.reasoning?.defaultEffort as string | undefined,
+        }
+      }))
+    } catch (e) { this.ctx.logger.warn('workbench: model list failed', e); return MODELS }
+  }
+
+  /**
+   * User-invocable skills (global ones plus those of the given project directories); `/name` in a first message loads one.
+   * Skill providers live inside agent presets, so the lookup borrows a preset's scope the way DSH's own skill menu does.
+   */
+  async listSkills(cwds: string[] = []) {
+    const skills = this.ctx.get('skills')
+    if (!skills) return []
+    const presets = this.ctx.get('agentPresets')
+    let lease: any
+    for (const id of ['wb-fullstack', 'standard']) { try { lease = await presets?.acquireScope(id); if (lease) break } catch { /* try the next preset */ } }
+    const seen = new Map<string, { name: string; description: string; source: string }>()
+    try {
+      for (const cwd of [undefined, ...cwds]) {
+        try {
+          for (const k of await skills.list({ ...(cwd ? { cwd } : {}), scope: lease?.key })) {
+            if (k.invocation?.userInvocable !== false && !seen.has(k.name)) seen.set(k.name, { name: k.name, description: k.description ?? '', source: String(k.source) })
+          }
+        } catch (e) { this.ctx.logger.warn('workbench: skill list failed', e) }
+      }
+    } finally { await lease?.[Symbol.asyncDispose]?.() }
+    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }
 
   /** (Re)register one agent as a DSH Agent Preset `wb-<id>`. Failure is logged; start() then falls back to `standard`. */
   async registerPreset(a: AgentProfile): Promise<boolean> {
@@ -95,12 +136,25 @@ export class DshDriver implements AgentDriver {
         sessionId,
         meta: { cwd: workspace.path, agentPreset: presetInfo.id },
         agentOptions: { provider: selected.provider, model: req.profile.model || selected.model },
-        setup: async (agentCtx: any) => { await ctx.agentPresets.mount(agentCtx, presetInfo.id) },
+        setup: async (agentCtx: any) => {
+          await ctx.agentPresets.mount(agentCtx, presetInfo.id)
+          const model = req.profile.model || selected.model
+          const effort = req.profile.effort
+          // Apply the agent's reasoning effort to the first request (until the session has its own durable request header).
+          if (effort) {
+            agentCtx.on('agent/request', async ({ agent }: any, next: () => Promise<any>) => {
+              const resolved = await next()
+              if (agent.session.requestHeader() !== undefined || resolved.provider !== selected.provider || resolved.model !== model) return resolved
+              const { reasoningEffort: _inherited, ...rest } = resolved
+              return { ...rest, reasoningEffort: effort }
+            })
+          }
+        },
       })
       this.handles.set(sessionId, handle)
       try {
         await workspace.attachSession(sessionId)
-        try { ctx.permissionPresets.set(handle.agent.session, 'workspace-write') } catch (e) { ctx.logger.warn('workbench: permission preset not applied', e) }
+        try { ctx.permissionPresets.set(handle.agent.session, this.permission()) } catch (e) { ctx.logger.warn('workbench: permission preset not applied', e) }
         ctx.sessionTitle.rename(handle.agent.session, req.title)
         await this.sendFirstMessage(handle.agent, prompt, req)
       } catch (e) {

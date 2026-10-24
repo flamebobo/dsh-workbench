@@ -20,6 +20,7 @@ function setup(fetchImpl?: (url: string, init?: RequestInit) => Promise<Response
     fetch: fetchImpl as typeof fetch, now: () => clock,
   })
   wb.seedDemoProjects(join(dir, 'repos'))
+  wb.saveSettings({ isolateByDefault: false })
   return { wb, secrets, tick: (ms: number) => { clock += ms } }
 }
 

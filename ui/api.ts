@@ -1,8 +1,10 @@
-import type { AgentProfile, Attachment, Build, BuildState, Issue, Project, Run, WorkItem, Status } from '../core/src/types.ts'
+import type { AgentProfile, Attachment, Build, Check, MergeRequest, BuildState, Issue, Project, Run, WorkItem, Status } from '../core/src/types.ts'
 import type { TodoResult } from '../core/src/workbench.ts'
+import type { PluginSettings } from '../core/src/settings.ts'
+export type { PluginSettings }
 
-export type { AgentProfile, Attachment, Build, BuildState, Issue, Project, Run, WorkItem, Status, TodoResult }
-export interface State { issues: Issue[]; runs: Run[]; agents: AgentProfile[]; projects: Project[]; builds?: Build[]; autoRun?: boolean; working?: number }
+export type { AgentProfile, Attachment, Check, MergeRequest, Build, BuildState, Issue, Project, Run, WorkItem, Status, TodoResult }
+export interface State { issues: Issue[]; runs: Run[]; agents: AgentProfile[]; projects: Project[]; builds?: Build[]; autoRun?: boolean; working?: number; settings?: PluginSettings }
 
 export class RpcError extends Error {
   code?: string
@@ -62,3 +64,8 @@ export interface ConnectionView {
   id: 'zentao' | 'gitlab' | 'jenkins'; label: string; configured: boolean
   fields: { key: string; label: string; secret?: boolean; optional?: boolean; placeholder?: string; set: boolean; value?: string }[]
 }
+
+export interface ModelInfo { id: string; name: string; efforts?: { id: string; name: string; description?: string }[]; defaultEffort?: string }
+export interface SkillInfo { name: string; description: string; source: string }
+export interface FileChange { path: string; status: string; additions: number; deletions: number; patch: string }
+export interface Changes { files: FileChange[]; truncated: boolean; branch?: string; base?: string; isolated: boolean }

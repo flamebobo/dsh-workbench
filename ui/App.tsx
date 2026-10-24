@@ -46,9 +46,15 @@ export function App({ openSession }: { openSession: (id: string) => void }) {
   useEffect(() => {
     void refresh(); void loadTodos()
     const id = setInterval(() => { void refresh() }, 2000)
-    const pull = setInterval(() => { void loadTodos() }, 60_000) // auto-pull Zentao / GitLab / Jenkins once a minute
-    return () => { clearInterval(id); clearInterval(pull); clearTimeout(timer.current) }
+    return () => { clearInterval(id); clearTimeout(timer.current) }
   }, [refresh, loadTodos])
+
+  // auto-pull Zentao / GitLab / Jenkins; the interval is a plugin setting (默认每分钟)
+  const pullSeconds = state?.settings?.todoRefreshSeconds ?? 60
+  useEffect(() => {
+    const pull = setInterval(() => { void loadTodos() }, pullSeconds * 1000)
+    return () => clearInterval(pull)
+  }, [loadTodos, pullSeconds])
 
   // Todos carry card ids/status; re-read them (cheap in demo mode, one round trip live) when issues change.
   const sig = state?.issues.map((i) => i.id + i.status + i.updatedAt).join(',')

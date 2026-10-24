@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { rpc, type ConnectionView } from './api.ts'
+import { rpc, type ConnectionView, type PluginSettings } from './api.ts'
 import type { PageProps } from './App.tsx'
 
 const { useState, useEffect } = React
@@ -13,7 +13,7 @@ export function Settings(p: PageProps & { reloadTodos: () => Promise<void> }) {
   const [edits, setEdits] = useState<Record<string, string>>({})
   const [msg, setMsg] = useState<Record<string, { ok: boolean; text: string }>>({})
   const [busy, setBusy] = useState<string>()
-  const [sel, setSel] = useState<'zentao' | 'gitlab' | 'jenkins' | 'sparkin'>('zentao')
+  const [sel, setSel] = useState<'general' | 'zentao' | 'gitlab' | 'jenkins' | 'sparkin'>('general')
 
   const load = async () => { setConns(await rpc<ConnectionView[]>('connections.list')) }
   useEffect(() => { void load().catch((e) => p.notify((e as Error).message)) }, [])
@@ -54,7 +54,11 @@ export function Settings(p: PageProps & { reloadTodos: () => Promise<void> }) {
   return (
     <div className="wb-split" style={{ flex: 1 }}>
       <nav className="wb-list" style={{ width: 220 }} aria-label="设置菜单">
-        <div className="wb-menu-h">连接</div>
+        <div className="wb-menu-h">插件</div>
+        <button className="wb-li" aria-selected={sel === 'general'} onClick={() => setSel('general')}>
+          <b>插件设置</b><div className="wb-muted" style={{ fontSize: 12 }}>自动运行、分支与验证、默认值</div>
+        </button>
+        <div className="wb-menu-h" style={{ marginTop: 10 }}>连接</div>
         {conns.map((c) => (
           <button key={c.id} className="wb-li" aria-selected={sel === c.id} onClick={() => setSel(c.id)}>
             <div className="wb-row"><b>{c.label}</b><span className="wb-grow" />
@@ -68,7 +72,7 @@ export function Settings(p: PageProps & { reloadTodos: () => Promise<void> }) {
         </button>
       </nav>
       <div className="wb-pane" style={{ maxWidth: 720 }}>
-        {cur ? (
+        {sel === 'general' ? <General p={p} /> : cur ? (
           <>
             <div className="wb-row"><h3 style={{ margin: 0 }}>{cur.label}</h3>
               <span className={`wb-pill ${cur.configured ? 'live' : 'demo'}`}>{cur.configured ? '已配置' : '未配置 · 演示数据'}</span></div>
@@ -100,5 +104,72 @@ export function Settings(p: PageProps & { reloadTodos: () => Promise<void> }) {
         )}
       </div>
     </div>
+  )
+}
+
+const AGENT_SOURCES = [['zentao', '禅道'], ['gitlab', 'GitLab'], ['jenkins', 'Jenkins'], ['manual', '手工任务']] as const
+
+/** Everything tunable about the plugin itself; saved in the data file and applied immediately. */
+function General({ p }: { p: PageProps }) {
+  const saved = p.state.settings
+  const [f, setF] = useState<PluginSettings | undefined>(saved)
+  const [msg, setMsg] = useState<string>()
+  useEffect(() => { if (!f && saved) setF(saved) }, [saved])
+  if (!f) return <div className="wb-muted">加载中…</div>
+  const set = <K extends keyof PluginSettings>(k: K, v: PluginSettings[K]) => setF({ ...f, [k]: v })
+  const n = (k: keyof PluginSettings, label: string, hint: string, min: number, max: number, step = 1) => (
+    <div className="wb-field" style={{ maxWidth: 360 }}><label>{label}</label>
+      <input className="wb-input" type="number" min={min} max={max} step={step} value={String(f[k] as number)} onChange={(e) => set(k, Number(e.target.value) as never)} />
+      <div className="wb-sub" style={{ marginTop: 3 }}>{hint}（{min}–{max}）</div></div>
+  )
+  const check = (k: 'isolateByDefault' | 'autoTestOnReview', label: string, hint: string) => (
+    <label className="wb-pick" style={{ alignItems: 'flex-start' }}><input type="checkbox" checked={f[k]} onChange={(e) => set(k, e.target.checked)} />
+      <span><b>{label}</b><div className="wb-sub">{hint}</div></span></label>
+  )
+  async function save() {
+    try { setF(await rpc<PluginSettings>('settings.save', f)); setMsg('已保存，立即生效'); await p.refresh() } catch (e) { setMsg((e as Error).message) }
+  }
+  return (
+    <>
+      <div className="wb-row"><h3 style={{ margin: 0 }}>插件设置</h3></div>
+      <div className="wb-sub" style={{ margin: '6px 0 14px' }}>这些值原来写在代码里，现在都能在这里调整；保存后立即生效，并保存在工作台的数据文件里。</div>
+
+      <h4 className="wb-sec">自动运行</h4>
+      {n('autoRunConcurrency', '同时运行的智能体数', '看板「自动运行」时，一次让几个智能体同时工作；1 表示严格按顺序一个一个来', 1, 5)}
+      {n('autoRunPollSeconds', '队列检查间隔（秒）', '自动运行时多久检查一次待办队列（会话结束和拖动卡片时会立即检查）', 2, 60)}
+
+      <h4 className="wb-sec">待办与智能体</h4>
+      {n('todoRefreshSeconds', '待办自动拉取间隔（秒）', '「我的待办」多久重新拉取禅道 / GitLab / Jenkins', 15, 3600)}
+      <div className="wb-field"><label>各来源默认指派的智能体</label>
+        <div className="wb-row" style={{ flexWrap: 'wrap' }}>
+          {AGENT_SOURCES.map(([k, label]) => (
+            <div key={k} style={{ minWidth: 150 }}><div className="wb-sub">{label}</div>
+              <select className="wb-select" value={f.defaultAgents[k]} onChange={(e) => set('defaultAgents', { ...f.defaultAgents, [k]: e.target.value })}>
+                {p.state.agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>))}
+        </div></div>
+      <div className="wb-field" style={{ maxWidth: 360 }}><label>新会话的权限预设</label>
+        <select className="wb-select" value={f.permissionPreset} onChange={(e) => set('permissionPreset', e.target.value as PluginSettings['permissionPreset'])}>
+          <option value="workspace-write">工作区内修改（推荐：只能改工作目录，越界操作需要你批准）</option>
+          <option value="danger-full-access">完全访问（智能体可改动任何位置，自动运行时请慎用）</option></select></div>
+
+      <h4 className="wb-sec">分支与验证</h4>
+      {check('isolateByDefault', '每个任务使用独立的 git 分支和工作树', '项目是 git 仓库时，开工会在工作台数据目录下为任务建分支和工作树，智能体只在里面改，互不干扰、改动可审查；单个项目可在「项目 → 编辑」里单独关闭')}
+      <div className="wb-field" style={{ maxWidth: 360 }}><label>任务分支前缀</label>
+        <input className="wb-input" value={f.branchPrefix} onChange={(e) => set('branchPrefix', e.target.value)} />
+        <div className="wb-sub" style={{ marginTop: 3 }}>例如 wb/ 得到 wb/wb-12-fix-callback；只能包含字母数字和 / _ . -</div></div>
+      {check('autoTestOnReview', '智能体完成后自动运行项目的测试命令', '项目配置了测试命令时，会话结束进入「待审核」后自动在任务工作树里运行，结果显示在卡片上')}
+      {n('testTimeoutSeconds', '测试超时（秒）', '超过后强制结束并记为失败', 10, 3600)}
+
+      <h4 className="wb-sec">附件、搜索与工时</h4>
+      {n('maxUploadMB', '附件大小上限（MB）', '任务描述里上传的图片和文档，单个文件的上限', 1, 200)}
+      {n('fileSearchLimit', '@ 搜索显示条数', '在任务描述里输入 @ 时最多列出多少个项目文件', 10, 100)}
+      {n('defaultHours', '填报工时的默认小时数', '「填报 Sparkin 工时」里每张卡片预填的工时', 0.5, 24, 0.5)}
+
+      <div className="wb-row" style={{ marginTop: 18 }}>
+        <button className="wb-btn primary" onClick={() => { void save() }}>保存</button>
+        <button className="wb-btn" onClick={() => { setF(saved); setMsg(undefined) }}>还原</button>
+        {msg && <span style={{ color: msg.startsWith('已保存') ? 'var(--wb-green)' : 'var(--wb-red)' }}>{msg}</span>}
+      </div>
+    </>
   )
 }

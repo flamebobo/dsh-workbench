@@ -31,7 +31,7 @@ export function TimesheetModal({ p, only, onClose }: { p: PageProps; only?: stri
       for (const i of cards) {
         if (next[i.id]) continue
         const spId = state.projects.find((x) => x.id === i.projectId)?.sparkinProjectId ?? ''
-        next[i.id] = { hours: '1', sparkinProjectId: spId, taskId: suggestTask(i, info.tasks[spId] ?? [])?.id ?? '', picked: true }
+        next[i.id] = { hours: String(state.settings?.defaultHours ?? 1), sparkinProjectId: spId, taskId: suggestTask(i, info.tasks[spId] ?? [])?.id ?? '', picked: true }
       }
       return next
     })
