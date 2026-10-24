@@ -741,6 +741,8 @@ export class Workbench {
       if (!i) throw new WorkbenchError('not_found', `卡片 ${id} 不存在`)
       const before = i.status
       if (beforeId === id && before === status) return i // dropped on itself: stays put
+      // 进行中 means a session is working: only 开工 / the session itself put a card there
+      if (status === 'in_progress' && before !== status) throw new WorkbenchError('invalid', '「进行中」由开工自动设置，不能手动拖入；请点「开工」')
       place(d, i, status, beforeId === id ? undefined : beforeId)
       if (before !== status) i.updatedAt = now()
       if (status !== 'blocked') i.note = undefined

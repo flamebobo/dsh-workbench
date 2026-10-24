@@ -141,3 +141,8 @@ test('Q8 a card whose session is still running cannot be started a second time',
   assert.equal(driver.started.length, 2)
 })
 
+test('Q8b nothing can be dragged into 进行中 by hand: it would spin with no session behind it', () => {
+  const { wb } = setup()
+  const c = wb.createIssue({ title: 'manual', projectId: wb.listProjects()[0]!.id })
+  assert.throws(() => wb.moveIssue(c.id, 'in_progress'), /开工/)
+})
