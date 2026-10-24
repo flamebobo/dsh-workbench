@@ -25,7 +25,7 @@ function setup(mode = 'complete') {
 
 test('codex driver: 开工 starts a thread with the agent profile, and the finished turn moves the card to 待审核', async () => {
   const { wb, sent, card, issue } = setup()
-  const agent = wb.saveAgent({ id: 'fullstack', name: '全栈工程师', description: 'd', instructions: '先写测试再改代码', model: 'gpt-a', effort: 'high', skills: ['company-style', 'unknown-skill'] })
+  const agent = wb.saveAgent({ id: 'fullstack', name: '全栈工程师', description: 'd', instructions: '先写测试再改代码', model: 'gpt-a', effort: 'high', skills: ['company-style', 'a-team:five-whys', 'unknown-skill', 'Bad Name'] })
   const c = card()
   const { run } = await wb.startIssue(c.id, agent.id)
   await until(() => issue(c.id).status === 'in_review')
@@ -39,8 +39,12 @@ test('codex driver: 开工 starts a thread with the agent profile, and the finis
   const turn = sent().find((m) => m.method === 'turn/start')!.params
   assert.equal(turn.effort, 'high')
   assert.match(turn.input[0].text, /修复支付回调重复入账/)
-  // only the skill Codex knows becomes a skill input
-  assert.deepEqual(turn.input.filter((i: { type: string }) => i.type === 'skill'), [{ type: 'skill', name: 'company-style', path: '/skills/company-style/SKILL.md' }])
+  assert.deepEqual(agent.skills, ['company-style', 'a-team:five-whys', 'unknown-skill']) // a plugin's namespaced skill is kept, a malformed name is not
+  // only the skills Codex knows become skill inputs
+  assert.deepEqual(turn.input.filter((i: { type: string }) => i.type === 'skill'), [
+    { type: 'skill', name: 'company-style', path: '/skills/company-style/SKILL.md' },
+    { type: 'skill', name: 'a-team:five-whys', path: '/plugins/a-team/skills/five-whys/SKILL.md' },
+  ])
   const r = wb.listRuns().find((x) => x.id === run.id)!
   assert.equal(r.status, 'completed')
   assert.equal(r.finalText, '改好了，测试通过。')
@@ -88,5 +92,5 @@ test('codex driver: models come from model/list (all pages, hidden ones left out
   const { driver } = setup()
   const models = await driver.listModels()
   assert.deepEqual(models.map((m) => [m.id, m.name, m.defaultEffort, m.efforts?.map((e) => e.id)]), [['gpt-a', 'GPT A', 'medium', ['medium', 'high']], ['gpt-b', 'GPT B', 'low', ['low']]])
-  assert.deepEqual(await driver.listSkills(['/x']), [{ name: 'company-style', description: '公司规范', source: 'repo' }])
+  assert.deepEqual(await driver.listSkills(['/x']), [{ name: 'a-team:five-whys', description: '插件里的技能', source: 'user' }, { name: 'company-style', description: '公司规范', source: 'repo' }])
 })

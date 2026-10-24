@@ -122,7 +122,7 @@ function acquireLock(dir2) {
     }
     const owner = parse(raw);
     if (owner && owner.pid !== process.pid && alive(owner)) {
-      throw new LockError(`\u6570\u636E\u76EE\u5F55 ${dir2} \u6B63\u88AB\u53E6\u4E00\u4E2A\u8FDB\u7A0B\u4F7F\u7528\uFF08PID ${owner.pid}\uFF0C${owner.startedAt} \u542F\u52A8\uFF09\u3002\u540C\u4E00\u4E2A\u6570\u636E\u76EE\u5F55\u53EA\u80FD\u7531\u4E00\u4E2A\u5DE5\u4F5C\u53F0\u8FDB\u7A0B\u5199\u5165\uFF1A\u8BF7\u5148\u5173\u95ED\u90A3\u4E2A\u8FDB\u7A0B\uFF0C\u6216\u7528 WORKBENCH_HOME \u6362\u4E00\u4E2A\u6570\u636E\u76EE\u5F55\u3002`, owner);
+      throw new LockError(`\u6570\u636E\u76EE\u5F55 ${dir2} \u6B63\u88AB\u53E6\u4E00\u4E2A\u8FDB\u7A0B\u4F7F\u7528\uFF08PID ${owner.pid}\uFF0C${owner.startedAt} \u542F\u52A8\uFF09\u3002\u540C\u4E00\u4E2A\u6570\u636E\u76EE\u5F55\u53EA\u80FD\u7531\u4E00\u4E2A\u5DE5\u4F5C\u53F0\u8FDB\u7A0B\u5199\u5165\uFF1A\u8BF7\u5148\u5173\u95ED\u90A3\u4E2A\u8FDB\u7A0B\uFF0C\u6216\u6362\u4E00\u4E2A\u6570\u636E\u76EE\u5F55\uFF08DSH \u7248\u7528 WORKBENCH_HOME\uFF0CCodex \u7248\u7528 WORKBENCH_CODEX_HOME\uFF09\u3002`, owner);
     }
     try {
       if (readFileSync(path, "utf8") === raw) unlinkSync(path);
@@ -1413,7 +1413,7 @@ function initDemoRepo(cwd) {
 function defaultAgentFor(w2) {
   return w2.source === "gitlab" ? "reviewer" : w2.source === "jenkins" ? "build-fixer" : "fullstack";
 }
-var WorkbenchError, now, byOrder, cleanLines, cleanRelated, POLL_GIVE_UP, STOPPED, COMMANDS, Workbench;
+var WorkbenchError, now, byOrder, cleanLines, cleanRelated, POLL_GIVE_UP, AGENT_SKILL, STOPPED, COMMANDS, Workbench;
 var init_workbench = __esm({
   "core/src/workbench.ts"() {
     "use strict";
@@ -1448,6 +1448,7 @@ var init_workbench = __esm({
     cleanLines = (l) => (l ?? []).map((x) => x.trim()).filter(Boolean);
     cleanRelated = (l) => (l ?? []).map((r2) => ({ label: String(r2.label ?? "").trim().slice(0, 200), detail: String(r2.detail ?? "").trim().slice(0, 500) || void 0 })).filter((r2) => r2.label).slice(0, 20);
     POLL_GIVE_UP = 10;
+    AGENT_SKILL = /^([a-z0-9]+(-[a-z0-9]+)*:)?[a-z0-9]+(-[a-z0-9]+)*$/;
     STOPPED = "\u5DF2\u624B\u52A8\u505C\u6B62";
     COMMANDS = ["plan", "goal"];
     Workbench = class {
@@ -2681,7 +2682,7 @@ ${summary.slice(0, 4e3)}`,
         if (!a.name.trim()) throw new WorkbenchError("invalid", "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
         return this.store.update((d2) => {
           const cur = d2.agents.find((x) => x.id === a.id);
-          const extra = { effort: a.effort || void 0, skills: [...new Set((a.skills ?? []).filter((x) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(x)))] };
+          const extra = { effort: a.effort || void 0, skills: [...new Set((a.skills ?? []).filter((x) => AGENT_SKILL.test(x)))] };
           if (cur) {
             Object.assign(cur, { name: a.name.trim(), description: a.description, instructions: a.instructions, model: a.model || void 0, ...extra });
             return cur;
@@ -2697,7 +2698,7 @@ ${summary.slice(0, 4e3)}`,
       saveProject(p2) {
         if (!p2.name.trim() || !isAbsolute(p2.cwd.trim())) throw new WorkbenchError("invalid", "\u9879\u76EE\u540D\u79F0\u5FC5\u586B\uFF0C\u5DE5\u4F5C\u76EE\u5F55\u5FC5\u987B\u662F\u7EDD\u5BF9\u8DEF\u5F84");
         return this.store.update((d2) => {
-          const clean = { ...p2, name: p2.name.trim(), cwd: p2.cwd.trim(), skills: [...new Set((p2.skills ?? []).filter((x) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(x)))] };
+          const clean = { ...p2, name: p2.name.trim(), cwd: p2.cwd.trim(), skills: [...new Set((p2.skills ?? []).filter((x) => AGENT_SKILL.test(x)))] };
           const cur = p2.id ? d2.projects.find((x) => x.id === p2.id) : void 0;
           if (cur) {
             Object.assign(cur, clean);

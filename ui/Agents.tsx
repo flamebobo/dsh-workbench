@@ -57,7 +57,7 @@ export function Agents(p: PageProps) {
               {efforts.map((x) => <option key={x.id} value={x.id} title={x.description}>{x.name}</option>)}
             </select></div>
         </div>
-        <SkillPicker label="关联技能（多选；开工时在首条消息里用 /技能名 显式指定，智能体会先加载它们）" value={f.skills ?? []} onChange={(skills) => setF({ ...f, skills })} />
+        <SkillPicker label={HOST === 'codex' ? '关联技能（多选；开工时作为技能输入传给 Codex，智能体会先加载它们）' : '关联技能（多选；开工时在首条消息里用 /技能名 显式指定，智能体会先加载它们）'} value={f.skills ?? []} onChange={(skills) => setF({ ...f, skills })} />
         <div className="wb-field"><label>系统指令</label><textarea className="wb-textarea" style={{ minHeight: 220 }} value={f.instructions} onChange={(e) => setF({ ...f, instructions: e.target.value })} /></div>
         <div className="wb-row"><button className="wb-btn primary" onClick={() => { void save() }}>保存</button>
           <span className="wb-muted">{HOST === 'codex' ? '开工时按卡片指派的智能体使用：模型和指令随 Codex 线程传入，不改 ~/.codex/config.toml。' : '保存后注册为 DSH 智能体预设，开工时按卡片指派的智能体使用。'}</span></div>

@@ -74,6 +74,8 @@ function cleanDue(v: string): string {
 const cleanRelated = (l?: { label?: string; detail?: string }[]) =>
   (l ?? []).map((r) => ({ label: String(r.label ?? '').trim().slice(0, 200), detail: String(r.detail ?? '').trim().slice(0, 500) || undefined })).filter((r) => r.label).slice(0, 20)
 const POLL_GIVE_UP = 10
+/** A skill an agent or project can name: `kebab-name`, or a plugin's namespaced `plugin:kebab-name` (how Codex lists plugin skills). */
+const AGENT_SKILL = /^([a-z0-9]+(-[a-z0-9]+)*:)?[a-z0-9]+(-[a-z0-9]+)*$/
 const STOPPED = '已手动停止'
 const COMMANDS: CommandName[] = ['plan', 'goal']
 const ACTIVE: Status[] = ['todo', 'in_progress', 'in_review', 'blocked', 'backlog']
@@ -1206,7 +1208,7 @@ export class Workbench {
     if (!a.name.trim()) throw new WorkbenchError('invalid', '名称不能为空')
     return this.store.update((d) => {
       const cur = d.agents.find((x) => x.id === a.id)
-      const extra = { effort: a.effort || undefined, skills: [...new Set((a.skills ?? []).filter((x) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(x)))] }
+      const extra = { effort: a.effort || undefined, skills: [...new Set((a.skills ?? []).filter((x) => AGENT_SKILL.test(x)))] }
       if (cur) { Object.assign(cur, { name: a.name.trim(), description: a.description, instructions: a.instructions, model: a.model || undefined, ...extra }); return cur }
       const created: AgentProfile = { ...a, name: a.name.trim(), model: a.model || undefined, ...extra }
       d.agents.push(created)
@@ -1218,7 +1220,7 @@ export class Workbench {
   saveProject(p: Omit<Project, 'id'> & { id?: string }): Project {
     if (!p.name.trim() || !isAbsolute(p.cwd.trim())) throw new WorkbenchError('invalid', '项目名称必填，工作目录必须是绝对路径')
     return this.store.update((d) => {
-      const clean = { ...p, name: p.name.trim(), cwd: p.cwd.trim(), skills: [...new Set((p.skills ?? []).filter((x) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(x)))] }
+      const clean = { ...p, name: p.name.trim(), cwd: p.cwd.trim(), skills: [...new Set((p.skills ?? []).filter((x) => AGENT_SKILL.test(x)))] }
       const cur = p.id ? d.projects.find((x) => x.id === p.id) : undefined
       if (cur) { Object.assign(cur, clean); return cur }
       d.seq += 1

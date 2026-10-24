@@ -35,6 +35,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       : { data: [{ id: 'gpt-a', model: 'gpt-a', displayName: 'GPT A', hidden: false, supportedReasoningEfforts: [{ reasoningEffort: 'medium', description: '均衡' }, { reasoningEffort: 'high', description: '深' }], defaultReasoningEffort: 'medium' }], nextCursor: 'p2' } })
     case 'skills/list': return send({ id: m.id, result: { data: [{ cwd: m.params.cwds?.[0] ?? '', errors: [], skills: [
       { name: 'company-style', description: '公司规范', path: '/skills/company-style/SKILL.md', scope: 'repo', enabled: true },
+      { name: 'a-team:five-whys', description: '插件里的技能', path: '/plugins/a-team/skills/five-whys/SKILL.md', scope: 'user', enabled: true },
       { name: 'off', description: '停用的', path: '/skills/off/SKILL.md', scope: 'user', enabled: false },
     ] }] } })
     case 'thread/start':

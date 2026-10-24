@@ -57,7 +57,7 @@ export function acquireLock(dir: string): () => void {
     try { raw = readFileSync(path, 'utf8') } catch { continue } // released meanwhile: try again
     const owner = parse(raw)
     if (owner && owner.pid !== process.pid && alive(owner)) {
-      throw new LockError(`数据目录 ${dir} 正被另一个进程使用（PID ${owner.pid}，${owner.startedAt} 启动）。同一个数据目录只能由一个工作台进程写入：请先关闭那个进程，或用 WORKBENCH_HOME 换一个数据目录。`, owner)
+      throw new LockError(`数据目录 ${dir} 正被另一个进程使用（PID ${owner.pid}，${owner.startedAt} 启动）。同一个数据目录只能由一个工作台进程写入：请先关闭那个进程，或换一个数据目录（DSH 版用 WORKBENCH_HOME，Codex 版用 WORKBENCH_CODEX_HOME）。`, owner)
     }
     try { if (readFileSync(path, 'utf8') === raw) unlinkSync(path) } catch { /* someone else took it over first */ }
   }
