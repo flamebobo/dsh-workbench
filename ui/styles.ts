@@ -33,6 +33,9 @@ export const css = `
 .wb-chip[aria-pressed=true] { background: var(--wb-fg); color: var(--wb-bg); border-color: var(--wb-fg); }
 .wb-table { width: 100%; border-collapse: collapse; }
 .wb-table th { text-align: left; font-weight: 500; font-size: 12px; color: var(--wb-fg3); padding: 6px 10px; border-bottom: 1px solid var(--wb-bd1); position: sticky; top: 0; background: var(--wb-bg); }
+.wb-th { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.wb-th:hover, .wb-th:focus-visible { color: var(--wb-fg); }
+.wb-th-ind { font-size: 9px; min-width: 9px; }
 .wb-table td { padding: 9px 10px; border-bottom: 1px solid var(--wb-bd1); vertical-align: middle; }
 .wb-table td .wb-btn { white-space: nowrap; }
 .wb-table tr.arch td { opacity: .55; }

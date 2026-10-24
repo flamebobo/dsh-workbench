@@ -128,7 +128,7 @@ const PRIORITIES = ['P0', 'P1', 'P2', 'P3'] as const
 const STARTABLE: Status[] = ['backlog', 'todo', 'blocked']
 
 /** Create (no `issue`) or edit one card. 开工 saves the form, then starts a DSH session in the chosen project's directory. */
-function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue; initialStatus?: Status; p: PageProps; onClose: () => void }) {
+export function IssueModal({ issue, initialStatus, p, onClose }: { issue?: Issue; initialStatus?: Status; p: PageProps; onClose: () => void }) {
   const { state } = p
   const [title, setTitle] = useState(issue?.title ?? '')
   // the description box works like DSH's composer: a leading /plan or /goal is the task's command

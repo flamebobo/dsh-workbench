@@ -409,3 +409,20 @@ test('auto-run: 待办 top to bottom, one agent at a time, follows the order, sk
   mk('E'); await wb.tick()
   assert.equal(driver.started.length, 4)
 })
+
+test('编辑 a source item: local backlog card overrides the source copy, can still be started, never duplicates', async () => {
+  const { driver, wb } = setup()
+  const card = wb.adoptTodo({ item: bug })
+  assert.equal(card.status, 'backlog')
+  assert.equal(card.projectId, wb.resolveProject(bug)?.id)
+  wb.updateIssue(card.id, { title: '改过的标题', priority: 'P0', acceptance: ['新验收'] })
+  const row = (await wb.listTodos()).items.find((i) => i.source === bug.source && i.ref === bug.ref)!
+  assert.equal(row.title, '改过的标题')
+  assert.equal(row.priority, 'P0')
+  assert.deepEqual(row.acceptance, ['新验收'])
+  assert.equal(row.issueStatus, 'backlog')
+  assert.throws(() => wb.adoptTodo({ item: bug }), /已经开过卡片/)
+  await assert.rejects(wb.startWork({ item: bug }), /已经开过卡片/)
+  await wb.startIssue(card.id)
+  assert.match(driver.started[0]!.prompt, /改过的标题/)
+})

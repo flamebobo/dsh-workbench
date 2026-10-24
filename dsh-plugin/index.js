@@ -960,7 +960,8 @@ var Workbench = class {
     const items = [...lists.flat(), ...manual].sort((a, b) => rank[a.priority] - rank[b.priority]).map((w) => {
       const issue = this.issueForSource(w.source, w.ref);
       const hidden = (this.store.data.hiddenTodos ?? []).some((h) => h.source === w.source && h.ref === w.ref);
-      return { ...w, issueId: issue?.id, issueStatus: issue?.status, archived: hidden || !!issue?.archivedAt };
+      const edited = issue?.sourceRef ? { title: issue.title, priority: issue.priority ?? w.priority, description: issue.description, acceptance: issue.acceptance, project: issue.projectId ? projectName(issue.projectId) : w.project } : {};
+      return { ...w, ...edited, issueId: issue?.id, issueStatus: issue?.status, archived: hidden || !!issue?.archivedAt };
     });
     return { items, sources };
   }
@@ -989,36 +990,48 @@ ${p.summary}` : "\uFF08\u5B83\u6CA1\u6709\u7559\u4E0B\u6587\u5B57\u7ED3\u8BBA\uF
     lines.push("", "\u8BF7\u5148\u9605\u8BFB\u76F8\u5173\u4EE3\u7801\u3001\u8BF4\u660E\u4F60\u7684\u65B9\u6848\uFF0C\u518D\u5B9E\u65BD\u3002\u5B8C\u6210\u540E\u603B\u7ED3\u6539\u52A8\u4E0E\u81EA\u6D4B\u7ED3\u679C\uFF1B\u4E0D\u8981\u81EA\u884C\u5224\u5B9A\u300C\u5DF2\u5B8C\u6210\u300D\uFF0C\u7531\u6211\u9A8C\u6536\u3002");
     return lines.join("\n");
   }
-  /** 开工: one card per source ref; create it in_progress, start a session, then wire events back to the card. */
-  async startWork(input) {
-    const { item } = input;
+  /** One card per source ref. `status` is where it lands: backlog for 「编辑」(just a local copy), todo right before 开工. */
+  noCardYet(item) {
     const existing = this.issueForSource(item.source, item.ref);
     if (existing) throw new WorkbenchError("duplicate", `${item.ref} \u5DF2\u7ECF\u5F00\u8FC7\u5361\u7247\uFF08${existing.key}\uFF09`, existing.id);
-    const agent = this.agent(input.agentId ?? this.settings().defaultAgents[item.source] ?? defaultAgentFor(item));
-    const project = this.resolveProject(item);
-    if (!project) throw new WorkbenchError("invalid", `\u300C${item.project}\u300D\u6CA1\u6709\u5BF9\u5E94\u7684\u9879\u76EE\u5DE5\u4F5C\u76EE\u5F55\uFF0C\u8BF7\u5148\u5728\u300C\u9879\u76EE\u300D\u9875\u6DFB\u52A0`);
-    const issue = this.store.update((d) => {
+  }
+  cardFor(item, status, agentId, projectId) {
+    this.noCardYet(item);
+    const agent = this.agent(agentId ?? this.settings().defaultAgents[item.source] ?? defaultAgentFor(item));
+    return this.store.update((d) => {
       d.seq += 1;
       d.issueSeq = (d.issueSeq ?? 0) + 1;
       const t = now();
-      const issue2 = {
+      const issue = {
         id: `iss_${d.seq}`,
         key: `WB-${d.issueSeq}`,
         title: item.title,
         description: item.description,
         acceptance: item.acceptance,
-        status: "todo",
+        status,
         agentId: agent.id,
-        projectId: project.id,
+        projectId,
         priority: item.priority,
         sourceRef: { source: item.source, ref: item.ref },
         createdAt: t,
         updatedAt: t
       };
-      d.issues.push(issue2);
-      place(d, issue2, "todo");
-      return issue2;
+      d.issues.push(issue);
+      place(d, issue, status);
+      return issue;
     });
+  }
+  /** 编辑 a source item: make a local backlog card (the source system is never written) so it can be adjusted like any card. */
+  adoptTodo(input) {
+    return this.cardFor(input.item, "backlog", input.agentId, this.resolveProject(input.item)?.id);
+  }
+  /** 开工: one card per source ref; create it, start a session, then wire events back to the card. */
+  async startWork(input) {
+    const { item } = input;
+    this.noCardYet(item);
+    const project = this.resolveProject(item);
+    if (!project) throw new WorkbenchError("invalid", `\u300C${item.project}\u300D\u6CA1\u6709\u5BF9\u5E94\u7684\u9879\u76EE\u5DE5\u4F5C\u76EE\u5F55\uFF0C\u8BF7\u5148\u5728\u300C\u9879\u76EE\u300D\u9875\u6DFB\u52A0`);
+    const issue = this.cardFor(item, "todo", input.agentId, project.id);
     return this.launch(issue.id, item);
   }
   /** 开工 on a card that already exists (manual tasks from the board, or a blocked card being retried). */
@@ -2146,6 +2159,8 @@ function apply(ctx) {
         return await wb.listTodos();
       case "todos.start":
         return await wb.startWork({ item: p.item, agentId: p.agentId });
+      case "todos.adopt":
+        return wb.adoptTodo({ item: p.item, agentId: p.agentId });
       case "issue.create":
         return wb.createIssue(p);
       case "issue.update":

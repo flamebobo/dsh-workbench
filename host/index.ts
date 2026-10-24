@@ -43,6 +43,7 @@ export function apply(ctx: Ctx) {
       case 'state': return await state()
       case 'todos.list': return await wb.listTodos()
       case 'todos.start': return await wb.startWork({ item: p.item as WorkItem, agentId: p.agentId })
+      case 'todos.adopt': return wb.adoptTodo({ item: p.item as WorkItem, agentId: p.agentId })
       case 'issue.create': return wb.createIssue(p)
       case 'issue.update': return wb.updateIssue(p.id, p.patch)
       case 'issue.start': return await wb.startIssue(p.id, p.agentId)

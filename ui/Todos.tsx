@@ -1,12 +1,24 @@
 import * as React from 'react'
 import { fmtSize, rpc, STATUS_LABEL, type Issue, type RpcError, type TodoResult, type WorkItem } from './api.ts'
 import { TimesheetModal } from './Timesheet.tsx'
+import { IssueModal } from './Board.tsx'
 import type { PageProps } from './App.tsx'
 
 const { useState, useMemo, useEffect } = React
 type Row = TodoResult['items'][number]
 const SOURCE_LABEL = { zentao: '禅道', gitlab: 'GitLab', jenkins: 'Jenkins', manual: '手工' }
 const STARTABLE = ['backlog', 'todo', 'blocked']
+const RANK = { P0: 0, P1: 1, P2: 2, P3: 3 }
+type SortKey = 'priority' | 'title' | 'source' | 'project' | 'status' | 'due'
+const statusText = (r: Row) => (r.issueStatus ? STATUS_LABEL[r.issueStatus] : r.statusText)
+const COLUMNS: { key: SortKey; label: string; width?: number; text: (r: Row) => string }[] = [
+  { key: 'priority', label: '优先级', width: 66, text: (r) => String(RANK[r.priority]) },
+  { key: 'title', label: '待办事项', text: (r) => r.title },
+  { key: 'source', label: '来源', width: 150, text: (r) => `${r.source}${r.ref}` },
+  { key: 'project', label: '项目 / 模块', width: 190, text: (r) => r.project },
+  { key: 'status', label: '状态', width: 90, text: statusText },
+  { key: 'due', label: '截止', width: 90, text: (r) => r.due ?? '' },
+]
 const FALLBACK_AGENT = { gitlab: 'reviewer', jenkins: 'build-fixer', zentao: 'fullstack', manual: 'fullstack' }
 
 export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloadTodos: () => Promise<void> }) {
@@ -18,12 +30,22 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
   const [q, setQ] = useState('')
   const [showArchived, setShowArchived] = useState(false)
   const [reporting, setReporting] = useState(false)
+  const [editing, setEditing] = useState<string>() // issue id whose card form is open
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>() // none = the server's priority order
 
   const rows = useMemo(() => {
     const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean)
-    return (todos?.items ?? []).filter((r) => (filter === 'all' || r.source === filter) && (showArchived || !r.archived) &&
+    const out = (todos?.items ?? []).filter((r) => (filter === 'all' || r.source === filter) && (showArchived || !r.archived) &&
       words.every((w) => `${r.ref}\n${r.title}\n${r.project}\n${r.description}`.toLowerCase().includes(w)))
-  }, [todos, filter, q, showArchived])
+    if (!sort) return out
+    const text = COLUMNS.find((c) => c.key === sort.key)!.text
+    const sign = sort.desc ? -1 : 1
+    // empty values (no due date) stay at the bottom in both directions; Array.sort is stable so ties keep the server order
+    return out.sort((a, b) => {
+      const x = text(a), y = text(b)
+      return !x || !y ? (x ? -1 : y ? 1 : 0) : sign * x.localeCompare(y, 'zh-CN', { numeric: true })
+    })
+  }, [todos, filter, q, showArchived, sort])
   const count = (s: WorkItem['source']) => todos?.items.filter((r) => r.source === s && (showArchived || !r.archived)).length ?? 0
   const sel: Row | undefined = rows.find((r) => `${r.source}:${r.ref}` === selected) ?? undefined
   // keep a valid selection when the filter or the list changes
@@ -41,7 +63,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
 
   const issueAgent = issue?.agentId
   // a card that exists but has no live session (manual task, or a blocked one) can be started from here
-  const startable = !issue || (!issue.sourceRef && STARTABLE.includes(issue.status))
+  const startable = !issue || (!issue.sourceRef && STARTABLE.includes(issue.status)) || (!!issue.sourceRef && issue.status === 'backlog')
 
   async function archiveDone() {
     const n = (todos?.items ?? []).filter((r) => r.issueStatus === 'done' && !r.archived).length
@@ -50,6 +72,13 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
   }
   async function archive(r: Row, archived: boolean) {
     try { await rpc('todos.archive', { source: r.source, ref: r.ref, archived }); p.notify(archived ? `已归档 ${r.ref}` : `已取消归档 ${r.ref}`); await p.refresh(); await p.reloadTodos() } catch (e) { p.notify((e as Error).message) }
+  }
+  /** Edit = open the card form; a source item without a card first gets a local backlog copy (the source system is never written). */
+  async function edit(r: Row) {
+    try {
+      const id = r.issueId ?? (await rpc<Issue>('todos.adopt', { item: r, agentId: (state.settings?.defaultAgents ?? FALLBACK_AGENT)[r.source] })).id
+      await p.refresh(); setEditing(id)
+    } catch (e) { p.notify((e as Error).message) }
   }
   async function remove(r: Row) {
     if (!r.issueId || !confirm(`删除任务 ${r.ref}？删除后不可恢复（只想收起的话请用「归档」）。`)) return
@@ -99,7 +128,12 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
           <button className="wb-btn" onClick={() => { void p.reloadTodos() }}>刷新</button>
         </div>
         <table className="wb-table">
-          <thead><tr><th style={{ width: 66 }}>优先级</th><th>待办事项</th><th style={{ width: 150 }}>来源</th><th style={{ width: 190 }}>项目 / 模块</th><th style={{ width: 90 }}>状态</th><th style={{ width: 90 }}>截止</th></tr></thead>
+          <thead><tr>{COLUMNS.map((c) => (
+            <th key={c.key} style={{ width: c.width }} aria-sort={sort?.key === c.key ? (sort.desc ? 'descending' : 'ascending') : 'none'}>
+              <button className="wb-th" title="点击排序：升序 / 降序" onClick={() => setSort(sort?.key === c.key ? { key: c.key, desc: !sort.desc } : { key: c.key, desc: false })}>
+                {c.label}<span className="wb-th-ind">{sort?.key === c.key ? (sort.desc ? '▼' : '▲') : ''}</span>
+              </button>
+            </th>))}</tr></thead>
           <tbody>
             {rows.map((r) => {
               const key = `${r.source}:${r.ref}`
@@ -109,7 +143,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
                   <td>{r.title}{r.issueId && <span className="wb-pill" style={{ marginLeft: 8 }}>{state.issues.find((i) => i.id === r.issueId)?.key}</span>}</td>
                   <td><span className="wb-src"><i className={r.source} />{r.ref}</span></td>
                   <td className="wb-muted wb-ellipsis" style={{ maxWidth: 190 }}>{r.project}</td>
-                  <td>{r.issueStatus ? <span className="wb-pill">{STATUS_LABEL[r.issueStatus]}</span> : <span className="wb-muted">{r.statusText}</span>}</td>
+                  <td>{r.issueStatus ? <span className="wb-pill">{statusText(r)}</span> : <span className="wb-muted">{r.statusText}</span>}</td>
                   <td className="wb-muted">{r.due ? r.due.slice(5) : '—'}</td>
                 </tr>
               )
@@ -125,7 +159,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
             <h3 style={{ marginTop: 6 }}>{sel.title}</h3>
             <dl className="wb-kv">
               <dt>优先级</dt><dd><span className={`wb-pri ${sel.priority}`}>{sel.priority}</span></dd>
-              <dt>状态</dt><dd>{sel.statusText}</dd>
+              <dt>状态</dt><dd>{statusText(sel)}</dd>
               <dt>截止</dt><dd>{sel.due ?? '—'}</dd>
               <dt>工作目录</dt><dd className="wb-ellipsis" title={project?.cwd}>{project ? project.cwd : <span style={{ color: 'var(--wb-red)' }}>{sel.source === 'manual' ? '未选择项目，请在看板卡片里选择' : '未配置，请到「项目」页添加'}</span>}</dd>
             </dl>
@@ -142,6 +176,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
             {issue && state.issues.some((x) => x.nextId === issue.id) && <div className="wb-sub">前置任务：{state.issues.filter((x) => x.nextId === issue.id).map((x) => `${x.key} ${x.title}`).join('；')}</div>}
             {issue?.timesheet && <div className="wb-sub" style={{ color: 'var(--wb-green)' }}>已填报工时 {issue.timesheet.hours}h · {issue.timesheet.sparkinTaskName}</div>}
             <div className="wb-row" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+              <button className="wb-btn" disabled={issue?.status === 'in_progress'} title={issue?.status === 'in_progress' ? '进行中的任务不能修改' : sel.source === 'manual' ? '修改标题、描述、验收标准、项目、优先级、智能体' : '修改会保存在工作台的卡片里，不会写回禅道/GitLab/Jenkins'} onClick={() => { void edit(sel) }}>编辑</button>
               {issue?.status === 'done' && !issue.timesheet && <button className="wb-btn" onClick={() => setReporting(true)}>填报 Sparkin 工时</button>}
               <button className="wb-btn" disabled={issue?.status === 'in_progress'} title={issue?.status === 'in_progress' ? '进行中的任务不能归档' : '归档后默认隐藏，可在「显示已归档」里找回'} onClick={() => { void archive(sel, !sel.archived) }}>{sel.archived ? '取消归档' : '归档'}</button>
               {issue && !issue.sourceRef && <button className="wb-btn danger" onClick={() => { void remove(sel) }}>删除</button>}
@@ -166,6 +201,7 @@ export function Todos(p: PageProps & { todos?: TodoResult; todosAt?: Date; reloa
           </div>
         </aside>
       )}
+      {editing && state.issues.find((x) => x.id === editing) && <IssueModal issue={state.issues.find((x) => x.id === editing)} p={p} onClose={() => { setEditing(undefined); void p.reloadTodos() }} />}
       {reporting && issue && <TimesheetModal p={p} only={[issue.id]} onClose={() => setReporting(false)} />}
     </>
   )

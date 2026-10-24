@@ -150,7 +150,9 @@ export class Workbench {
     const items = [...lists.flat(), ...manual].sort((a, b) => rank[a.priority] - rank[b.priority]).map((w) => {
       const issue = this.issueForSource(w.source, w.ref)
       const hidden = (this.store.data.hiddenTodos ?? []).some((h) => h.source === w.source && h.ref === w.ref)
-      return { ...w, issueId: issue?.id, issueStatus: issue?.status, archived: hidden || !!issue?.archivedAt }
+      // edits made on the card (title, priority, background, acceptance, project) win over the source system's copy
+      const edited = issue?.sourceRef ? { title: issue.title, priority: issue.priority ?? w.priority, description: issue.description, acceptance: issue.acceptance, project: issue.projectId ? projectName(issue.projectId) : w.project } : {}
+      return { ...w, ...edited, issueId: issue?.id, issueStatus: issue?.status, archived: hidden || !!issue?.archivedAt }
     })
     return { items, sources }
   }
@@ -187,26 +189,41 @@ export class Workbench {
     return lines.join('\n')
   }
 
-  /** 开工: one card per source ref; create it in_progress, start a session, then wire events back to the card. */
-  async startWork(input: { item: WorkItem; agentId?: string }): Promise<{ issue: Issue; run: Run }> {
-    const { item } = input
+  /** One card per source ref. `status` is where it lands: backlog for 「编辑」(just a local copy), todo right before 开工. */
+  private noCardYet(item: WorkItem) {
     const existing = this.issueForSource(item.source, item.ref)
     if (existing) throw new WorkbenchError('duplicate', `${item.ref} 已经开过卡片（${existing.key}）`, existing.id)
-    const agent = this.agent(input.agentId ?? this.settings().defaultAgents[item.source] ?? defaultAgentFor(item))
-    const project = this.resolveProject(item)
-    if (!project) throw new WorkbenchError('invalid', `「${item.project}」没有对应的项目工作目录，请先在「项目」页添加`)
-    const issue = this.store.update((d) => {
+  }
+
+  private cardFor(item: WorkItem, status: Status, agentId?: string, projectId?: string): Issue {
+    this.noCardYet(item)
+    const agent = this.agent(agentId ?? this.settings().defaultAgents[item.source] ?? defaultAgentFor(item))
+    return this.store.update((d) => {
       d.seq += 1
       d.issueSeq = (d.issueSeq ?? 0) + 1
       const t = now()
       const issue: Issue = {
         id: `iss_${d.seq}`, key: `WB-${d.issueSeq}`, title: item.title, description: item.description,
-        acceptance: item.acceptance, status: 'todo', agentId: agent.id, projectId: project.id, priority: item.priority,
+        acceptance: item.acceptance, status, agentId: agent.id, projectId, priority: item.priority,
         sourceRef: { source: item.source, ref: item.ref }, createdAt: t, updatedAt: t,
       }
-      d.issues.push(issue); place(d, issue, 'todo')
+      d.issues.push(issue); place(d, issue, status)
       return issue
     })
+  }
+
+  /** 编辑 a source item: make a local backlog card (the source system is never written) so it can be adjusted like any card. */
+  adoptTodo(input: { item: WorkItem; agentId?: string }): Issue {
+    return this.cardFor(input.item, 'backlog', input.agentId, this.resolveProject(input.item)?.id)
+  }
+
+  /** 开工: one card per source ref; create it, start a session, then wire events back to the card. */
+  async startWork(input: { item: WorkItem; agentId?: string }): Promise<{ issue: Issue; run: Run }> {
+    const { item } = input
+    this.noCardYet(item)
+    const project = this.resolveProject(item)
+    if (!project) throw new WorkbenchError('invalid', `「${item.project}」没有对应的项目工作目录，请先在「项目」页添加`)
+    const issue = this.cardFor(item, 'todo', input.agentId, project.id)
     return this.launch(issue.id, item)
   }
 
