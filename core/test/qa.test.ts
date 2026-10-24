@@ -153,3 +153,9 @@ test('Q9 a Zentao item without a priority is not shown as P0', async () => {
   assert.deepEqual(b.map((x) => x.priority), ['P2', 'P2', 'P0', 'P3'])
   assert.equal(parseTasks({ tasks: [{ id: 5, name: 't', pri: '', status: 'wait', assignedTo: 'me' }] }, 'me', 1, 'http://z')[0]!.priority, 'P2')
 })
+
+test('Q5 a due date that is not a real calendar day is refused', () => {
+  const { wb } = setup()
+  for (const bad of ['2026-02-31', '2026-13-01', '2026-00-10', '2026-04-31']) assert.throws(() => wb.createIssue({ title: 't', due: bad }), /截止日期/, bad)
+  assert.equal(wb.createIssue({ title: 't', due: '2028-02-29' }).due, '2028-02-29') // a leap day is real
+})

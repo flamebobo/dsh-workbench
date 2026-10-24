@@ -61,7 +61,8 @@ const cleanLines = (l?: string[]) => (l ?? []).map((x) => x.trim()).filter(Boole
 function cleanDue(v: string): string {
   const s = v.trim()
   if (!s) return ''
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s))) throw new WorkbenchError('invalid', `截止日期要写成 YYYY-MM-DD：${v}`)
+  const day = new Date(`${s}T00:00:00Z`)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== s) throw new WorkbenchError('invalid', `截止日期要写成 YYYY-MM-DD：${v}`)
   return s
 }
 const cleanRelated = (l?: { label?: string; detail?: string }[]) =>
