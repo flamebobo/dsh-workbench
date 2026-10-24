@@ -2900,6 +2900,9 @@ function createDispatch(wb, h) {
         return await wb.triggerBuild({ job: p.job, params: p.params, issueIds: p.issueIds ?? [] });
       case "dirs.list":
         return await listDirs(typeof p.path === "string" ? p.path : void 0, { hidden: !!p.hidden, hints: await h.projectHints?.() });
+      case "session.open":
+        await h.openSession?.(String(p.id ?? ""));
+        return null;
       case "files.search":
         return wb.searchFiles(p.projectId, p.q ?? "");
       case "models.list":

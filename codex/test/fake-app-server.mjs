@@ -41,6 +41,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     case 'thread/start':
       threadId = 'thr-' + process.pid
       return send({ id: m.id, result: { thread: { id: threadId }, model: m.params.model ?? 'gpt-a', cwd: m.params.cwd } })
+    case 'thread/name/set': return send({ id: m.id, result: {} })
     case 'turn/start':
       send({ id: m.id, result: { turn: turn('inProgress') } })
       if (mode === 'approval') return send({ id: 'approval-1', method: 'item/commandExecution/requestApproval', params: { threadId, turnId, itemId: 'c1', command: 'rm -rf /' } })

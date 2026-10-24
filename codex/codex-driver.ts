@@ -87,6 +87,8 @@ export class CodexDriver implements AgentDriver {
       })
       const id: string = t.thread.id
       threadId = id
+      // the sidebar shows the thread's name; without one it shows the whole prompt
+      await conn.request('thread/name/set', { threadId: id, name: req.title }).catch(() => {})
       const s: Session = { runId: req.runId, conn, done: false }
       this.sessions.set(id, s)
       conn.onNotification((m, p) => this.onNotification(id, s, m, p))

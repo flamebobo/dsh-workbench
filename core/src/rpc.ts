@@ -12,6 +12,8 @@ export interface DispatchHost {
   defaultModel?: () => string | undefined | Promise<string | undefined>
   /** After an agent is saved (DSH re-registers it as a preset). */
   agentSaved?: (a: AgentProfile) => Promise<unknown>
+  /** Jump to the card's agent session in the host's own UI (Codex: its thread). Absent where the page can do it itself (DSH). */
+  openSession?: (sessionId: string) => void | Promise<void>
   /** Directories the host knows as the user's own projects (Codex: the ones in its config), offered in the folder picker. */
   projectHints?: () => string[] | Promise<string[]>
   /** The skill roots may have changed: tell the host's skill registry to look again. */
@@ -79,6 +81,7 @@ export function createDispatch(wb: Workbench, h: DispatchHost): Dispatch {
       case 'jenkins.jobs': return await wb.jenkinsJobs()
       case 'builds.trigger': return await wb.triggerBuild({ job: p.job, params: p.params, issueIds: p.issueIds ?? [] })
       case 'dirs.list': return await listDirs(typeof p.path === 'string' ? p.path : undefined, { hidden: !!p.hidden, hints: await h.projectHints?.() })
+      case 'session.open': await h.openSession?.(String(p.id ?? '')); return null
       case 'files.search': return wb.searchFiles(p.projectId, p.q ?? '')
       case 'models.list': return { models: await driver.listModels(), defaultModel: await h.defaultModel?.() }
       case 'skills.list': refreshSkills(); return await driver.listSkills(wb.listProjects().map((x) => x.cwd))

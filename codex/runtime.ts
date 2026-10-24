@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { Store, Workbench, acquireLock, createDispatch } from '../core/src/index.ts'
 import { callServe, readServeInfo, serve, type ServeInfo } from '../core/src/serve.ts'
 import { CodexDriver } from './codex-driver.ts'
+import { openThread } from './open-thread.ts'
 import { codexProjects } from './projects.ts'
 
 /**
@@ -55,6 +56,7 @@ export async function runServe(o: { dir: string; version: string; exampleSkillRo
     driver,
     defaultModel: driver.defaultModel,
     projectHints: () => codexProjects({ exclude: o.dir }),
+    openSession: openThread,
     exampleSkillRoot: () => (o.exampleSkillRoot && existsSync(o.exampleSkillRoot) ? o.exampleSkillRoot : undefined),
   })
   const s = await serve({ dir: o.dir, dispatch, version: o.version, revision: () => wb.store.data, log: (m, e) => console.warn(`workbench: ${m}`, e) })

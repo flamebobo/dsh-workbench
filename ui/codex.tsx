@@ -3,7 +3,7 @@ import * as React from 'react'
 import { createRoot } from 'react-dom/client'
 import { App as McpApp } from '@modelcontextprotocol/ext-apps'
 import { App } from './App.tsx'
-import { setTransport } from './api.ts'
+import { rpc, setTransport } from './api.ts'
 import { mcpTransport, watchChanges } from './mcp-transport.ts'
 
 declare const __WB_VERSION__: string | undefined
@@ -23,7 +23,9 @@ document.addEventListener('click', (e) => {
 
 app.connect().then(() => {
   theme(app.getHostContext()?.theme)
-  createRoot(document.getElementById('root')!).render(<App />)
+  // the thread opens in Codex itself (codex://threads/<id>, started by the local service)
+  const openSession = (id: string) => { void rpc('session.open', { id }).catch((e) => console.warn('[workbench] open thread failed', e)) }
+  createRoot(document.getElementById('root')!).render(<App openSession={openSession} />)
   void watchChanges(app, () => false, () => window.dispatchEvent(new Event('wb:changed')))
 }, (e) => {
   document.getElementById('root')!.textContent = `没能连上 Codex：${(e as Error)?.message ?? e}`

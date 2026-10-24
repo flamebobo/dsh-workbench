@@ -3090,6 +3090,9 @@ function createDispatch(wb, h2) {
         return await wb.triggerBuild({ job: p2.job, params: p2.params, issueIds: p2.issueIds ?? [] });
       case "dirs.list":
         return await listDirs(typeof p2.path === "string" ? p2.path : void 0, { hidden: !!p2.hidden, hints: await h2.projectHints?.() });
+      case "session.open":
+        await h2.openSession?.(String(p2.id ?? ""));
+        return null;
       case "files.search":
         return wb.searchFiles(p2.projectId, p2.q ?? "");
       case "models.list":
@@ -3558,6 +3561,8 @@ var init_codex_driver = __esm({
           });
           const id = t.thread.id;
           threadId = id;
+          await conn.request("thread/name/set", { threadId: id, name: req.title }).catch(() => {
+          });
           const s = { runId: req.runId, conn, done: false };
           this.sessions.set(id, s);
           conn.onNotification((m2, p2) => this.onNotification(id, s, m2, p2));
@@ -3638,6 +3643,23 @@ ${others.map((f2) => `- ${f2.name}\uFF1A${f2.path}`).join("\n")}` : req.prompt;
   }
 });
 
+// codex/open-thread.ts
+import { execFile as execFile2 } from "node:child_process";
+function openThreadCommand(threadId, platform = process.platform) {
+  if (!/^[0-9a-f-]{8,64}$/i.test(threadId)) throw new Error(`\u4E0D\u662F\u6709\u6548\u7684\u7EBF\u7A0B ID\uFF1A${threadId}`);
+  const url2 = `codex://threads/${threadId}`;
+  return platform === "darwin" ? ["open", url2] : platform === "win32" ? ["cmd", "/c", "start", "", url2] : ["xdg-open", url2];
+}
+function openThread(threadId) {
+  const [bin, ...args] = openThreadCommand(threadId);
+  return new Promise((resolve6, reject) => execFile2(bin, args, { windowsHide: true }, (e) => e ? reject(new Error(`\u6CA1\u80FD\u6253\u5F00 Codex \u7EBF\u7A0B\uFF1A${e.message}`)) : resolve6()));
+}
+var init_open_thread = __esm({
+  "codex/open-thread.ts"() {
+    "use strict";
+  }
+});
+
 // codex/projects.ts
 import { existsSync as existsSync8, readFileSync as readFileSync6 } from "node:fs";
 import { homedir as homedir4 } from "node:os";
@@ -3714,6 +3736,7 @@ async function runServe(o) {
     driver,
     defaultModel: driver.defaultModel,
     projectHints: () => codexProjects({ exclude: o.dir }),
+    openSession: openThread,
     exampleSkillRoot: () => o.exampleSkillRoot && existsSync9(o.exampleSkillRoot) ? o.exampleSkillRoot : void 0
   });
   const s = await serve({ dir: o.dir, dispatch, version: o.version, revision: () => wb.store.data, log: (m2, e) => console.warn(`workbench: ${m2}`, e) });
@@ -3795,6 +3818,7 @@ var init_runtime = __esm({
     init_src();
     init_serve();
     init_codex_driver();
+    init_open_thread();
     init_projects();
     codexDataDir = (env = process.env) => env.WORKBENCH_CODEX_HOME || join10(homedir5(), ".workbench-codex");
     sleep = (ms) => new Promise((r2) => setTimeout(r2, ms));

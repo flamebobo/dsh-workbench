@@ -31,6 +31,7 @@ test('codex driver: 开工 starts a thread with the agent profile, and the finis
   const { run } = await wb.startIssue(c.id, agent.id)
   await until(() => issue(c.id).status === 'in_review')
   const thread = sent().find((m) => m.method === 'thread/start')!.params
+  assert.equal(sent().find((m) => m.method === 'thread/name/set')!.params.name, `${c.key} ${c.title}`) // the sidebar shows this, not the whole prompt
   assert.equal(thread.cwd, wb.listProjects()[0]!.cwd)
   assert.equal(thread.sandbox, 'workspace-write')
   assert.equal(thread.approvalPolicy, 'never')

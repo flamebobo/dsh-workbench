@@ -185,7 +185,7 @@ codex plugin add workbench@workbench-local       # 把 codex-plugin/ 装进 Code
 | 智能体 | 注册为 DSH 智能体预设 | 不注册；模型、强度、指令随线程传入 |
 | 技能 | DSH 技能注册表；技能包目录注册给 DSH | 列表来自 Codex 的 `skills/list`；智能体 / 项目选的技能和技能包里的技能作为 `skill` 输入随首条消息传入 |
 | `/plan` `/goal` 指令 | 有 | 隐藏（Codex 没有对应的命令通道） |
-| 打开关联会话 | 跳到 DSH 会话 | 卡片上只显示 Codex 线程 ID |
+| 打开关联会话 | 跳到 DSH 会话 | 「在 Codex 中打开线程」：用 `codex://threads/<线程ID>` 直接打开；线程名是「WB-3 标题」 |
 | 确认框 / 外链 | 浏览器 `confirm()` / 新窗口 | 页内确认弹层 / 经 Codex 打开链接（沙箱 iframe 里 `confirm()` 被禁用） |
 | 新会话的权限预设 | DSH 权限预设，越界操作等你批准 | 直接作为 Codex 线程的 sandbox，越界操作失败、不等审批 |
 | 桌面通知、更新检查 | 有 | 隐藏；更新 = 重新运行安装脚本 |
@@ -214,6 +214,9 @@ codex plugin add workbench@workbench-local       # 把 codex-plugin/ 装进 Code
 
 ### 项目的工作目录
 「添加项目」里的工作目录不再手敲路径：点「选择目录」弹出目录选择器（由 Host 列目录，DSH 与 Codex 通用），选定后项目名为空时用目录名补上。Codex 版的选择器上方有「Codex 自己的项目」快捷入口：读 `~/.codex/config.toml` 里 `[projects."…"]` 中的 git 仓库（只读，不写 config.toml）。
+
+### 线程在 Codex 侧栏里的位置
+工作台开的线程由另一个 `codex app-server` 进程创建，已经打开的 Codex 桌面端不会主动刷新侧栏，所以**刚开工的线程可能不在项目列表里**。点卡片里的「在 Codex 中打开线程」，Codex 会直接打开它，之后它就出现在对应项目（工作目录所在的项目）下；重启 Codex 也会列出。线程用卡片编号和标题命名。
 
 ### 已知限制
 - 同时开着几个 Codex 会话时，各自的 MCP 进程可能同时尝试拉起本地服务；只有一个能拿到数据目录锁，其余的立刻退出，`serve.log` 里会留下几行「数据目录正被另一个进程使用」，属正常现象。
